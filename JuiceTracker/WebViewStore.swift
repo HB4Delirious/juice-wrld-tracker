@@ -15,6 +15,17 @@ final class WKWebViewContainer: NSView {
         ])
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) is not used") }
+
+    /// Blends the title bar into the page's night sky instead of the grey system bar.
+    /// The bar stays a separate strip (no full-size content view) so the window can still be dragged by it.
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        guard let window else { return }
+        window.titlebarAppearsTransparent = true
+        window.titleVisibility = .hidden
+        window.appearance = NSAppearance(named: .darkAqua)
+        window.backgroundColor = NSColor(srgbRed: 7 / 255, green: 4 / 255, blue: 15 / 255, alpha: 1) // #07040f, top of the page's sky
+    }
 }
 
 /// Owns the WKWebView that runs web/juice-tracker.html, plus everything a browser would normally do for it:
