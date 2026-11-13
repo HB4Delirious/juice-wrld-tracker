@@ -38,6 +38,20 @@ final class NativeBridge: NSObject, WKScriptMessageHandlerWithReply {
                     return (url, item["title"] as? String ?? url.deletingPathExtension().lastPathComponent)
                 })
             }
+            if let volume = body["volume"] as? NSNumber { ambient.volume = max(0, min(1, volume.floatValue)) }
+            switch body["cmd"] as? String {
+            case "pause": ambient.pause()
+            case "resume": ambient.resume()
+            case "skip": ambient.skip()
+            default: break
+            }
+            if let path = body["playPath"] as? String {
+                guard let url = allowedURL(path) else {
+                    replyHandler(nil, "NotAllowedError: That location isn't inside a folder you chose.")
+                    return
+                }
+                ambient.playNow(url, title: body["title"] as? String ?? url.deletingPathExtension().lastPathComponent)
+            }
             if let play = body["play"] as? Bool { play ? ambient.play() : ambient.stop() }
             replyHandler(true, nil)
             return
@@ -214,19 +228,27 @@ final class NativeBridge: NSObject, WKScriptMessageHandlerWithReply {
         case "mkdir":
             try fm.createDirectory(at: url, withIntermediateDirectories: true)
             return true
+        case "trash":
+            // Duplicate cleanup: always the Trash, never a permanent delete. Some network drives have no Trash;
+            // then this fails and the file stays.
+            guard kind(of: url) == "file" else { throw BridgeError(message: "NotFoundError: File not found.") }
+            try fm.trashItem(at: url, resultingItemURL: nil)
+            return true
         default:
             throw BridgeError(message: "TypeError: Unknown operation \(op).")
         }
     }
 }
 
-/// Plays the user's own matched songs, shuffled, very quietly, as ambient background music.
+/// Plays the user's own matched songs, shuffled (quietly by default, as ambient music), with pause, skip,
+/// volume, and "play this song now" for the sidebar player and the song card.
 final class AmbientPlayer: NSObject, AVAudioPlayerDelegate {
-    static let volume: Float = 0.06
+    var volume: Float = 0.06 { didSet { player?.volume = volume } }
     var onTrack: ((String?) -> Void)?
     private var items: [(url: URL, title: String)] = []
     private var order: [Int] = []
     private var player: AVAudioPlayer?
+    private var paused = false
     private var generation = 0 // bumps on every start/stop so a slow load can't start after the user turned it off
 
     func set(_ newItems: [(URL, String)]) {
@@ -235,22 +257,33 @@ final class AmbientPlayer: NSObject, AVAudioPlayerDelegate {
         if items.isEmpty { stop() }
     }
 
+    /// Starts shuffling unless something is already playing, loading, or the user paused.
     func play() {
-        if player?.isPlaying == true || items.isEmpty { return }
+        if player?.isPlaying == true || paused || items.isEmpty { return }
         next()
     }
 
     func stop() {
         generation += 1
+        paused = false
         player?.stop()
         player = nil
         onTrack?(nil)
     }
 
+    func pause() { paused = true; player?.pause() }
+    func resume() { paused = false; if let player { player.play() } else { next() } }
+    func skip() { paused = false; next() }
+    func playNow(_ url: URL, title: String) { paused = false; start((url: url, title: title)) }
+
     private func next(failures: Int = 0) {
         guard !items.isEmpty, failures < min(items.count, 5) else { stop(); return }
         if order.isEmpty { order = Array(items.indices).shuffled() }
-        let item = items[order.removeLast()]
+        start(items[order.removeLast()], failures: failures)
+    }
+
+    private func start(_ item: (url: URL, title: String), failures: Int = 0) {
+        player?.stop()
         generation += 1
         let gen = generation
         // Opening a file on a network drive can take seconds; keep it off the main thread.
@@ -262,7 +295,7 @@ final class AmbientPlayer: NSObject, AVAudioPlayerDelegate {
                 loaded.delegate = self
                 loaded.volume = 0
                 loaded.play()
-                loaded.setVolume(Self.volume, fadeDuration: 4)
+                loaded.setVolume(self.volume, fadeDuration: 3)
                 self.player = loaded
                 self.onTrack?(item.title)
             }
@@ -270,6 +303,6 @@ final class AmbientPlayer: NSObject, AVAudioPlayerDelegate {
     }
 
     func audioPlayerDidFinishPlaying(_ finished: AVAudioPlayer, successfully flag: Bool) {
-        if finished === player { next() }
+        if finished === player { player = nil; if !items.isEmpty { next() } else { onTrack?(nil) } }
     }
 }
