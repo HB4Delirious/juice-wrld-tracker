@@ -14,6 +14,8 @@ Open `JuiceTracker.xcodeproj` in Xcode and Run, or build a DMG:
 scripts/make-dmg.sh   # -> dist/JuiceTracker.dmg
 ```
 
+The app's version comes from the latest `v*` tag (override with `VERSION=1.5 scripts/make-dmg.sh`); the build number is the commit count.
+
 The app is ad-hoc signed ("Sign to Run Locally"), so the first launch from a downloaded DMG needs
 right-click > Open (or System Settings > Privacy & Security > Open Anyway).
 
