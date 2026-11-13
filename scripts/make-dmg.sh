@@ -9,14 +9,16 @@ VERSION="${VERSION#v}"
 BUILD="$(git rev-list --count HEAD 2>/dev/null || echo 1)"
 echo "Building JuiceTracker $VERSION ($BUILD)"
 
-rm -rf build/Release-dmg dist
+rm -rf dist
 xcodebuild -project JuiceTracker.xcodeproj -scheme JuiceTracker -configuration Release \
   -derivedDataPath build/DerivedData CONFIGURATION_BUILD_DIR="$PWD/build/Release" \
   MARKETING_VERSION="$VERSION" CURRENT_PROJECT_VERSION="$BUILD" build
 
-stage=build/Release-dmg
-mkdir -p "$stage" dist
-cp -R build/Release/JuiceTracker.app "$stage/"
-ln -s /Applications "$stage/Applications"
-hdiutil create -volname "Juice Tracker" -srcfolder "$stage" -ov -format UDZO dist/JuiceTracker.dmg
+# Themed DMG window (background, icon positions) via dmgbuild, kept in a local venv under build/.
+venv=build/.venv-dmg
+[ -x "$venv/bin/dmgbuild" ] || { python3 -m venv "$venv" && "$venv/bin/pip" install -q dmgbuild==1.6.5; }
+tiffutil -cathidpicheck design/dmg-background.png design/dmg-background@2x.png -out build/dmg-background.tiff >/dev/null
+mkdir -p dist
+"$venv/bin/dmgbuild" -s scripts/dmg-settings.py -D app=build/Release/JuiceTracker.app -D background=build/dmg-background.tiff \
+  "Juice Tracker" dist/JuiceTracker.dmg
 echo "Wrote dist/JuiceTracker.dmg"

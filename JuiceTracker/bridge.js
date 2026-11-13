@@ -127,6 +127,9 @@
     return new NativeDirectoryHandle(r.path, r.name);
   };
 
+  // Ambient background music: { items: [{ path, title }], play: true | false }.
+  window.jwAmbient = cmd => call("ambient", cmd);
+
   // The folder picked last time for this picker id, or null. Lets the page rescan it at launch.
   window.jwRestoreFolder = async id => {
     const r = await call("restoreFolder", { id: String(id || "") });
