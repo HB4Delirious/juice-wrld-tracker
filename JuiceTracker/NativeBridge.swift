@@ -1,4 +1,5 @@
 import AppKit
+import AVFoundation
 import WebKit
 
 /// Gives the page the file access Chrome's File System Access API would: bridge.js builds
@@ -7,6 +8,17 @@ import WebKit
 final class NativeBridge: NSObject, WKScriptMessageHandlerWithReply {
     private struct BridgeError: Error { let message: String }
     private var roots: [String] = [] // touched on the main thread only
+    private let ambient = AmbientPlayer()
+    weak var webView: WKWebView?
+
+    override init() {
+        super.init()
+        // Tell the page which song is playing (nil when stopped) so the sidebar can show it.
+        ambient.onTrack = { [weak self] title in
+            let json = (try? JSONSerialization.data(withJSONObject: [title.map { $0 as Any } ?? NSNull()])).flatMap { String(data: $0, encoding: .utf8) } ?? "[null]"
+            self?.webView?.evaluateJavaScript("window.jwAmbientNow && window.jwAmbientNow(\(json)[0])")
+        }
+    }
 
     func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage,
                                replyHandler: @escaping (Any?, String?) -> Void) {
@@ -17,6 +29,17 @@ final class NativeBridge: NSObject, WKScriptMessageHandlerWithReply {
         switch op {
         case "pickFolder":
             pickFolder(id: body["id"] as? String ?? "", reply: replyHandler)
+            return
+        case "ambient":
+            // Background music from the user's matched files. Paths go through the same folder check as every file op.
+            if let list = body["items"] as? [[String: Any]] {
+                ambient.set(list.compactMap { item -> (URL, String)? in
+                    guard let path = item["path"] as? String, let url = allowedURL(path) else { return nil }
+                    return (url, item["title"] as? String ?? url.deletingPathExtension().lastPathComponent)
+                })
+            }
+            if let play = body["play"] as? Bool { play ? ambient.play() : ambient.stop() }
+            replyHandler(true, nil)
             return
         case "restoreFolder":
             replyHandler(restoreFolder(id: body["id"] as? String ?? ""), nil)
@@ -142,5 +165,59 @@ final class NativeBridge: NSObject, WKScriptMessageHandlerWithReply {
         default:
             throw BridgeError(message: "TypeError: Unknown operation \(op).")
         }
+    }
+}
+
+/// Plays the user's own matched songs, shuffled, very quietly, as ambient background music.
+final class AmbientPlayer: NSObject, AVAudioPlayerDelegate {
+    static let volume: Float = 0.06
+    var onTrack: ((String?) -> Void)?
+    private var items: [(url: URL, title: String)] = []
+    private var order: [Int] = []
+    private var player: AVAudioPlayer?
+    private var generation = 0 // bumps on every start/stop so a slow load can't start after the user turned it off
+
+    func set(_ newItems: [(URL, String)]) {
+        items = newItems.map { (url: $0.0, title: $0.1) }
+        order = []
+        if items.isEmpty { stop() }
+    }
+
+    func play() {
+        if player?.isPlaying == true || items.isEmpty { return }
+        next()
+    }
+
+    func stop() {
+        generation += 1
+        player?.stop()
+        player = nil
+        onTrack?(nil)
+    }
+
+    private func next(failures: Int = 0) {
+        guard !items.isEmpty, failures < min(items.count, 5) else { stop(); return }
+        if order.isEmpty { order = Array(items.indices).shuffled() }
+        let item = items[order.removeLast()]
+        generation += 1
+        let gen = generation
+        // Opening a file on a network drive can take seconds; keep it off the main thread.
+        DispatchQueue.global(qos: .utility).async {
+            let loaded = try? AVAudioPlayer(contentsOf: item.url)
+            DispatchQueue.main.async { [weak self] in
+                guard let self, gen == self.generation else { return }
+                guard let loaded else { self.next(failures: failures + 1); return }
+                loaded.delegate = self
+                loaded.volume = 0
+                loaded.play()
+                loaded.setVolume(Self.volume, fadeDuration: 4)
+                self.player = loaded
+                self.onTrack?(item.title)
+            }
+        }
+    }
+
+    func audioPlayerDidFinishPlaying(_ finished: AVAudioPlayer, successfully flag: Bool) {
+        if finished === player { next() }
     }
 }

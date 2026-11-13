@@ -74,6 +74,7 @@ final class WebViewStore: NSObject {
         super.init()
 
         content.addScriptMessageHandler(bridge, contentWorld: .page, name: "jwNative")
+        bridge.webView = webView
         webView.navigationDelegate = self
         webView.uiDelegate = self
         webView.allowsMagnification = true
