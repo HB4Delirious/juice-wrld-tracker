@@ -32,14 +32,14 @@
 
   /** A lazy File: bytes are only read when arrayBuffer() is called, so scanning reads just the tag headers. */
   class NativeFile {
-    constructor(path, name, start, end) {
+    constructor(path, name, start, end, mtime = Date.now()) {
       this._path = path; this._s = start; this._e = end;
-      this.name = name; this.size = end - start; this.type = ""; this.lastModified = Date.now();
+      this.name = name; this.size = end - start; this.type = ""; this.lastModified = mtime;
     }
     slice(a = 0, b = this.size) {
       const n = this.size, clamp = x => (x < 0 ? Math.max(n + x, 0) : Math.min(x, n));
       const s = clamp(a), e = Math.max(clamp(b), s);
-      return new NativeFile(this._path, this.name, this._s + s, this._s + e);
+      return new NativeFile(this._path, this.name, this._s + s, this._s + e, this.lastModified);
     }
     async arrayBuffer() {
       if (!this.size) return new ArrayBuffer(0);
@@ -54,7 +54,7 @@
     constructor(path, name) { this.kind = "file"; this.name = name; this._path = path; }
     async getFile() {
       const st = await call("stat", { path: this._path });
-      return new NativeFile(this._path, this.name, 0, st.size);
+      return new NativeFile(this._path, this.name, 0, st.size, st.mtime);
     }
     async createWritable() {
       const chunks = [], path = this._path;
@@ -138,6 +138,9 @@
 
   // Ambient background music: { items: [{ path, title }], play: true | false }.
   window.jwAmbient = cmd => call("ambient", cmd);
+
+  // A handle for a file path from an earlier scan, with no disk access (the native side still checks every use).
+  window.jwFileHandle = (path, name) => new NativeFileHandle(path, name);
 
   // The folder picked last time for this picker id, or null. Lets the page rescan it at launch.
   window.jwRestoreFolder = async id => {
