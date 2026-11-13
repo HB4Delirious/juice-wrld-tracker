@@ -5,6 +5,8 @@
 (() => {
   const native = window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.jwNative;
   if (!native) return;
+  // Lets the page leave room for the window buttons, which sit over it in the app.
+  document.documentElement.classList.add("jw-app");
 
   const call = async (op, args = {}) => {
     try {

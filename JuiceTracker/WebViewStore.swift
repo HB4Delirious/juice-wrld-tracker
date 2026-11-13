@@ -1,20 +1,54 @@
 import AppKit
 import WebKit
 
-/// Plain container so the web view fills the window and resizes with it.
+/// Height of the invisible title-bar strip; the page leaves the same space via --top-inset in juice-tracker.html.
+let titleBarInset: CGFloat = 28
+
+/// Fills the window with the web view, running it under the (hidden) title bar.
 final class WKWebViewContainer: NSView {
     init(webView: WKWebView) {
         super.init(frame: .zero)
         webView.translatesAutoresizingMaskIntoConstraints = false
         addSubview(webView)
+        let strip = TitleBarDragView()
+        strip.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(strip) // above the web view, which would otherwise swallow the clicks
         NSLayoutConstraint.activate([
             webView.leadingAnchor.constraint(equalTo: leadingAnchor),
             webView.trailingAnchor.constraint(equalTo: trailingAnchor),
             webView.topAnchor.constraint(equalTo: topAnchor),
             webView.bottomAnchor.constraint(equalTo: bottomAnchor),
+            strip.leadingAnchor.constraint(equalTo: leadingAnchor),
+            strip.trailingAnchor.constraint(equalTo: trailingAnchor),
+            strip.topAnchor.constraint(equalTo: topAnchor),
+            strip.heightAnchor.constraint(equalToConstant: titleBarInset),
         ])
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) is not used") }
+
+    /// No title bar: the page's night sky runs to the top edge and the window buttons float over the sidebar.
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        guard let window else { return }
+        window.styleMask.insert(.fullSizeContentView)
+        window.titlebarAppearsTransparent = true
+        window.titleVisibility = .hidden
+        window.appearance = NSAppearance(named: .darkAqua)
+        window.backgroundColor = NSColor(srgbRed: 7 / 255, green: 4 / 255, blue: 15 / 255, alpha: 1) // #07040f, top of the page's sky
+    }
+}
+
+/// Invisible strip where the title bar was: drag to move the window, double-click to zoom.
+final class TitleBarDragView: NSView {
+    override func mouseDown(with event: NSEvent) {
+        if event.clickCount == 2 {
+            // Follow System Settings > Desktop & Dock > "Double-click a window's title bar to".
+            let action = UserDefaults.standard.string(forKey: "AppleActionOnDoubleClick") ?? "Maximize"
+            if action == "Minimize" { window?.performMiniaturize(nil) } else if action != "None" { window?.performZoom(nil) }
+        } else {
+            window?.performDrag(with: event)
+        }
+    }
 }
 
 /// Owns the WKWebView that runs web/juice-tracker.html, plus everything a browser would normally do for it:

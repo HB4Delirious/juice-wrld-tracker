@@ -8,6 +8,7 @@ struct JuiceTrackerApp: App {
     var body: some Scene {
         WindowGroup("Juice WRLD Collection Tracker") {
             TrackerView()
+                .ignoresSafeArea() // the page runs under the hidden title bar
                 .frame(minWidth: 820, minHeight: 600)
         }
         .commands {
