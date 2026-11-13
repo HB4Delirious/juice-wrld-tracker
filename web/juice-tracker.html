@@ -1598,7 +1598,10 @@ async function readMp4(file) {
 async function readId3v2(file) {
   const h = await bytes(file, 0, 10);
   if (h.length < 10 || latin1(h.subarray(0, 3)) !== "ID3") return null;
-  const p = parseId3(await bytes(file, 0, 10 + Math.min(synchsafe(h, 6), 4 * 1024 * 1024)));
+  const size = synchsafe(h, 6), first = 256 * 1024;
+  let p = parseId3(await bytes(file, 0, 10 + Math.min(size, first)));
+  // Most files put text tags before the cover art; read the whole tag only when the title wasn't in the first part.
+  if (p && size > first && !tagsFromId3(p).title) p = parseId3(await bytes(file, 0, 10 + Math.min(size, 4 * 1024 * 1024)));
   return p ? tagsFromId3(p) : null;
 }
 async function readId3v1(file) {
@@ -1698,20 +1701,65 @@ async function walkHandle(dir, prefix, out = [], onCount) {
   }
   return out;
 }
-async function scanFiles(items, onlyJuice, onProgress) {
+/* Tag cache, keyed by library path: the scan at launch reuses it without touching the files at all, since on a
+   network drive even checking a file's size costs a round trip (and reading tags about a second). Tag edits made
+   here update it; "Rescan folder" re-reads everything, which catches files changed by other programs.
+   shortcut: entries for deleted files stay (tiny); prune them if the cache ever grows large. */
+const tagCache = {
+  db: null,
+  open() {
+    return this.db || (this.db = new Promise(resolve => {
+      try {
+        const req = indexedDB.open("jw-tag-cache", 1);
+        req.onupgradeneeded = () => req.result.createObjectStore("tags");
+        req.onsuccess = () => resolve(req.result);
+        req.onerror = () => resolve(null);
+      } catch (e) { resolve(null); }
+    }));
+  },
+  async all() {
+    const db = await this.open(), out = new Map();
+    if (!db) return out;
+    return new Promise(resolve => {
+      const req = db.transaction("tags").objectStore("tags").openCursor();
+      req.onsuccess = () => { const c = req.result; if (c) { out.set(c.key, c.value); c.continue(); } else resolve(out); };
+      req.onerror = () => resolve(out);
+    });
+  },
+  async put(entries) {
+    const db = await this.open();
+    if (!db || !entries.size) return;
+    const store = db.transaction("tags", "readwrite").objectStore("tags");
+    entries.forEach((v, k) => store.put(v, k));
+  },
+  // The audio files of the last folder scan (library paths), so the app can show the library before the drive answers.
+  ITEMS: "\u0000items",
+  async items() { return ((await this.all()).get(this.ITEMS)) || []; },
+  setItems(paths) { return this.put(new Map([[this.ITEMS, paths]])); },
+};
+async function scanFiles(items, onlyJuice, onProgress, { reread = false } = {}) {
   const audio = items.filter(it => AUDIO_EXTS.has(extOf(it.path)));
-  const found = [];
+  const found = [], cache = reread ? new Map() : await tagCache.all(), fresh = new Map();
   let next = 0, done = 0;
   const worker = async () => {
     while (next < audio.length) {
       const it = audio[next++];
       const ext = extOf(it.path);
       try {
-        const file = it.file || await it.handle.getFile();
-        const tags = await readTags(file, ext);
+        // Files picked through <input> or drag and drop are already in memory; check those against their size and date.
+        let hit = cache.get(it.path), file = it.file || null;
+        if (hit && file && (hit.size !== file.size || hit.mtime !== file.lastModified)) hit = null;
+        let tags, size;
+        if (hit) ({ tags, size } = hit);
+        else {
+          file = file || await it.handle.getFile();
+          tags = await readTags(file, ext);
+          size = file.size;
+          fresh.set(it.path, { size, mtime: file.lastModified, tags });
+        }
         if (!onlyJuice || hasArtist(it.path) || hasArtist(`${tags.artist || ""} ${tags.albumartist || ""}`)) {
           const title = tags.title || titleFromFilename(it.path);
-          found.push({ path: it.path, handle: it.handle || null, ext, tags, title, key: normalize(title), stem: stemOf(it.path), fromTags: Boolean(tags.title), size: file.size });
+          found.push({ path: it.path, handle: it.handle || null, ext, tags, title, key: normalize(title), stem: stemOf(it.path), fromTags: Boolean(tags.title), size });
         }
       } catch (e) { /* unreadable file: skip */ }
       done++;
@@ -1719,6 +1767,7 @@ async function scanFiles(items, onlyJuice, onProgress) {
     }
   };
   await Promise.all(Array.from({ length: 8 }, worker));
+  tagCache.put(fresh);
   onProgress(audio.length, audio.length);
   return { found: found.sort((a, b) => a.path.localeCompare(b.path)), audioCount: audio.length };
 }
@@ -1897,13 +1946,14 @@ $("catalog-files").addEventListener("change", async e => {
 });
 
 /* ---------- folder selection */
-async function handleFolder(items) {
+async function handleFolder(items, { reread = false } = {}) {
   if (!items.length) { setStatus("folder-status", "That folder is empty.", true); return; }
   const onlyJuice = $("only-juice").checked;
   setStatus("folder-status", `Reading ${plural(items.length, "file", "files")}…`);
-  const { found, audioCount } = await scanFiles(items, onlyJuice, (done, total) => setStatus("folder-status", `Reading song info: ${fmt(done)} of ${fmt(total)}…`));
+  const { found, audioCount } = await scanFiles(items, onlyJuice, (done, total) => setStatus("folder-status", `Reading song info: ${fmt(done)} of ${fmt(total)}…`), { reread });
   state.library = found;
   state.lastItems = items;
+  if (items.length && items.every(it => it.handle && it.handle._path)) tagCache.setItems(items.filter(it => AUDIO_EXTS.has(extOf(it.path))).map(it => it.path));
   state.fixSel.clear();
   $("step-folder").classList.add("done");
   if (!audioCount) setStatus("folder-status", "No audio files found in that folder. Choose the folder that holds your music.", true);
@@ -1912,11 +1962,11 @@ async function handleFolder(items) {
   renderSetup();
   update();
 }
-async function loadFromHandle(dir) {
+async function loadFromHandle(dir, { reread = false } = {}) {
   state.rootHandle = dir;
   setStatus("folder-status", "Collecting files…");
   const items = await walkHandle(dir, `${dir.name}/`, [], n => setStatus("folder-status", `Collecting files: ${fmt(n)} found…`));
-  await handleFolder(items);
+  await handleFolder(items, { reread });
 }
 
 $("folder-btn").addEventListener("click", async () => {
@@ -1929,7 +1979,7 @@ $("folder-btn").addEventListener("click", async () => {
 });
 async function rescanFolder() {
   if (!state.rootHandle) return false;
-  try { await loadFromHandle(state.rootHandle); return true; }
+  try { await loadFromHandle(state.rootHandle, { reread: true }); return true; } // re-read every file, ignoring the tag cache
   catch (err) { setStatus("folder-status", `Couldn't read the folder again: ${err.message}. Choose it again.`, true); return false; }
 }
 $("rescan-btn").addEventListener("click", rescanFolder);
@@ -3662,6 +3712,7 @@ async function writeTags(it) {
   it.f.key = normalize(it.f.title);
   it.f.fromTags = Boolean(it.f.tags.title);
   it.f.size = fresh.size;
+  tagCache.put(new Map([[it.f.path, { size: fresh.size, mtime: fresh.lastModified, tags: it.f.tags }]]));
 }
 const isSelected = item => state.fixSel.has(item.f.path) ? state.fixSel.get(item.f.path) : !item.f.fuzzy;
 
@@ -4094,11 +4145,26 @@ $("ambient-btn").addEventListener("click", () => {
   syncAmbient();
 });
 
-// Mac app only: rescan the music folder picked last time.
+// Mac app only: reopen the music folder picked last time. The last scan shows right away from the tag cache;
+// then the folder is listed in the background, since a network drive can take minutes to answer.
 if (window.jwRestoreFolder) {
-  window.jwRestoreFolder("plex-music")
-    .then(dir => dir && !state.rootHandle && loadFromHandle(dir))
-    .catch(err => setStatus("folder-status", `Couldn't reopen your music folder: ${err.message}. Choose it again.`, true));
+  (async () => {
+    const dir = await window.jwRestoreFolder("plex-music");
+    if (!dir || state.rootHandle) return;
+    const last = await tagCache.items();
+    if (last.length) {
+      state.rootHandle = dir;
+      const root = dir._path.replace(/\/+$/, "");
+      await handleFolder(last.map(p => ({ path: p, handle: window.jwFileHandle(`${root}/${p.split("/").slice(1).join("/")}`, baseName(p)) })));
+    }
+    try {
+      await loadFromHandle(dir);
+    } catch (err) {
+      setStatus("folder-status", last.length
+        ? `Your music folder isn't answering right now (${err.message}), so this is your last scan. Click Rescan folder to try again.`
+        : `Couldn't open your music folder: ${err.message}. Choose it again.`, true);
+    }
+  })();
 }
 
 </script>

@@ -115,3 +115,16 @@ test("a backup left empty by a failed attempt is written again, and a good one i
   await backupFile(root, "Music/Juice WRLD/Lucid Dreams.mp3", audio(10)); // a later edit must not replace the first good backup
   assert.equal(album.entries.get("Lucid Dreams.mp3").data.length, original.length, "the first good backup was kept");
 });
+
+test("ID3 tags are found whether the title comes before or after big cover art", async () => {
+  const id3Frame = g("id3Frame"), id3Text = g("id3Text"), readTags = g("readTags");
+  const art = id3Frame("APIC", new Uint8Array(300 * 1024).fill(7), 3); // bigger than the 256 KB first read
+  const mp3 = (...frames) => {
+    const body = cat(...frames, new Uint8Array(64)), n = body.length;
+    return cat(Uint8Array.of(0x49, 0x44, 0x33, 3, 0, 0, (n >> 21) & 127, (n >> 14) & 127, (n >> 7) & 127, n & 127), body, audio(2000));
+  };
+  const titleAfterArt = await readTags(new Blob([mp3(art, id3Text("TIT2", "After The Art", 3))]), "mp3");
+  assert.equal(titleAfterArt.title, "After The Art");
+  const titleFirst = await readTags(new Blob([mp3(id3Text("TIT2", "Before The Art", 3), art)]), "mp3");
+  assert.equal(titleFirst.title, "Before The Art");
+});

@@ -153,12 +153,11 @@ final class NativeBridge: NSObject, WKScriptMessageHandlerWithReply {
         }
     }
 
-    /// Re-grants the folder last picked for this id, so the music folder survives relaunches.
-    /// Only ever a folder the user chose in an open panel before; nil if it's gone (e.g. an unmounted drive).
+    /// Re-grants the folder last picked for this id, so the music folder survives relaunches. Only ever a folder
+    /// the user chose in an open panel before. No disk access here: this runs on the main thread, and a slow network
+    /// drive can take minutes to answer (the whole app would freeze). The page finds out when it lists the folder.
     private func restoreFolder(id: String) -> [String: String]? {
         guard let path = UserDefaults.standard.string(forKey: "lastFolder.\(id)") else { return nil }
-        var isDir: ObjCBool = false
-        guard FileManager.default.fileExists(atPath: path, isDirectory: &isDir), isDir.boolValue else { return nil }
         if !roots.contains(path) { roots.append(path) }
         return ["path": path, "name": URL(fileURLWithPath: path).lastPathComponent]
     }
@@ -221,11 +220,21 @@ final class NativeBridge: NSObject, WKScriptMessageHandlerWithReply {
         switch op {
         case "list":
             guard kind(of: url) == "directory" else { throw BridgeError(message: "NotFoundError: Folder not found.") }
-            let names = try fm.contentsOfDirectory(atPath: url.path)
-            return names.compactMap { name -> [String: String]? in
-                guard let k = kind(of: url.appendingPathComponent(name)) else { return nil }
-                return ["name": name, "kind": k]
+            // Names and types straight from the directory listing: asking for each file's details costs a round
+            // trip per file on a network drive (about 0.1 s each on the user's NAS). Only links and unknowns get a stat.
+            guard let dir = opendir(url.path) else { throw BridgeError(message: "NotFoundError: Folder not found.") }
+            defer { closedir(dir) }
+            var entries: [[String: String]] = []
+            while let entry = readdir(dir) {
+                let name = withUnsafeBytes(of: entry.pointee.d_name) { String(cString: $0.bindMemory(to: CChar.self).baseAddress!) }
+                if name == "." || name == ".." { continue }
+                switch Int32(entry.pointee.d_type) {
+                case DT_DIR: entries.append(["name": name, "kind": "directory"])
+                case DT_REG: entries.append(["name": name, "kind": "file"])
+                default: if let k = kind(of: url.appendingPathComponent(name)) { entries.append(["name": name, "kind": k]) }
+                }
             }
+            return entries
         case "stat", "exists":
             guard let k = kind(of: url) else {
                 if op == "exists" { return ["exists": false] }
@@ -233,7 +242,8 @@ final class NativeBridge: NSObject, WKScriptMessageHandlerWithReply {
             }
             let attrs = try? fm.attributesOfItem(atPath: url.path)
             let size = (attrs?[.size] as? NSNumber)?.intValue ?? 0
-            return ["exists": true, "kind": k, "size": size]
+            let mtime = ((attrs?[.modificationDate] as? Date)?.timeIntervalSince1970 ?? 0) * 1000
+            return ["exists": true, "kind": k, "size": size, "mtime": mtime]
         case "read":
             guard let start = int(body["start"]), let end = int(body["end"]), start >= 0, end >= start else {
                 throw BridgeError(message: "TypeError: Bad range.")
