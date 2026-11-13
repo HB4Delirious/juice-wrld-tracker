@@ -9,6 +9,7 @@
 /* Begin PBXBuildFile section */
 		14E55C26DBE504F6A45408BA /* bridge.js in Resources */ = {isa = PBXBuildFile; fileRef = 7CC2F554E14D92FF0DFC5244 /* bridge.js */; };
 		7566C83FDE2D874A8C527794 /* NativeBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = E6A30A4561E530805D149EE4 /* NativeBridge.swift */; };
+		5E6A1C7F2B3D4E5F60718293 /* Services.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6F7B2D803C4E5F60718293A4 /* Services.swift */; };
 		93AD2DE8F603B24719141ACE /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 2DA6296CA099F01CDF41D14C /* Assets.xcassets */; };
 		C169FD5F3E196738AE889C7D /* juice-tracker.html in Resources */ = {isa = PBXBuildFile; fileRef = ACB23FEBF9072389C24011D1 /* juice-tracker.html */; };
 		C8E648084E7309C1B01150E8 /* JuiceTrackerApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = B11B15543E9C61D2DE5F191E /* JuiceTrackerApp.swift */; };
@@ -23,6 +24,7 @@
 		B11B15543E9C61D2DE5F191E /* JuiceTrackerApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JuiceTrackerApp.swift; sourceTree = "<group>"; };
 		CBB29ABC89E055B4458F1CD6 /* JuiceTracker.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = JuiceTracker.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		E6A30A4561E530805D149EE4 /* NativeBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeBridge.swift; sourceTree = "<group>"; };
+		6F7B2D803C4E5F60718293A4 /* Services.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Services.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXGroup section */
@@ -42,6 +44,7 @@
 				ACB23FEBF9072389C24011D1 /* juice-tracker.html */,
 				B11B15543E9C61D2DE5F191E /* JuiceTrackerApp.swift */,
 				E6A30A4561E530805D149EE4 /* NativeBridge.swift */,
+				6F7B2D803C4E5F60718293A4 /* Services.swift */,
 				33923ED7623C961878FB8F8C /* WebViewStore.swift */,
 			);
 			path = JuiceTracker;
@@ -130,6 +133,7 @@
 			files = (
 				C8E648084E7309C1B01150E8 /* JuiceTrackerApp.swift in Sources */,
 				7566C83FDE2D874A8C527794 /* NativeBridge.swift in Sources */,
+				5E6A1C7F2B3D4E5F60718293 /* Services.swift in Sources */,
 				ED549C999B26D36BC005D7A2 /* WebViewStore.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

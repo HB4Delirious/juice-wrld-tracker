@@ -91,6 +91,7 @@ final class WebViewStore: NSObject {
     }
 
     func reload() { webView.reload() }
+    func stopAmbient() { bridge.stopAmbient() }
     func setZoom(_ value: CGFloat) { webView.pageZoom = value }
     func zoom(by delta: CGFloat) { webView.pageZoom = min(max(webView.pageZoom + delta, 0.5), 2.5) }
 

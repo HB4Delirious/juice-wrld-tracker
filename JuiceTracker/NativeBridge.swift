@@ -20,6 +20,8 @@ final class NativeBridge: NSObject, WKScriptMessageHandlerWithReply {
         }
     }
 
+    func stopAmbient() { ambient.stop() }
+
     func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage,
                                replyHandler: @escaping (Any?, String?) -> Void) {
         guard let body = message.body as? [String: Any], let op = body["op"] as? String else {
@@ -71,6 +73,30 @@ final class NativeBridge: NSObject, WKScriptMessageHandlerWithReply {
                 return
             }
             Self.download(url, to: dest, reply: replyHandler)
+            return
+        case "plex":
+            // Plex lives in Settings (⌘,); the page only asks for a rescan, the status, or a playlist.
+            switch body["action"] as? String {
+            case "refresh":
+                Plex.scheduleRefresh()
+                replyHandler(true, nil)
+            case "status":
+                replyHandler(["configured": Plex.configured], nil)
+            case "playlist":
+                let title = (body["title"] as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+                let paths = body["paths"] as? [String] ?? []
+                guard !title.isEmpty, !paths.isEmpty else { replyHandler(nil, "TypeError: A playlist needs a title and songs."); return }
+                Task {
+                    do {
+                        let r = try await Plex.playlist(title: title, paths: paths)
+                        await MainActor.run { replyHandler(["matched": r.matched, "missing": r.missing], nil) }
+                    } catch {
+                        await MainActor.run { replyHandler(nil, "PlexError: \(error.localizedDescription)") }
+                    }
+                }
+            default:
+                replyHandler(nil, "TypeError: Unknown Plex action.")
+            }
             return
         case "restoreFolder":
             replyHandler(restoreFolder(id: body["id"] as? String ?? ""), nil)

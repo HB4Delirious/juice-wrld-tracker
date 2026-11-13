@@ -133,6 +133,9 @@
   // Moves a file (inside a picked folder) to the Trash. Used by duplicate cleanup.
   window.jwTrash = path => call("trash", { path });
 
+  // Plex (set up in Settings): { action: "refresh" | "status" | "playlist", title, paths }.
+  window.jwPlex = cmd => call("plex", cmd);
+
   // Ambient background music: { items: [{ path, title }], play: true | false }.
   window.jwAmbient = cmd => call("ambient", cmd);
 

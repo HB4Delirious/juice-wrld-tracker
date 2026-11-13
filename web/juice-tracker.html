@@ -856,6 +856,12 @@
               <label class="btn ghost">Restore a backup<input type="file" id="export-restore" accept=".json,application/json"></label>
             </div>
           </div>
+          <div class="export-item" id="plex-item" hidden>
+            <h3>Plex playlists</h3>
+            <p class="hint">Makes a playlist in Plex from songs you have. Making the same one again replaces it.</p>
+            <label class="field" style="width:100%">Songs<select id="plex-source"></select></label>
+            <button type="button" class="primary" id="plex-make">Make playlist</button>
+          </div>
         </div>
         <p class="status" id="export-status" role="status" aria-live="polite"></p>
       </div>
@@ -2866,8 +2872,47 @@ const FULL_COLUMNS = [
   ["surfaced_type", s => s.leakType], ["session_titles", s => s.sessions], ["other_dates", s => s.dates], ["notes", s => s.notes],
   ["additional_information", s => s.info], ["site_file_url", s => fileUrl(s)],
 ];
+/* Plex playlists (Mac app, once Plex is set up in Settings): lists of song indexes you have. */
+function plexSources() {
+  const owned = i => state.owned.has(i);
+  const monthAgo = Date.now() - 30 * 864e5;
+  const out = [
+    { id: "wish", label: "Wishlist songs you have", title: "Juice WRLD: Wishlist", songs: state.catalog.map((s, i) => i).filter(i => owned(i) && isWished(state.catalog[i])) },
+    { id: "recent", label: "Downloaded in the last 30 days", title: "Juice WRLD: Recently downloaded",
+      songs: state.catalog.map((s, i) => i).filter(i => owned(i) && Date.parse(state.personal.downloaded[state.catalog[i].id] || "") > monthAgo) },
+  ];
+  eraStats().filter(e => e.have).forEach(e => out.push({ id: `era:${e.name}`, label: `Era: ${e.name}`, title: `Juice WRLD: ${e.name}`,
+    songs: state.catalog.map((s, i) => i).filter(i => owned(i) && eraName(state.catalog[i]) === e.name) }));
+  return out;
+}
+async function renderPlexItem() {
+  let configured = false;
+  try { configured = Boolean(window.jwPlex && (await window.jwPlex({ action: "status" })).configured); } catch (e) { /* not the app */ }
+  $("plex-item").hidden = !configured;
+  if (!configured) return;
+  const keep = $("plex-source").value;
+  $("plex-source").innerHTML = plexSources().map(s => `<option value="${esc(s.id)}">${esc(s.label)} (${fmt(s.songs.length)})</option>`).join("");
+  if (keep) $("plex-source").value = keep;
+}
+$("plex-make").addEventListener("click", async () => {
+  const src = plexSources().find(s => s.id === $("plex-source").value);
+  const paths = src ? src.songs.flatMap(i => (state.owned.get(i) || []).map(f => f.handle && f.handle._path).filter(Boolean)) : [];
+  if (!paths.length) { setStatus("export-status", "There are no songs you have in that list yet.", true); return; }
+  $("plex-make").disabled = true;
+  setStatus("export-status", `Making “${src.title}” in Plex…`);
+  try {
+    const r = await window.jwPlex({ action: "playlist", title: src.title, paths });
+    setStatus("export-status", `Made “${src.title}” in Plex with ${plural(r.matched, "song", "songs")}.${r.missing ? ` ${plural(r.missing, "file wasn't", "files weren't")} found in Plex yet; let Plex finish scanning and make it again.` : ""}`);
+  } catch (err) {
+    setStatus("export-status", `Couldn't make the playlist: ${err.message}`, true);
+  } finally {
+    $("plex-make").disabled = false;
+  }
+});
+
 function renderExportPanel() {
   if (!state.catalog || !state.library) return;
+  renderPlexItem();
   const missing = state.catalog.filter(s => !s.hasDetails).length;
   const wishes = Object.keys(state.personal.wish).length, notes = Object.keys(state.personal.notes).length;
   $("export-sub").textContent = ` ${plural(wishes, "wishlist song", "wishlist songs")}, ${plural(notes, "note", "notes")}`;
@@ -3962,7 +4007,7 @@ async function downloadAll(songs) {
 function autoTagOn() { return state.personal.autoTag !== false; }
 $("fix-auto").addEventListener("change", e => { state.personal.autoTag = e.target.checked; savePersonal(); });
 /** Tells Plex (Settings, ⌘,) to rescan after files change. No-op outside the app or when Plex isn't set up. */
-function plexRefresh() { window.jwPlex?.({ op: "refresh" }).catch(() => {}); }
+function plexRefresh() { window.jwPlex?.({ action: "refresh" }).catch(() => {}); }
 // Capture phase, so it runs before the links dialog's own handler (which only marks the song as opened).
 document.addEventListener("click", e => {
   const link = e.target.closest("a[data-file-id]");
