@@ -1,0 +1,3468 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Juice WRLD collection tracker</title>
+<meta name="description" content="Check the Juice WRLD song catalog against your own music folder: what you have, what's missing, and what just came out.">
+<meta name="theme-color" content="#141029">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23141029'/%3E%3Cg fill='%23b8a6f2'%3E%3Crect x='7' y='17' width='5' height='8' rx='1.5'/%3E%3Crect x='13.5' y='12' width='5' height='13' rx='1.5'/%3E%3C/g%3E%3Crect x='20' y='7' width='5' height='18' rx='1.5' fill='%2386d9b4'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700&family=Unbounded:wght@500;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    /* surfaces */
+    --night: #141029;
+    --dusk: #1c1738;
+    --raise: #241e44;
+    --line: #2f2856;
+    --line-2: #443a72;
+    /* text */
+    --mist: #ece8f8;
+    --muted: #9c93bf;
+    /* accents, used to encode meaning only */
+    --lavender: #b8a6f2;
+    --lavender-hi: #c9bbf6;
+    --have: #86d9b4;
+    --new: #f5d27a;
+    --missing: #f0a0bc;
+    /* type */
+    --display: "Unbounded", "Figtree", system-ui, sans-serif;
+    --body: "Figtree", system-ui, -apple-system, "Segoe UI", sans-serif;
+    --t-xs: 12.5px;
+    --t-sm: 13.5px;
+    --t-md: 15px;
+    --t-lg: 16px;
+    --t-xl: 19px;
+    --t-2xl: 24px;
+    /* rhythm */
+    --gap: 12px;
+    --pad: 22px;
+    --r-sm: 10px;
+    --r-md: 14px;
+    --r-lg: 20px;
+    --ring: 0 0 0 3px rgba(245, 210, 122, .55);
+  }
+
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  html { color-scheme: dark; }
+  body {
+    margin: 0;
+    background: var(--night);
+    color: var(--mist);
+    font: 400 var(--t-lg)/1.55 var(--body);
+    font-variant-numeric: tabular-nums;
+    -webkit-font-smoothing: antialiased;
+  }
+  ::selection { background: var(--lavender); color: var(--night); }
+  * { scrollbar-width: thin; scrollbar-color: var(--line-2) transparent; }
+  *::-webkit-scrollbar { height: 10px; width: 10px; }
+  *::-webkit-scrollbar-thumb { background: var(--line-2); border-radius: 99px; border: 3px solid var(--night); }
+  :focus-visible { outline: none; box-shadow: var(--ring); border-radius: 6px; }
+  .wrap { max-width: 1060px; margin: 0 auto; padding: 40px 24px 120px; }
+  h1, h2, h3, h4 { margin: 0; font-weight: 600; letter-spacing: -0.01em; }
+  a { color: var(--lavender); text-underline-offset: 3px; }
+  p { margin: 0; }
+  .muted { color: var(--muted); }
+  .hint { font-size: var(--t-sm); color: var(--muted); margin: 0; }
+  .visually-hidden { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; overflow: hidden; }
+  code { font-size: var(--t-sm); background: var(--night); padding: 1px 5px; border-radius: 5px; word-break: break-all; }
+  .empty { padding: 36px 12px; color: var(--muted); text-align: center; font-size: var(--t-md); }
+  .row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+  .row.between { justify-content: space-between; }
+
+  /* ---------- masthead ---------- */
+  .masthead { display: flex; flex-wrap: wrap; gap: 10px 28px; align-items: baseline; padding-bottom: 14px; border-bottom: 1px solid var(--line); }
+  .masthead h1 { font: 600 var(--t-xl) var(--body); letter-spacing: -0.015em; }
+  .source-link { margin-left: auto; flex: none; font-size: var(--t-sm); color: var(--lavender); text-decoration: none; border: 1px solid var(--line-2); border-radius: 999px; padding: 6px 14px; }
+  .source-link:hover { border-color: var(--lavender); background: var(--raise); }
+  .colophon { margin-top: 48px; padding-top: 18px; border-top: 1px solid var(--line); color: var(--muted); font-size: var(--t-sm); }
+  .intro { color: var(--muted); font-size: var(--t-md); max-width: 66ch; flex: 1 1 240px; min-width: 0; }
+
+  /* ---------- setup ---------- */
+  .setup { margin-top: 14px; }
+  .await { color: var(--muted); font-size: var(--t-md); margin-top: 26px; }
+  .setup > summary { list-style: none; cursor: pointer; padding: 12px 2px; display: flex; align-items: center; gap: 14px; color: var(--muted); font-size: var(--t-md); border-radius: var(--r-sm); }
+  .setup > summary::-webkit-details-marker { display: none; }
+  .setup > summary:hover { color: var(--mist); }
+  .setup-state { display: flex; flex-wrap: wrap; gap: 4px 20px; flex: 1; min-width: 0; }
+  .setup-state b { font-weight: 600; color: var(--mist); }
+  .setup-state .warn { color: var(--new); }
+  .setup-open { flex: none; color: var(--lavender); font-weight: 500; font-size: var(--t-sm); }
+  .setup[open] .setup-open::after { content: " (hide)"; }
+  .setup:not([open]) .setup-open::after { content: " (show)"; }
+
+  .steps { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; padding: 4px 0 8px; }
+  .step { border: 1px solid var(--line); border-radius: var(--r-lg); padding: var(--pad); background: var(--dusk); display: flex; flex-direction: column; gap: 14px; }
+  .step.drag { border-color: var(--lavender); background: var(--raise); }
+  .step-head { display: flex; align-items: center; gap: 12px; }
+  .step-num { flex: none; width: 26px; height: 26px; border-radius: 50%; border: 1px solid var(--line-2); color: var(--muted); display: grid; place-items: center; font-size: var(--t-sm); font-weight: 600; }
+  .step.done .step-num { background: var(--lavender); border-color: var(--lavender); color: var(--night); }
+  .step h3 { font-size: var(--t-lg); }
+  .step p { color: var(--muted); font-size: var(--t-md); }
+  .status { font-size: var(--t-md); min-height: 1.55em; }
+  .status.error { color: var(--missing); }
+  details.help { font-size: var(--t-sm); color: var(--muted); }
+  details.help > summary { cursor: pointer; color: var(--lavender); }
+  details.help ol { padding-left: 20px; margin: 8px 0 0; }
+  details.help li { margin-bottom: 4px; }
+
+  /* ---------- controls ---------- */
+  button, .btn {
+    font: 500 var(--t-md) var(--body);
+    border-radius: 999px;
+    padding: 9px 17px;
+    border: 1px solid var(--lavender);
+    background: var(--lavender);
+    color: var(--night);
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    position: relative;
+    transition: background-color .12s, border-color .12s, color .12s;
+  }
+  button:hover:where(:not(:disabled)) { background: var(--lavender-hi); border-color: var(--lavender-hi); }
+  button.ghost, .btn.ghost { background: transparent; color: var(--lavender); border-color: var(--line-2); }
+  button.ghost:hover:where(:not(:disabled)), .btn.ghost:hover { background: var(--raise); border-color: var(--lavender); color: var(--lavender); }
+  button.small { padding: 6px 13px; font-size: var(--t-sm); }
+  button:disabled { opacity: .4; cursor: not-allowed; }
+  .btn input { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+  .btn:focus-within { box-shadow: var(--ring); }
+
+  .check { display: flex; gap: 10px; align-items: flex-start; font-size: var(--t-md); color: var(--mist); cursor: pointer; }
+  .check input { margin: 4px 0 0; accent-color: var(--lavender); width: 15px; height: 15px; flex: none; }
+  input[type="search"], .field select, .field input, .note-box {
+    font: var(--t-md) var(--body);
+    color: var(--mist);
+    background: var(--raise);
+    border: 1px solid var(--line);
+    border-radius: var(--r-sm);
+    padding: 9px 13px;
+  }
+  input[type="search"] { border-radius: 999px; width: 230px; }
+  input::placeholder, textarea::placeholder { color: var(--muted); }
+  .field { display: flex; flex-direction: column; gap: 6px; font-size: var(--t-sm); color: var(--muted); }
+  .field select, .field input { width: 100%; min-width: 0; }
+
+  /* ---------- scoreboard ---------- */
+  .scoreboard { padding: 34px 0 4px; }
+  .meter-title { font: 700 clamp(30px, 5.6vw, 52px)/1.05 var(--display); letter-spacing: -0.02em; }
+  .meter-title .of { color: var(--muted); font-weight: 500; }
+  .meter { height: 10px; border-radius: 999px; background: var(--raise); overflow: hidden; margin: 22px 0 24px; }
+  .meter > span { display: block; height: 100%; background: var(--lavender); border-radius: 999px; width: 0; transition: width .9s cubic-bezier(.2, .8, .2, 1); }
+  .cats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 1px; background: var(--line); border: 1px solid var(--line); border-radius: var(--r-md); overflow: hidden; }
+  .cats > div { background: var(--night); padding: 14px 16px; }
+  .cat-name { display: flex; justify-content: space-between; gap: 10px; font-size: var(--t-sm); }
+  .cat-name span:last-child { color: var(--muted); }
+  .cat-bar { height: 4px; border-radius: 999px; background: var(--raise); margin-top: 9px; overflow: hidden; }
+  .cat-bar > span { display: block; height: 100%; background: var(--have); }
+
+  #notices { display: flex; flex-direction: column; gap: 10px; margin-top: 26px; }
+  .notice { padding: 14px 18px; border-left: 2px solid var(--new); background: var(--dusk); border-radius: 0 var(--r-sm) var(--r-sm) 0; font-size: var(--t-md); }
+  .notice.released { border-left-color: var(--have); }
+  .notice strong { font-weight: 600; }
+
+  /* ---------- tool panels ---------- */
+  .tools-stack { margin-top: 34px; border: 1px solid var(--line); border-radius: var(--r-lg); background: var(--dusk); overflow: hidden; }
+  .panel + .panel { border-top: 1px solid var(--line); }
+  .panel > summary { list-style: none; cursor: pointer; padding: 16px var(--pad); display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+  .panel > summary::-webkit-details-marker { display: none; }
+  .panel > summary:hover { background: var(--raise); }
+  .panel > summary .title { font-weight: 600; font-size: var(--t-lg); }
+  .panel > summary .sub { color: var(--muted); font-size: var(--t-sm); }
+  .panel > summary::after { content: ""; flex: none; width: 8px; height: 8px; border: 1.5px solid var(--muted); border-width: 0 1.5px 1.5px 0; transform: rotate(45deg) translate(-2px, -2px); transition: transform .18s; }
+  .panel[open] > summary::after { transform: rotate(-135deg) translate(-2px, -2px); }
+  .panel[open] > summary { background: var(--raise); }
+  .panel-body { padding: 6px var(--pad) var(--pad); display: flex; flex-direction: column; gap: 20px; }
+  .panel-body > p { color: var(--muted); max-width: 72ch; font-size: var(--t-md); }
+  fieldset { border: 0; padding: 0; margin: 0; }
+  legend { font-weight: 600; margin-bottom: 10px; padding: 0; font-size: var(--t-md); }
+
+  /* tag fixer */
+  .fields { display: flex; flex-wrap: wrap; gap: 8px 22px; }
+  .fix-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 22px; }
+  .fix-actions { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; justify-content: space-between; border-top: 1px solid var(--line); padding-top: 18px; }
+  .plan-summary { font-size: var(--t-md); color: var(--muted); }
+  .change { display: block; font-size: var(--t-sm); line-height: 1.45; margin-bottom: 3px; }
+  .change .k { color: var(--muted); }
+  .change del { color: var(--muted); }
+  .change ins { text-decoration: none; color: var(--have); }
+  .row-check { width: 16px; height: 16px; accent-color: var(--lavender); }
+  .skipped { margin: 8px 0 0; padding-left: 18px; }
+  .skipped li { margin-bottom: 3px; }
+
+  /* duplicates */
+  .dup-group { border-top: 1px solid var(--line); padding: 16px 0; }
+  .dup-group:first-child { border-top: 0; padding-top: 0; }
+  .dup-head { display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: baseline; margin-bottom: 10px; }
+  .dup-title { font-weight: 600; font-size: var(--t-lg); }
+  .dup-files { list-style: none; margin: 0; padding: 0 0 0 16px; border-left: 1px solid var(--line); display: flex; flex-direction: column; gap: 14px; }
+  .dup-name { display: block; font-size: var(--t-md); overflow-wrap: anywhere; }
+  .dup-name .badge { margin-left: 4px; }
+  .dup-meta { display: block; font-size: var(--t-sm); color: var(--muted); }
+
+  /* people */
+  .people-tools { display: flex; flex-wrap: wrap; gap: 12px 20px; align-items: center; }
+  ol.people { list-style: none; margin: 0; padding: 0; }
+  ol.people > li + li { border-top: 1px solid var(--line); }
+  .person-row { width: 100%; background: transparent; border: 0; border-radius: var(--r-sm); color: var(--mist); padding: 12px 8px; display: grid; grid-template-columns: 34px 1fr auto; gap: 16px; align-items: center; text-align: left; font: 400 var(--t-md) var(--body); }
+  .person-row:hover { background: var(--raise); }
+  .person-row[aria-expanded="true"] .person-name { color: var(--lavender); }
+  .rank { color: var(--muted); font-size: var(--t-sm); text-align: right; }
+  .person-main { display: flex; flex-direction: column; gap: 7px; min-width: 0; }
+  .person-name { font-weight: 600; overflow-wrap: anywhere; }
+  .person-bar { display: block; height: 4px; border-radius: 999px; background: var(--raise); overflow: hidden; }
+  .person-bar > span { display: block; height: 100%; background: var(--lavender); }
+  .person-count { text-align: right; white-space: nowrap; font-size: var(--t-sm); }
+  .person-count strong { font-size: var(--t-md); }
+  .person-count .own { display: block; color: var(--muted); }
+  .person-detail { padding: 4px 8px 20px 58px; font-size: var(--t-md); }
+  .person-detail p { margin: 0 0 8px; }
+  .person-detail h4 { margin: 16px 0 8px; font-size: var(--t-sm); color: var(--muted); }
+  .person-detail .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+  .person-detail > button { margin-top: 16px; }
+
+  .chip { font: 500 var(--t-sm) var(--body); padding: 5px 12px; border-radius: 999px; border: 1px solid var(--line); background: var(--raise); color: var(--mist); }
+  button.chip:hover { border-color: var(--lavender); color: var(--lavender); }
+  .chip.static { cursor: default; }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+
+  /* stats */
+  .stats-summary { font-size: var(--t-lg); max-width: 74ch; color: var(--muted); }
+  .stats-summary strong { font-weight: 700; color: var(--mist); }
+  .chart { display: flex; flex-direction: column; gap: 12px; }
+  .chart-head { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+  .chart-head h3 { font-size: var(--t-md); }
+  .seg-toggle { display: inline-flex; border: 1px solid var(--line); border-radius: 999px; padding: 3px; gap: 2px; }
+  .seg-toggle button { background: transparent; border: 0; color: var(--muted); padding: 5px 12px; font-size: var(--t-sm); }
+  .seg-toggle button:hover { background: transparent; color: var(--mist); }
+  .seg-toggle button[aria-pressed="true"] { background: var(--mist); color: var(--night); }
+  .legend { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: var(--t-sm); color: var(--muted); }
+  .legend i { display: inline-block; width: 9px; height: 9px; border-radius: 2px; margin-right: 7px; vertical-align: 0; }
+  .hbars { display: flex; flex-direction: column; }
+  .hbar-row { display: grid; grid-template-columns: minmax(90px, 190px) 1fr 74px; gap: 14px; align-items: center; width: 100%; background: transparent; border: 0; border-radius: var(--r-sm); padding: 7px 8px; color: var(--mist); font: 400 var(--t-sm) var(--body); text-align: left; }
+  .hbar-row:hover { background: var(--raise); }
+  .hbar-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .hbar-track { height: 12px; }
+  .hbar-fill { display: flex; height: 100%; min-width: 3px; border-radius: 3px; overflow: hidden; gap: 1px; background: var(--raise); }
+  .hbar-val { text-align: right; color: var(--muted); }
+  .vbars { display: flex; align-items: stretch; gap: 6px; overflow-x: auto; padding-bottom: 4px; }
+  .vbar { flex: 1 0 44px; max-width: 90px; height: 220px; display: flex; flex-direction: column; align-items: center; gap: 8px; background: transparent; border: 0; border-radius: var(--r-sm); padding: 4px 2px; color: var(--mist); font: 400 var(--t-sm) var(--body); }
+  button.vbar:hover:not(:disabled) { background: var(--raise); }
+  button.vbar:disabled { opacity: 1; cursor: default; }
+  .vbar-val { font-size: var(--t-xs); color: var(--muted); height: 18px; line-height: 18px; flex: none; }
+  .vbar-area { flex: 1; width: 100%; display: flex; flex-direction: column; justify-content: flex-end; align-items: center; }
+  .vbar-stack { width: min(100%, 38px); display: flex; flex-direction: column-reverse; border-radius: 4px 4px 0 0; overflow: hidden; min-height: 0; }
+  .vbar-label { font-size: var(--t-sm); color: var(--muted); }
+  .vbar-area.group { flex-direction: row; align-items: flex-end; justify-content: center; gap: 3px; padding-top: 16px; }
+  .gbar { width: 11px; border-radius: 3px 3px 0 0; position: relative; min-height: 0; }
+  .gval { position: absolute; bottom: 100%; left: 50%; transform: translateX(-50%); font-size: 10.5px; color: var(--muted); padding-bottom: 2px; }
+  .vbars.grouped .vbar { flex-basis: 54px; }
+
+  /* trivia */
+  .trivia-setup { display: flex; flex-wrap: wrap; gap: 14px; align-items: flex-end; }
+  .trivia-setup .field { min-width: 210px; }
+  .trivia-card { display: flex; flex-direction: column; gap: 18px; }
+  .trivia-progress { color: var(--muted); font-size: var(--t-sm); }
+  .trivia-q { font: 600 clamp(19px, 3vw, 23px)/1.35 var(--body); letter-spacing: -0.015em; }
+  .trivia-score { font: 700 32px/1.1 var(--display); }
+  .trivia-options { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .trivia-opt { justify-content: flex-start; text-align: left; background: var(--raise); color: var(--mist); border: 1px solid var(--line); border-radius: var(--r-md); padding: 14px 16px; gap: 12px; }
+  .trivia-opt:hover:not(:disabled) { background: var(--raise); border-color: var(--lavender); }
+  .trivia-opt:disabled { opacity: 1; cursor: default; }
+  .trivia-opt .key { flex: none; width: 22px; height: 22px; border-radius: 6px; border: 1px solid var(--line-2); display: grid; place-items: center; font-size: var(--t-xs); color: var(--muted); }
+  .trivia-opt .mark { margin-left: auto; font-size: var(--t-xs); font-weight: 600; padding-left: 8px; white-space: nowrap; }
+  .trivia-opt.right { border-color: var(--have); }
+  .trivia-opt.right .key { border-color: var(--have); color: var(--have); }
+  .trivia-opt.right .mark { color: var(--have); }
+  .trivia-opt.wrong { border-color: var(--missing); }
+  .trivia-opt.wrong .key { border-color: var(--missing); color: var(--missing); }
+  .trivia-opt.wrong .mark { color: var(--missing); }
+  .trivia-opt.dim:disabled { opacity: .45; }
+  .trivia-feedback { font-size: var(--t-lg); }
+  .trivia-feedback.good { color: var(--have); }
+  .trivia-feedback.bad { color: var(--missing); }
+  .trivia-feedback .song-link { margin-left: 8px; color: var(--lavender); text-decoration: underline; font-size: var(--t-md); }
+
+  /* export */
+  .export-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .export-item { border: 1px solid var(--line); border-radius: var(--r-md); padding: 18px; display: flex; flex-direction: column; gap: 12px; align-items: flex-start; background: var(--night); }
+  .export-item h3 { font-size: var(--t-md); }
+  .export-item .hint { flex: 1; }
+
+  /* ---------- eras ---------- */
+  .eras-section { margin-top: 40px; }
+  .section-title { font-size: var(--t-xl); }
+  .section-lead { color: var(--muted); margin: 5px 0 16px; font-size: var(--t-md); }
+  .era-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(215px, 1fr)); gap: 12px; }
+  .era-card { display: flex; flex-direction: column; align-items: stretch; gap: 6px; text-align: left; background: var(--dusk); color: var(--mist); border: 1px solid var(--line); border-radius: var(--r-md); padding: 15px 16px 14px; font: 400 var(--t-sm)/1.45 var(--body); cursor: pointer; }
+  .era-card:hover { background: var(--raise); border-color: var(--line-2); }
+  .era-card[aria-pressed="true"] { border-color: var(--lavender); background: var(--raise); }
+  .era-card .era-name { font-weight: 600; font-size: var(--t-md); line-height: 1.3; }
+  .era-card .era-time { color: var(--muted); font-size: var(--t-xs); }
+  .era-card .era-desc { color: var(--muted); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .era-card .era-foot { margin-top: auto; padding-top: 10px; }
+  .era-mini { display: block; height: 4px; border-radius: 999px; background: var(--raise); overflow: hidden; margin-bottom: 7px; }
+  .era-card[aria-pressed="true"] .era-mini { background: var(--night); }
+  .era-mini > span { display: block; height: 100%; background: var(--have); }
+  .era-count { font-size: var(--t-xs); color: var(--muted); }
+  .era-toggle { margin: 14px auto 0; display: flex; }
+  .era-banner { display: flex; justify-content: space-between; align-items: flex-start; gap: 20px; margin-top: 26px; padding: 20px 22px; border: 1px solid var(--lavender); border-radius: var(--r-md); background: var(--dusk); }
+  .era-banner h3 { font-size: var(--t-xl); }
+  .era-banner p { margin: 7px 0 0; font-size: var(--t-md); }
+  .era-banner .era-full { white-space: pre-line; max-width: 70ch; color: var(--muted); }
+
+  /* ---------- browse bar, filters, table ---------- */
+  .browse-bar { position: sticky; top: 0; z-index: 6; background: var(--night); padding: 16px 0 10px; margin-top: 26px; }
+  .browse-bar::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 1px; background: var(--line); }
+  .toolbar { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; justify-content: space-between; }
+  .tabs { display: flex; flex-wrap: wrap; gap: 6px; }
+  .tabs button { background: transparent; color: var(--muted); border-color: transparent; padding: 6px 13px; font-size: var(--t-sm); }
+  .tabs button:hover { background: var(--raise); color: var(--mist); }
+  .tabs button[aria-pressed="true"] { background: var(--mist); color: var(--night); border-color: var(--mist); }
+  .tabs .count { opacity: .65; }
+  .tools { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  #filters-btn[aria-expanded="true"] { background: var(--lavender); color: var(--night); border-color: var(--lavender); }
+  .active-filters { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 10px; }
+  .active-filters .chip { display: inline-flex; align-items: center; gap: 7px; border-color: var(--lavender); }
+  .active-filters .chip .x { font-size: var(--t-lg); line-height: 1; color: var(--lavender); }
+  .filters { margin-top: 14px; padding: 18px 20px; border: 1px solid var(--line); border-radius: var(--r-md); background: var(--dusk); }
+  .filter-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(185px, 1fr)); gap: 14px 16px; }
+  .filters-foot { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-top: 16px; flex-wrap: wrap; }
+
+  .table-wrap { overflow-x: visible; }
+  table { width: 100%; border-collapse: collapse; font-size: var(--t-md); }
+  th { text-align: left; font-weight: 500; color: var(--muted); font-size: var(--t-sm); padding: 12px; border-bottom: 1px solid var(--line); }
+  #table thead th { position: sticky; top: var(--bar-h, 64px); z-index: 4; background: var(--night); }
+  td { padding: 13px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  tbody tr:hover td { background: rgba(184, 166, 242, .045); }
+  td .alt { display: block; color: var(--muted); font-size: var(--t-sm); }
+  td.len { color: var(--muted); white-space: nowrap; }
+  .st { display: inline-flex; align-items: center; gap: 8px; white-space: nowrap; }
+  .st::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--missing); flex: none; }
+  .st.have::before { background: var(--have); }
+  .file { display: block; color: var(--muted); font-size: var(--t-xs); word-break: break-word; margin-top: 2px; }
+  .find { display: block; color: var(--muted); font-size: var(--t-xs); margin-top: 2px; }
+  .badge { display: inline-block; margin-left: 8px; font-size: var(--t-xs); font-weight: 600; color: var(--night); background: var(--new); border-radius: 999px; padding: 1px 9px; vertical-align: 1px; white-space: nowrap; }
+  .badge.released { background: var(--have); }
+  .badge.cat { background: transparent; color: var(--muted); border: 1px solid var(--line-2); font-weight: 500; }
+  .badge.outline { background: transparent; color: var(--new); border: 1px solid var(--new); }
+  .more { margin: 22px auto 0; display: flex; }
+  .star { background: transparent; border: 0; padding: 0 8px 0 0; font-size: var(--t-xl); line-height: 1; color: var(--line-2); vertical-align: -2px; border-radius: 4px; display: inline; }
+  .star:hover { color: var(--new); background: transparent; }
+  .star[aria-pressed="true"] { color: var(--new); }
+  .song-link { background: none; border: 0; padding: 0; color: inherit; font: inherit; text-align: left; cursor: pointer; border-radius: 4px; display: inline; }
+  .song-link:hover { color: var(--lavender); background: none; text-decoration: underline; }
+  .dup-head .song-link { font-weight: 600; font-size: var(--t-lg); }
+  .ext { display: inline-flex; align-items: center; margin-left: 8px; color: var(--line-2); vertical-align: -2px; border-radius: 4px; }
+  tr:hover .ext { color: var(--muted); }
+  .ext:hover { color: var(--lavender); }
+  .dlg-actions { display: flex; align-items: center; gap: 10px; flex: none; }
+  .site-link { display: inline-flex; align-items: center; gap: 8px; font-size: var(--t-sm); color: var(--lavender); text-decoration: none; border: 1px solid var(--line-2); border-radius: 999px; padding: 7px 14px; white-space: nowrap; }
+  .site-link:hover { border-color: var(--lavender); background: var(--raise); }
+  #song-link-setting .row { margin-top: 10px; }
+  #song-link-template { flex: 1 1 260px; min-width: 0; font: var(--t-sm) var(--body); color: var(--mist); background: var(--raise); border: 1px solid var(--line); border-radius: var(--r-sm); padding: 8px 12px; }
+  #song-link-test { display: inline-block; margin-top: 10px; font-size: var(--t-sm); }
+  #song-link-status:empty { display: none; }
+  @media (max-width: 620px) { .site-link span { display: none; } .site-link { padding: 8px; } }
+  td .note-snippet { display: block; color: var(--muted); font-size: var(--t-sm); font-style: italic; overflow-wrap: anywhere; margin-top: 3px; }
+
+  /* ---------- song card ---------- */
+  #song-dialog, #links-dialog { width: min(680px, calc(100vw - 28px)); max-height: min(860px, calc(100vh - 40px)); padding: 0; border: 1px solid var(--line-2); border-radius: var(--r-lg); background: var(--dusk); color: var(--mist); }
+  #song-dialog[open], #links-dialog[open] { display: flex; flex-direction: column; }
+  #song-dialog::backdrop, #links-dialog::backdrop { background: rgba(8, 6, 18, .78); }
+  #links-dialog { width: min(760px, calc(100vw - 28px)); }
+  .link-group { margin-top: 22px; }
+  .link-group h4 { font: 500 var(--t-sm) var(--body); color: var(--muted); margin-bottom: 6px; overflow-wrap: anywhere; }
+  .link-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 1px; }
+  .link-list li { display: flex; justify-content: space-between; align-items: baseline; gap: 14px; padding: 6px 8px; border-radius: var(--r-sm); }
+  .link-list li:hover { background: var(--raise); }
+  .link-list a { color: var(--mist); text-decoration: none; font-size: var(--t-md); }
+  .link-list a:hover { color: var(--lavender); text-decoration: underline; }
+  .link-list .fname { color: var(--muted); font-size: var(--t-xs); text-align: right; overflow-wrap: anywhere; min-width: 0; }
+  .link-list li.opened a { color: var(--muted); }
+  .link-list li.opened a::before { content: "✓ "; color: var(--have); }
+  .link-btn { background: none; border: 0; padding: 0; color: var(--lavender); font: 500 var(--t-xs) var(--body); text-decoration: underline; text-underline-offset: 3px; display: inline; border-radius: 4px; }
+  .link-btn:hover:where(:not(:disabled)) { background: none; color: var(--lavender-hi); }
+  .choose { border: 1px solid var(--line); border-radius: var(--r-md); padding: 16px 18px; background: var(--night); }
+  .choose h4 { font-size: var(--t-md); margin-bottom: 12px; }
+  .choose-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 12px; }
+  .choose-list li { display: grid; grid-template-columns: 1fr minmax(200px, 280px); gap: 4px 16px; align-items: center; }
+  .choose-list select { font: var(--t-sm) var(--body); color: var(--mist); background: var(--raise); border: 1px solid var(--line); border-radius: var(--r-sm); padding: 7px 10px; width: 100%; }
+  @media (max-width: 620px) { .choose-list li { grid-template-columns: 1fr; } }
+  .dlg-body { padding: 26px 26px 18px; overflow-y: auto; }
+  .dlg-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; }
+  .dlg-close { background: transparent; border: 1px solid var(--line-2); color: var(--muted); width: 34px; height: 34px; padding: 0; justify-content: center; font-size: var(--t-xl); line-height: 1; flex: none; }
+  .dlg-close:hover { background: var(--raise); color: var(--mist); }
+  .song-title { font: 700 clamp(23px, 4vw, 30px)/1.15 var(--display); letter-spacing: -0.02em; }
+  .song-sub { color: var(--muted); margin-top: 10px; font-size: var(--t-md); }
+  .song-sub .badge { margin: 0 8px 0 0; }
+  .era-desc { color: var(--muted); font-size: var(--t-sm); margin-top: 14px; white-space: pre-line; }
+  .section-h { font-size: var(--t-sm); color: var(--muted); margin: 26px 0 10px; font-weight: 500; }
+  .facts { display: grid; grid-template-columns: max-content 1fr; gap: 9px 22px; margin: 0; font-size: var(--t-md); }
+  .facts dt { color: var(--muted); }
+  .facts dd { margin: 0; white-space: pre-line; word-break: break-word; }
+  .credit-row { display: grid; grid-template-columns: 88px 1fr; gap: 8px 16px; align-items: start; margin-bottom: 10px; }
+  .credit-row .label { color: var(--muted); padding-top: 5px; font-size: var(--t-md); }
+  .prose { white-space: pre-line; font-size: var(--t-md); word-break: break-word; }
+  .prose + .prose { margin-top: 12px; }
+  .paths { margin: 0; padding-left: 18px; font-size: var(--t-sm); color: var(--muted); word-break: break-word; }
+  .dlg-note { color: var(--muted); font-size: var(--t-sm); margin-top: 16px; }
+  .note-box { width: 100%; margin-top: 12px; line-height: 1.5; resize: vertical; display: block; }
+  #card-wish[aria-pressed="true"] { color: var(--new); border-color: var(--new); }
+  .dlg-foot { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 12px 26px 16px; border-top: 1px solid var(--line); }
+  .dlg-pos { color: var(--muted); font-size: var(--t-sm); }
+
+  /* ---------- responsive ---------- */
+  @media (max-width: 860px) {
+    .fix-grid { grid-template-columns: 1fr; }
+  }
+  @media (max-width: 620px) {
+    .wrap { padding: 28px 16px 90px; }
+    .steps, .export-grid, .trivia-options { grid-template-columns: 1fr; }
+    .scoreboard { padding-top: 26px; }
+    .cats { grid-template-columns: 1fr 1fr; }
+    .era-grid { grid-template-columns: 1fr 1fr; gap: 10px; }
+    .era-card { padding: 12px; }
+    .era-card .era-desc { display: none; }
+    .era-banner { flex-direction: column; }
+    .filter-grid { grid-template-columns: 1fr 1fr; gap: 12px 10px; }
+    .filters { padding: 14px; }
+    .browse-bar { padding-top: 12px; }
+    .tools { width: 100%; }
+    input[type="search"] { width: 100%; }
+    th.hide-sm, td.hide-sm { display: none; }
+    th, td { padding: 11px 8px; }
+    .table-wrap { overflow-x: auto; }
+    #table thead th { position: static; }
+    .person-row { grid-template-columns: 24px 1fr auto; gap: 10px; }
+    .person-detail { padding-left: 8px; }
+    .people-tools input[type="search"] { width: 100%; }
+    .vbar { height: 180px; }
+    .hbar-row { grid-template-columns: 92px 1fr 56px; gap: 8px; }
+    .facts { grid-template-columns: 1fr; gap: 2px; }
+    .facts dd { margin-bottom: 10px; }
+    .credit-row { grid-template-columns: 1fr; gap: 6px; }
+    .panel > summary, .panel-body { padding-left: 16px; padding-right: 16px; }
+    .panel > summary > span:first-child { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+    .trivia-setup .field { min-width: 0; width: 100%; }
+    .dlg-body { padding: 20px 18px 14px; }
+    .dlg-foot { padding: 12px 18px 14px; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    * { transition: none !important; }
+  }
+</style>
+</head>
+<body>
+<main class="wrap">
+  <header class="masthead">
+    <h1>Juice WRLD collection tracker</h1>
+    <p class="intro">Your files stay on this computer. Only song info is requested from the API.</p>
+    <a class="source-link" href="https://juicewrldapi.com" target="_blank" rel="noopener">Open juicewrldapi.com</a>
+  </header>
+
+  <details class="setup" id="setup" open>
+    <summary id="setup-bar" hidden>
+      <span class="setup-state" id="setup-state"></span>
+      <span class="setup-open">Setup</span>
+    </summary>
+    <div class="steps">
+    <div class="step" id="step-catalog">
+      <div class="step-head"><span class="step-num">1</span><h3>Load the song catalog</h3></div>
+      <p>Gets the list of songs, eras, credits, and release status from <a href="https://juicewrldapi.com" target="_blank" rel="noopener">juicewrldapi.com</a>.</p>
+      <div class="row">
+        <button id="fetch-btn" type="button">Load catalog</button>
+        <label class="btn ghost">Use saved catalog files
+          <input id="catalog-files" type="file" accept=".json,application/json" multiple>
+        </label>
+      </div>
+      <div class="status" id="catalog-status" role="status" aria-live="polite"></div>
+      <details class="help" id="song-link-setting">
+        <summary>Where song links go</summary>
+        <p>By default each song opens in the juicewrldapi.com player. To send the links somewhere else, open a song there, copy the address from your browser, and paste it below. Every link updates to match, whether the address uses the site's long ID or its short one.</p>
+        <div class="row">
+          <input id="song-link-template" type="url" spellcheck="false" aria-label="Song page address">
+          <button type="button" class="ghost small" id="song-link-reset">Use the default</button>
+        </div>
+        <div class="row" style="margin-top:10px"><a id="song-link-test" href="https://juicewrldapi.com" target="_blank" rel="noopener" hidden></a></div>
+        <p class="status" id="song-link-status" role="status" aria-live="polite"></p>
+      </details>
+      <details class="help" id="catalog-help">
+        <summary>Loading fails? Save the catalog by hand</summary>
+        <ol>
+          <li>Open <a href="https://juicewrldapi.com/juicewrld/songs/?page=1&amp;page_size=1000" target="_blank" rel="noopener">the catalog page</a> in your browser.</li>
+          <li>Save it with ⌘S (or Ctrl+S) as a <code>.json</code> file.</li>
+          <li>If the page shows a <code>"next"</code> link that isn't <code>null</code>, change <code>page=1</code> to <code>page=2</code> in the address bar and save that too. Repeat until <code>"next"</code> is <code>null</code>.</li>
+          <li>Select all the saved files with “Use saved catalog files.”</li>
+        </ol>
+      </details>
+    </div>
+
+    <div class="step" id="step-folder">
+      <div class="step-head"><span class="step-num">2</span><h3>Choose your music folder</h3></div>
+      <p>Pick your Plex music folder, or drop it onto this box.</p>
+      <div class="row">
+        <button id="folder-btn" type="button">Choose folder</button>
+        <button id="rescan-btn" type="button" class="ghost" hidden>Rescan folder</button>
+        <input id="folder-input" class="visually-hidden" type="file" webkitdirectory directory multiple tabindex="-1" aria-hidden="true">
+      </div>
+      <label class="check"><input type="checkbox" id="only-juice" checked> Only count Juice WRLD files (checks folder names and artist tags)</label>
+      <div class="status" id="folder-status" role="status" aria-live="polite"></div>
+      <p class="hint" id="folder-hint">Your browser may ask to “upload” or view the folder. Nothing leaves your computer; the page only reads song info from the files.</p>
+    </div>
+    </div>
+  </details>
+
+  <p class="await" id="await">Once both steps are done, your collection summary appears here.</p>
+
+  <section id="results" hidden aria-label="Results">
+    <div class="scoreboard">
+      <h2 class="meter-title" id="meter-title"></h2>
+      <div class="meter" role="progressbar" aria-valuemin="0" aria-valuemax="100" id="meter"><span id="meter-fill"></span></div>
+      <div class="cats" id="cats"></div>
+    </div>
+    <div id="notices"></div>
+
+
+    <div class="tools-stack">
+    <details class="panel" id="fixer">
+      <summary><span><span class="title">Fix tags in your library</span><span class="sub" id="fix-sub"></span></span></summary>
+      <div class="panel-body">
+        <p>Writes song info from the catalog into your matched MP3, FLAC, and M4A files, so Plex shows consistent titles, artists, years, and eras. Review the changes below; only the files you tick are edited.</p>
+        <p class="status error" id="fix-support" hidden></p>
+
+        <div class="fix-grid">
+          <fieldset id="fix-fields">
+            <legend>Tags to update</legend>
+            <div class="fields">
+              <label class="check"><input type="checkbox" value="title" checked> Title</label>
+              <label class="check"><input type="checkbox" value="artist" checked> Artist, with features</label>
+              <label class="check"><input type="checkbox" value="albumartist" checked> Album artist</label>
+              <label class="check"><input type="checkbox" value="album" checked> Album, set to the era</label>
+              <label class="check"><input type="checkbox" value="year" checked> Year</label>
+              <label class="check"><input type="checkbox" value="producer" checked> Producers</label>
+              <label class="check"><input type="checkbox" value="genre"> Genre</label>
+              <label class="check"><input type="checkbox" value="comment"> Comment, with category and recording date</label>
+            </div>
+          </fieldset>
+          <fieldset>
+            <legend>Options</legend>
+            <label class="check"><input type="checkbox" id="fix-blanks"> Keep existing tags and only fill in empty ones</label>
+            <label class="field" style="margin-top:14px;max-width:280px">Genre to write<input id="fix-genre" type="text" placeholder="Hip-Hop/Rap" autocomplete="off"></label>
+            <div class="row" style="margin-top:12px">
+              <button type="button" class="ghost small" id="fix-backup">Choose backup folder</button>
+            </div>
+            <p class="hint" id="fix-backup-status" style="margin-top:8px">Optional. Saves each original file there before its first edit. Pick a folder outside your Plex music folder.</p>
+          </fieldset>
+        </div>
+
+        <div class="fix-actions">
+          <span class="plan-summary" id="fix-summary"></span>
+          <div class="row">
+            <button type="button" class="ghost small" id="fix-all">Select all</button>
+            <button type="button" class="ghost small" id="fix-none">Select none</button>
+            <button type="button" id="fix-write" disabled>Write tags</button>
+          </div>
+        </div>
+        <div class="status" id="fix-status" role="status" aria-live="polite"></div>
+        <div id="fix-choose"></div>
+
+        <div class="table-wrap"><table id="fix-table"></table></div>
+        <button type="button" class="ghost more" id="fix-more" hidden>Show more</button>
+        <details class="help" id="fix-skipped" hidden><summary></summary><ul class="skipped" id="fix-skipped-list"></ul></details>
+      </div>
+    </details>
+
+    <details class="panel" id="dups">
+      <summary><span><span class="title">Duplicates in your library</span><span class="sub" id="dup-sub"></span></span></summary>
+      <div class="panel-body">
+        <p>Songs that show up in your library more than once, including different versions matched through alternate titles, and files with the same title that aren't in the catalog. Nothing is deleted here. Compare the files, then remove any you don't want in Finder.</p>
+        <div class="row between"><span id="dup-summary"></span><button type="button" class="ghost small" id="dup-export">Export list</button></div>
+        <div id="dup-list"></div>
+        <button type="button" class="ghost more" id="dup-more" hidden>Show more</button>
+      </div>
+    </details>
+
+    <details class="panel" id="people">
+      <summary><span><span class="title">Producers and collaborators</span><span class="sub" id="people-sub"></span></span></summary>
+      <div class="panel-body">
+        <div class="tabs" id="people-roles"></div>
+        <div class="people-tools">
+          <input type="search" id="people-search" placeholder="Find a name" aria-label="Find a name">
+          <label class="check"><input type="checkbox" id="people-scoped"> Only count songs that match the current filters</label>
+        </div>
+        <div id="people-list"></div>
+        <button type="button" class="ghost more" id="people-more" hidden>Show more</button>
+      </div>
+    </details>
+
+    <details class="panel" id="stats">
+      <summary><span><span class="title">Stats</span><span class="sub" id="stats-sub"></span></span></summary>
+      <div class="panel-body">
+        <p class="stats-summary" id="stats-summary"></p>
+        <label class="check"><input type="checkbox" id="stats-scoped"> Only count songs that match the current filters</label>
+        <div class="chart">
+          <div class="chart-head">
+            <h3>Songs per era</h3>
+            <div class="seg-toggle" id="stats-era-mode" role="group" aria-label="Color the era bars by">
+              <button type="button" data-mode="category" aria-pressed="true">By category</button>
+              <button type="button" data-mode="library" aria-pressed="false">Your library</button>
+            </div>
+          </div>
+          <div id="stats-era-legend"></div>
+          <div class="hbars" id="stats-eras"></div>
+          <p class="hint">Click an era to see its songs.</p>
+        </div>
+        <div class="chart">
+          <div class="chart-head"><h3>Songs recorded by year</h3></div>
+          <div class="legend"><span><i style="background:var(--have)"></i>In your library</span><span><i style="background:var(--lavender)"></i>Not in your library</span></div>
+          <div id="stats-years"></div>
+          <p class="hint">A song recorded across several years counts in each of them. Click a year to filter the table.</p>
+        </div>
+        <div class="chart">
+          <div class="chart-head"><h3>Previews, surfaced songs, and releases by year</h3></div>
+          <div id="stats-surfaced"></div>
+        </div>
+      </div>
+    </details>
+
+    <details class="panel" id="trivia">
+      <summary><span><span class="title">Trivia</span><span class="sub" id="trivia-sub"></span></span></summary>
+      <div class="panel-body"><div id="trivia-body"></div></div>
+    </details>
+
+    <details class="panel" id="export">
+      <summary><span><span class="title">Export and backup</span><span class="sub" id="export-sub"></span></span></summary>
+      <div class="panel-body">
+        <div class="export-grid">
+          <div class="export-item">
+            <h3>Full catalog spreadsheet</h3>
+            <p class="hint" id="export-details-note"></p>
+            <button type="button" id="export-full">Export full catalog</button>
+          </div>
+          <div class="export-item">
+            <h3>Wishlist and notes backup</h3>
+            <p class="hint">Your wishlist, notes, and trivia scores are saved in this browser only. Save a backup to keep them safe or move them to another computer.</p>
+            <div class="row">
+              <button type="button" class="ghost" id="export-backup">Save a backup</button>
+              <label class="btn ghost">Restore a backup<input type="file" id="export-restore" accept=".json,application/json"></label>
+            </div>
+          </div>
+        </div>
+        <p class="status" id="export-status" role="status" aria-live="polite"></p>
+      </div>
+    </details>
+
+    </div>
+
+    <section class="eras-section" aria-labelledby="eras-title">
+      <h2 class="section-title" id="eras-title">Eras</h2>
+      <p class="section-lead">Pick an era to see its songs below.</p>
+      <div class="era-grid" id="era-grid"></div>
+      <button type="button" class="ghost small era-toggle" id="era-toggle" hidden></button>
+    </section>
+    <div class="era-banner" id="era-banner" hidden></div>
+    <div class="browse-bar">
+    <div class="toolbar">
+      <div class="tabs" id="tabs"></div>
+      <div class="tools">
+        <input type="search" id="search" placeholder="Search songs or eras" aria-label="Search songs or eras">
+        <button type="button" class="ghost" id="filters-btn" aria-expanded="false" aria-controls="filters">Filters</button>
+        <button type="button" class="ghost" id="links-btn" title="Links to the site's files for every song in this view that you don't have">File links</button>
+        <button type="button" class="ghost" id="export-btn">Export CSV</button>
+      </div>
+    </div>
+    <div class="active-filters" id="active-filters" hidden></div>
+    </div>
+    <div class="filters" id="filters" hidden>
+      <div class="filter-grid">
+        <label class="field">Era<select id="f-era"></select></label>
+        <label class="field">Category<select id="f-category"></select></label>
+        <label class="field">Producer<input id="f-producer" list="dl-producer" placeholder="Any producer" autocomplete="off"></label>
+        <label class="field">Artist or feature<input id="f-artist" list="dl-artist" placeholder="Any artist" autocomplete="off"></label>
+        <label class="field">Engineer<input id="f-engineer" list="dl-engineer" placeholder="Any engineer" autocomplete="off"></label>
+        <label class="field">Studio<input id="f-studio" list="dl-studio" placeholder="Any studio" autocomplete="off"></label>
+        <label class="field">Recorded in<select id="f-recYear"></select></label>
+        <label class="field">Released in<select id="f-relYear"></select></label>
+      </div>
+      <div class="filters-foot">
+        <span class="hint">Type part of a name or pick one from the suggestions. Filters combine, so you can pick a producer and a year together.</span>
+        <button type="button" class="ghost small" id="filters-clear">Clear filters</button>
+      </div>
+      <datalist id="dl-producer"></datalist><datalist id="dl-artist"></datalist><datalist id="dl-engineer"></datalist><datalist id="dl-studio"></datalist>
+    </div>
+    <div class="table-wrap"><table id="table"></table></div>
+    <button type="button" class="ghost more" id="more-btn" hidden>Show more</button>
+  </section>
+  <footer class="colophon">
+    Song information comes from <a href="https://juicewrldapi.com" target="_blank" rel="noopener">juicewrldapi.com</a>, a fan-run database. This page only reads that catalog and the files already on your computer.
+  </footer>
+</main>
+
+<dialog id="song-dialog" aria-labelledby="song-title">
+  <div class="dlg-body" id="song-body"></div>
+  <div class="dlg-foot">
+    <button type="button" class="ghost small" id="song-prev">Previous</button>
+    <span class="dlg-pos" id="song-pos"></span>
+    <button type="button" class="ghost small" id="song-next">Next</button>
+  </div>
+</dialog>
+
+<dialog id="links-dialog" aria-labelledby="links-title">
+  <div class="dlg-body" id="links-body"></div>
+</dialog>
+
+<script>
+/* ============================================================ constants and text helpers */
+const API = "https://juicewrldapi.com/juicewrld/songs/";
+const STORE_KEY = "jw-collection-tracker-v1";
+const CACHE_HOURS = 12;
+const FUZZY_CUTOFF = 0.88;
+const AUDIO_EXTS = new Set(["mp3", "flac", "m4a", "m4b", "aac", "alac", "ogg", "opus", "wav", "aiff", "aif", "wma"]);
+const EDITABLE_EXTS = new Set(["mp3", "flac", "m4a"]);
+const FIELDS = ["title", "artist", "albumartist", "album", "year", "producer", "genre", "comment"];
+const FIELD_LABELS = { title: "Title", artist: "Artist", albumartist: "Album artist", album: "Album", year: "Year", producer: "Producers", genre: "Genre", comment: "Comment" };
+const DEFAULT_GENRE = "Hip-Hop/Rap";
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+const enc8 = new TextEncoder();
+
+function normalize(title) {
+  if (!title) return "";
+  const raw = String(title).normalize("NFKD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+  let t = raw.replace(/\s*[\(\[\{][^\)\]\}]*[\)\]\}]/g, "");
+  t = t.replace(/\b(feat|ft|prod)\.?\s.*$/, "");
+  t = t.replace(/&/g, " and ").replace(/[^a-z0-9 ]/g, "").replace(/\s+/g, " ").trim();
+  if (!t) t = raw.replace(/[^a-z0-9 ]/g, "").replace(/\s+/g, " ").trim();
+  return t;
+}
+function toList(v) {
+  if (!v) return [];
+  if (Array.isArray(v)) return v.filter(Boolean).map(String);
+  return String(v).split(/[\n;|]/).map(s => s.trim()).filter(Boolean);
+}
+function textOf(v) {
+  if (Array.isArray(v)) return v.filter(Boolean).join(", ");
+  return v ? String(v).trim() : "";
+}
+const EMPTYISH = /^(n\/?a|none|unknown|tba|tbd|null|-+|\?+)$/i;
+function hasValue(v) { return Boolean(v) && !EMPTYISH.test(String(v).trim()); }
+function stripLabel(value, label) {
+  return String(value || "").replace(new RegExp(`^\\s*${label}\\s*[:\\-–]?\\s*`, "i"), "").trim();
+}
+function yearOf(v) { const m = /\b(19|20)\d{2}\b/.exec(String(v || "")); return m ? m[0] : ""; }
+
+function cleanSong(s) {
+  const name = s.name || "Unknown";
+  const alt = toList(s.alt ?? s.alt_titles ?? s.track_titles)
+    .filter((t, i, arr) => t.toLowerCase() !== name.toLowerCase() && arr.findIndex(x => x.toLowerCase() === t.toLowerCase()) === i);
+  const era = s.era && typeof s.era === "object" ? (s.era.name || "Unknown") : (s.era || "Unknown");
+  return {
+    id: String(s.id ?? s.public_id ?? name),
+    publicId: s.publicId ?? (s.public_id !== undefined && s.public_id !== null ? String(s.public_id) : ""),
+    name, alt, era,
+    category: s.category || "unknown",
+    length: s.length || "",
+    release: textOf(s.release ?? s.release_date),
+    artists: textOf(s.artists ?? s.credited_artists),
+    producers: textOf(s.producers),
+    recordDates: textOf(s.recordDates ?? s.record_dates),
+    engineers: textOf(s.engineers),
+    locations: textOf(s.locations ?? s.recording_locations),
+    key: textOf(s.key ?? s.original_key),
+    info: textOf(s.info ?? s.additional_information),
+    notes: textOf(s.notes),
+    previewDate: textOf(s.previewDate ?? s.preview_date),
+    leakDate: textOf(s.leakDate ?? s.date_leaked),
+    leakType: textOf(s.leakType ?? s.leak_type),
+    sessions: textOf(s.sessions ?? s.session_titles),
+    dates: textOf(s.dates),
+    filePath: typeof s.filePath === "string" ? s.filePath : (typeof s.path === "string" && s.path.includes("/") ? s.path : ""),
+    hasDetails: s.hasDetails ?? DETAIL_KEYS.some(k => k in s),
+  };
+}
+const DETAIL_KEYS = ["engineers", "recording_locations", "original_key", "additional_information", "notes", "preview_date", "date_leaked", "session_titles"];
+const DETAIL_FIELDS = ["engineers", "locations", "key", "info", "notes", "previewDate", "leakDate", "leakType", "sessions", "dates"];
+/** Smaller copy of a song for saving when browser storage is tight; details are re-fetched on demand. */
+function slimSong(s) {
+  const out = { ...s, hasDetails: false };
+  for (const k of DETAIL_FIELDS) if (!["engineers", "locations", "key"].includes(k)) delete out[k];
+  return out;
+}
+/** Collects era descriptions and time frames from raw API songs. */
+function collectEras(rawList, into = {}) {
+  for (const s of rawList) {
+    const e = s && s.era;
+    if (e && typeof e === "object" && e.name && !into[e.name]) into[e.name] = { description: textOf(e.description), timeFrame: textOf(e.time_frame ?? e.timeFrame) };
+  }
+  return into;
+}
+/** Splits a credits string like "Nick Mira & Dre Moon, Taz Taylor" into names. */
+function splitNames(text) {
+  return String(text || "")
+    .replace(/\((?:feat|ft|prod)\.?(?:\s*by)?\s*/gi, ",").replace(/[()]/g, ",")
+    .split(/\s*(?:,|;|\/|&|\+|\band\b|\bfeat\.?|\bft\.)\s*/i)
+    .map(s => s.trim()).filter(s => hasValue(s) && s.length > 1)
+    .filter((s, i, arr) => arr.findIndex(x => x.toLowerCase() === s.toLowerCase()) === i);
+}
+function songsFromJson(data) {
+  if (Array.isArray(data)) return data;
+  if (data && Array.isArray(data.results)) return data.results;
+  if (data && Array.isArray(data.songs)) return data.songs;
+  return [];
+}
+function mergeSongs(lists) {
+  const byId = new Map();
+  for (const list of lists) for (const raw of list) { const s = cleanSong(raw); byId.set(s.id, s); }
+  return [...byId.values()];
+}
+function isReleased(song) {
+  return String(song.category).trim().toLowerCase() === "released" || hasValue(song.release);
+}
+function hasArtist(text) { return String(text || "").toLowerCase().replace(/[^a-z]/g, "").includes("juicewrld"); }
+function extOf(path) { const m = /\.([a-z0-9]+)$/i.exec(path); return m ? m[1].toLowerCase() : ""; }
+function baseName(path) { return String(path).split(/[\\/]/).pop(); }
+/** Lower-cased file name without its extension, used to match files saved straight from the site. */
+function stemOf(path) { return baseName(path).replace(/\.[^.]+$/, "").toLowerCase().trim(); }
+function parentOf(path) { return String(path).split("/").slice(0, -1).join("/"); }
+function titleFromFilename(path) {
+  let stem = baseName(path).replace(/\.[^.]+$/, "");
+  if (stem.includes(" - ")) stem = stem.split(" - ").pop();
+  return stem.replace(/^\d{1,3}[\s._-]+/, "");
+}
+
+/** The tags the fixer would write for a catalog song. */
+function plannedTags(song, genre = DEFAULT_GENRE) {
+  let artist = "Juice WRLD";
+  if (hasValue(song.artists)) artist = hasArtist(song.artists) ? song.artists : `Juice WRLD, ${song.artists}`;
+  return {
+    title: song.name,
+    artist,
+    albumartist: "Juice WRLD",
+    album: hasValue(song.era) ? song.era : "",
+    year: (isReleased(song) && yearOf(song.release)) || yearOf(song.recordDates) || yearOf(song.release),
+    producer: hasValue(song.producers) ? song.producers : "",
+    genre,
+    comment: catalogComment(song),
+  };
+}
+/** A short comment like "Unreleased. Recorded March 2018." */
+function catalogComment(song) {
+  const cat = String(song.category || "").trim();
+  const parts = [];
+  if (hasValue(cat) && cat.toLowerCase() !== "unknown") parts.push(cat.charAt(0).toUpperCase() + cat.slice(1).replace(/_/g, " "));
+  const rec = stripLabel(song.recordDates, "Recorded").replace(/\s+/g, " ").replace(/[.,;\s]+$/, "");
+  if (hasValue(rec)) parts.push(`Recorded ${rec.length > 120 ? `${rec.slice(0, 120)}…` : rec}`);
+  return parts.length ? `${parts.join(". ")}.` : "";
+}
+
+/* ============================================================ matching */
+function similarity(a, b) {
+  const la = a.length, lb = b.length;
+  if (!la && !lb) return 1;
+  let prev = Array.from({ length: lb + 1 }, (_, j) => j);
+  for (let i = 1; i <= la; i++) {
+    const cur = [i];
+    for (let j = 1; j <= lb; j++) cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 2));
+    prev = cur;
+  }
+  return (la + lb - prev[lb]) / (la + lb);
+}
+function closestKey(key, keys, cutoff) {
+  let best = null, bestScore = cutoff;
+  for (const k of keys) {
+    if (Math.abs(k.length - key.length) > Math.max(k.length, key.length) * 0.25) continue;
+    const score = similarity(key, k);
+    if (score >= bestScore) { bestScore = score; best = k; }
+  }
+  return best;
+}
+/**
+ * Matches library files to catalog songs. Order: a match you set by hand, the exact title,
+ * the exact file name of the site's file (for files saved straight from juicewrldapi.com), then a close title.
+ */
+function matchLibrary(catalog, files, overrides = {}) {
+  const index = new Map(), stems = new Map(), byId = new Map();
+  const add = (map, k, i) => { if (!map.has(k)) map.set(k, new Set()); map.get(k).add(i); };
+  catalog.forEach((song, i) => {
+    byId.set(song.id, i);
+    for (const t of [song.name, ...song.alt]) {
+      const k = normalize(t);
+      if (k) add(index, k, i);
+    }
+    if (song.filePath) { const st = stemOf(song.filePath); if (st) add(stems, st, i); }
+  });
+  const keys = [...index.keys()];
+  const owned = new Map(), unmatched = [];
+  for (const f of files) {
+    f.songs = []; f.fuzzy = false; f.manual = false; f.matchedBy = "";
+    const o = overrides[f.path];
+    if (o === "none") { f.manual = true; unmatched.push(f); continue; }
+    let hits = null;
+    if (o && byId.has(o)) { hits = [byId.get(o)]; f.manual = true; f.matchedBy = "manual"; }
+    if (!hits && f.key && index.has(f.key)) { hits = index.get(f.key); f.matchedBy = "title"; }
+    if (!hits) { const st = f.stem ?? stemOf(f.path); if (st && stems.has(st)) { hits = stems.get(st); f.matchedBy = "file"; } }
+    if (!hits && f.key) {
+      const k = closestKey(f.key, keys, FUZZY_CUTOFF);
+      if (k) { hits = index.get(k); f.fuzzy = true; f.matchedBy = "close"; }
+    }
+    if (!hits) { unmatched.push(f); continue; }
+    for (const i of hits) {
+      f.songs.push(i);
+      if (!owned.has(i)) owned.set(i, []);
+      owned.get(i).push(f);
+    }
+  }
+  return { owned, unmatched };
+}
+
+/* ============================================================ byte helpers */
+function latin1(b) { let s = ""; for (let i = 0; i < b.length; i++) s += String.fromCharCode(b[i]); return s; }
+function ascii(s) { return Uint8Array.from(s, c => c.charCodeAt(0) & 0xff); }
+function concatBytes(parts) {
+  let n = 0; for (const p of parts) n += p.length;
+  const out = new Uint8Array(n); let o = 0;
+  for (const p of parts) { out.set(p, o); o += p.length; }
+  return out;
+}
+function utf16le(s) { const out = new Uint8Array(s.length * 2); for (let i = 0; i < s.length; i++) { const c = s.charCodeAt(i); out[2 * i] = c & 255; out[2 * i + 1] = c >> 8; } return out; }
+function u32le(n) { return Uint8Array.of(n & 255, (n >> 8) & 255, (n >> 16) & 255, (n >>> 24) & 255); }
+function synchsafe(b, p) { return ((b[p] & 0x7f) << 21) | ((b[p + 1] & 0x7f) << 14) | ((b[p + 2] & 0x7f) << 7) | (b[p + 3] & 0x7f); }
+function u32(b, p) { return ((b[p] << 24) | (b[p + 1] << 16) | (b[p + 2] << 8) | b[p + 3]) >>> 0; }
+function unsync(b) { const out = []; for (let i = 0; i < b.length; i++) { out.push(b[i]); if (b[i] === 0xff && b[i + 1] === 0x00) i++; } return Uint8Array.from(out); }
+function cleanText(s) { return s.replace(/\u0000+$/g, "").replace(/\u0000/g, "/").trim(); }
+async function bytes(file, start, end) { return new Uint8Array(await file.slice(start, end).arrayBuffer()); }
+function sameTail(a, b, n = 512) {
+  if (a.length < n || b.length < n) n = Math.min(a.length, b.length);
+  for (let i = 1; i <= n; i++) if (a[a.length - i] !== b[b.length - i]) return false;
+  return true;
+}
+
+/* ============================================================ ID3 (MP3) */
+function decodeId3Text(b, enc) {
+  try {
+    if (enc === 0) return cleanText(latin1(b));
+    if (enc === 3) return cleanText(new TextDecoder("utf-8").decode(b));
+    if (enc === 2) return cleanText(new TextDecoder("utf-16be").decode(b));
+    if (enc === 1) {
+      const be = b[0] === 0xfe && b[1] === 0xff;
+      const bom = be || (b[0] === 0xff && b[1] === 0xfe);
+      return cleanText(new TextDecoder(be ? "utf-16be" : "utf-16le").decode(bom ? b.subarray(2) : b));
+    }
+  } catch (e) { /* unreadable text */ }
+  return "";
+}
+function splitTxxx(body) {
+  if (body.length < 2) return null;
+  const enc = body[0], rest = body.subarray(1);
+  const wide = enc === 1 || enc === 2;
+  let i = 0;
+  if (wide) { while (i + 1 < rest.length && !(rest[i] === 0 && rest[i + 1] === 0)) i += 2; }
+  else { while (i < rest.length && rest[i] !== 0) i++; }
+  return { desc: decodeId3Text(rest.subarray(0, i), enc), value: decodeId3Text(rest.subarray(i + (wide ? 2 : 1)), enc) };
+}
+/** Parses the ID3v2 tag at the start of `b` (which should contain the whole tag). */
+function parseId3(b) {
+  if (b.length < 10 || latin1(b.subarray(0, 3)) !== "ID3") return null;
+  const ver = b[3], flags = b[5], size = synchsafe(b, 6);
+  const tagEnd = 10 + size + (ver === 4 && (flags & 0x10) ? 10 : 0);
+  const unsynced = Boolean(flags & 0x80);
+  let data = b.subarray(10, Math.min(10 + size, b.length));
+  if (unsynced && ver < 4) data = unsync(data);
+  let pos = 0;
+  if (flags & 0x40) pos = ver === 4 ? synchsafe(data, 0) : u32(data, 0) + 4;
+  const idLen = ver === 2 ? 3 : 4, hdr = ver === 2 ? 6 : 10;
+  const frames = [];
+  let damaged = false;
+  while (pos + hdr <= data.length) {
+    if (data[pos] === 0) break; // padding
+    const id = latin1(data.subarray(pos, pos + idLen));
+    if (!/^[A-Z0-9]+$/.test(id)) { damaged = true; break; }
+    const fsize = ver === 2 ? (data[pos + 3] << 16) | (data[pos + 4] << 8) | data[pos + 5]
+      : ver === 4 ? synchsafe(data, pos + 4) : u32(data, pos + 4);
+    if (pos + hdr + fsize > data.length) { damaged = true; break; }
+    const fmtFlags = ver === 2 ? 0 : data[pos + 9];
+    frames.push({ id, raw: data.subarray(pos, pos + hdr + fsize), body: data.subarray(pos + hdr, pos + hdr + fsize), special: ver === 4 ? (fmtFlags & 0x0f) : (fmtFlags & 0xe0) });
+    pos += hdr + fsize;
+  }
+  return { ver, unsynced, damaged, tagEnd, truncated: 10 + size > b.length, frames };
+}
+/** COMM frames are TXXX-like but carry a three-letter language after the encoding byte. */
+function splitComm(body) { return body.length < 5 ? null : splitTxxx(concatBytes([body.subarray(0, 1), body.subarray(4)])); }
+function tagsFromId3(p) {
+  const out = {};
+  const map = p.ver === 2
+    ? { TT2: "title", TP1: "artist", TP2: "albumartist", TAL: "album", TYE: "year", TCO: "genre" }
+    : { TIT2: "title", TPE1: "artist", TPE2: "albumartist", TALB: "album", TYER: "year", TDRC: "year", TCON: "genre" };
+  for (const f of p.frames) {
+    if (f.special || f.body.length < 2) continue;
+    if (map[f.id]) { if (!out[map[f.id]]) out[map[f.id]] = decodeId3Text(f.body.subarray(1), f.body[0]); }
+    else if ((f.id === "TXXX" || f.id === "TXX") && !out.producer) {
+      const t = splitTxxx(f.body);
+      if (t && t.desc.toUpperCase() === "PRODUCER") out.producer = t.value;
+    } else if ((f.id === "COMM" || f.id === "COM") && !out.comment) {
+      const t = splitComm(f.body);
+      if (t && !t.desc) out.comment = t.value;
+    }
+  }
+  if (out.year) out.year = yearOf(out.year) || out.year;
+  return out;
+}
+function id3Frame(id, body, ver) {
+  const n = body.length, h = new Uint8Array(10);
+  h.set(ascii(id));
+  if (ver === 4) { h[4] = (n >> 21) & 0x7f; h[5] = (n >> 14) & 0x7f; h[6] = (n >> 7) & 0x7f; h[7] = n & 0x7f; }
+  else { h[4] = (n >>> 24) & 255; h[5] = (n >> 16) & 255; h[6] = (n >> 8) & 255; h[7] = n & 255; }
+  return concatBytes([h, body]);
+}
+function id3Text(id, value, ver) {
+  return id3Frame(id, ver === 4 ? concatBytes([Uint8Array.of(3), enc8.encode(value)]) : concatBytes([Uint8Array.of(1, 0xff, 0xfe), utf16le(value)]), ver);
+}
+function id3Txxx(desc, value, ver) {
+  const body = ver === 4
+    ? concatBytes([Uint8Array.of(3), enc8.encode(desc), Uint8Array.of(0), enc8.encode(value)])
+    : concatBytes([Uint8Array.of(1, 0xff, 0xfe), utf16le(desc), Uint8Array.of(0, 0, 0xff, 0xfe), utf16le(value)]);
+  return id3Frame("TXXX", body, ver);
+}
+function id3Comm(value, ver) {
+  const body = ver === 4
+    ? concatBytes([Uint8Array.of(3), ascii("eng"), Uint8Array.of(0), enc8.encode(value)])
+    : concatBytes([Uint8Array.of(1), ascii("eng"), Uint8Array.of(0xff, 0xfe, 0, 0, 0xff, 0xfe), utf16le(value)]);
+  return id3Frame("COMM", body, ver);
+}
+function writeMp3(orig, desired) {
+  const p = parseId3(orig);
+  if (p) {
+    if (p.ver !== 3 && p.ver !== 4) throw new Error("uses an older ID3 tag version that can't be edited here");
+    if (p.unsynced) throw new Error("uses an ID3 option that can't be edited here");
+    if (p.damaged || p.truncated) throw new Error("has a damaged ID3 tag");
+  }
+  const ver = p ? p.ver : 3;
+  const drop = new Set();
+  if (desired.title) drop.add("TIT2");
+  if (desired.artist) drop.add("TPE1");
+  if (desired.albumartist) drop.add("TPE2");
+  if (desired.album) drop.add("TALB");
+  if (desired.year) { drop.add("TYER"); drop.add("TDRC"); }
+  if (desired.genre) drop.add("TCON");
+  const kept = (p ? p.frames : []).filter(f => {
+    if (drop.has(f.id)) return false;
+    if (desired.producer && f.id === "TXXX") return (splitTxxx(f.body)?.desc || "").toUpperCase() !== "PRODUCER";
+    if (desired.comment && f.id === "COMM") { const t = splitComm(f.body); return Boolean(t && t.desc); }
+    return true;
+  }).map(f => f.raw);
+  const added = [];
+  if (desired.title) added.push(id3Text("TIT2", desired.title, ver));
+  if (desired.artist) added.push(id3Text("TPE1", desired.artist, ver));
+  if (desired.albumartist) added.push(id3Text("TPE2", desired.albumartist, ver));
+  if (desired.album) added.push(id3Text("TALB", desired.album, ver));
+  if (desired.year) added.push(id3Text(ver === 4 ? "TDRC" : "TYER", desired.year, ver));
+  if (desired.producer) added.push(id3Txxx("PRODUCER", desired.producer, ver));
+  if (desired.genre) added.push(id3Text("TCON", desired.genre, ver));
+  if (desired.comment) added.push(id3Comm(desired.comment, ver));
+  const frames = concatBytes([...kept, ...added]);
+  const padding = new Uint8Array(2048);
+  const size = frames.length + padding.length;
+  const header = Uint8Array.of(0x49, 0x44, 0x33, ver, 0, 0, (size >> 21) & 0x7f, (size >> 14) & 0x7f, (size >> 7) & 0x7f, size & 0x7f);
+  const audio = orig.subarray(p ? p.tagEnd : 0);
+  if (!audio.length) throw new Error("has no audio after its tag");
+  return { out: concatBytes([header, frames, padding, audio]), audioLength: audio.length };
+}
+function verifyMp3(orig, res, desired) {
+  const p = parseId3(res.out);
+  if (!p || p.damaged || p.truncated) throw new Error("failed a safety check (new tag unreadable), so it was left unchanged");
+  if (res.out.length - p.tagEnd !== res.audioLength || !sameTail(orig, res.out)) throw new Error("failed a safety check (audio mismatch), so it was left unchanged");
+  checkTags(tagsFromId3(p), desired);
+}
+
+/* ============================================================ FLAC and Vorbis comments */
+function parseVorbisComments(b) {
+  const dv = new DataView(b.buffer, b.byteOffset, b.byteLength), td = new TextDecoder("utf-8"), out = {};
+  try {
+    let p = 0;
+    p += 4 + dv.getUint32(p, true);
+    const n = dv.getUint32(p, true); p += 4;
+    for (let i = 0; i < n && p + 4 <= b.length; i++) {
+      const len = dv.getUint32(p, true); p += 4;
+      const s = td.decode(b.subarray(p, p + len)); p += len;
+      const eq = s.indexOf("=");
+      if (eq < 0) continue;
+      const k = s.slice(0, eq).toUpperCase(), v = s.slice(eq + 1).trim();
+      const key = { TITLE: "title", ARTIST: "artist", ALBUMARTIST: "albumartist", "ALBUM ARTIST": "albumartist", ALBUM: "album", DATE: "year", YEAR: "year", PRODUCER: "producer", GENRE: "genre", COMMENT: "comment" }[k];
+      if (key && !out[key]) out[key] = v;
+    }
+  } catch (e) { /* truncated: keep what was read */ }
+  if (out.year) out.year = yearOf(out.year) || out.year;
+  return out;
+}
+function parseFlacBlocks(b) {
+  if (b.length < 8 || latin1(b.subarray(0, 4)) !== "fLaC") throw new Error("isn't a valid FLAC file");
+  let pos = 4;
+  const blocks = [];
+  for (;;) {
+    if (pos + 4 > b.length || blocks.length > 512) throw new Error("has a damaged FLAC header");
+    const h = b[pos], type = h & 0x7f, len = (b[pos + 1] << 16) | (b[pos + 2] << 8) | b[pos + 3];
+    if (type === 127 || pos + 4 + len > b.length) throw new Error("has a damaged FLAC header");
+    blocks.push({ type, body: b.subarray(pos + 4, pos + 4 + len) });
+    pos += 4 + len;
+    if (h & 0x80) break;
+  }
+  if (blocks[0].type !== 0) throw new Error("has a damaged FLAC header");
+  return { blocks, audioStart: pos };
+}
+function parseVorbisStrict(b) {
+  const dv = new DataView(b.buffer, b.byteOffset, b.byteLength), td = new TextDecoder("utf-8");
+  const fail = () => { throw new Error("has a damaged tag block"); };
+  if (b.length < 8) fail();
+  const vlen = dv.getUint32(0, true);
+  if (8 + vlen > b.length) fail();
+  const vendor = b.slice(4, 4 + vlen);
+  let p = 4 + vlen;
+  const n = dv.getUint32(p, true); p += 4;
+  const comments = [];
+  for (let i = 0; i < n; i++) {
+    if (p + 4 > b.length) fail();
+    const len = dv.getUint32(p, true); p += 4;
+    if (p + len > b.length) fail();
+    comments.push(td.decode(b.subarray(p, p + len))); p += len;
+  }
+  return { vendor, comments };
+}
+const VORBIS_READ_KEYS = { title: ["TITLE"], artist: ["ARTIST"], albumartist: ["ALBUMARTIST", "ALBUM ARTIST"], album: ["ALBUM"], year: ["DATE", "YEAR"], producer: ["PRODUCER"], genre: ["GENRE"], comment: ["COMMENT"] };
+const VORBIS_WRITE_KEY = { title: "TITLE", artist: "ARTIST", albumartist: "ALBUMARTIST", album: "ALBUM", year: "DATE", producer: "PRODUCER", genre: "GENRE", comment: "COMMENT" };
+function writeFlac(orig, desired) {
+  const { blocks, audioStart } = parseFlacBlocks(orig);
+  const ci = blocks.findIndex(bl => bl.type === 4);
+  let vendor = enc8.encode("Juice WRLD collection tracker"), comments = [];
+  if (ci >= 0) ({ vendor, comments } = parseVorbisStrict(blocks[ci].body));
+  const drop = new Set();
+  for (const k of FIELDS) if (desired[k]) VORBIS_READ_KEYS[k].forEach(x => drop.add(x));
+  comments = comments.filter(c => { const eq = c.indexOf("="); return !drop.has((eq < 0 ? c : c.slice(0, eq)).toUpperCase()); });
+  for (const k of FIELDS) if (desired[k]) comments.push(`${VORBIS_WRITE_KEY[k]}=${desired[k]}`);
+  const parts = [u32le(vendor.length), vendor, u32le(comments.length)];
+  for (const c of comments) { const e = enc8.encode(c); parts.push(u32le(e.length), e); }
+  const comment = { type: 4, body: concatBytes(parts) };
+
+  const out = blocks.filter(bl => bl.type !== 4);
+  const insertAt = ci >= 0 ? Math.max(1, blocks.slice(0, ci).filter(bl => bl.type !== 4).length) : 1;
+  out.splice(insertAt, 0, comment);
+  if (!out.some(bl => bl.type === 1)) out.push({ type: 1, body: new Uint8Array(1024) });
+
+  const pieces = [ascii("fLaC")];
+  out.forEach((bl, i) => {
+    const len = bl.body.length;
+    if (len >= 1 << 24) throw new Error("has a tag block that's too large to edit");
+    pieces.push(Uint8Array.of((i === out.length - 1 ? 0x80 : 0) | bl.type, (len >> 16) & 255, (len >> 8) & 255, len & 255), bl.body);
+  });
+  const audio = orig.subarray(audioStart);
+  if (!audio.length) throw new Error("has no audio after its header");
+  pieces.push(audio);
+  return { out: concatBytes(pieces), audioLength: audio.length };
+}
+function verifyFlac(orig, res, desired) {
+  let parsed;
+  try { parsed = parseFlacBlocks(res.out); } catch (e) { throw new Error("failed a safety check (new header unreadable), so it was left unchanged"); }
+  if (res.out.length - parsed.audioStart !== res.audioLength || !sameTail(orig, res.out)) throw new Error("failed a safety check (audio mismatch), so it was left unchanged");
+  const block = parsed.blocks.find(bl => bl.type === 4);
+  checkTags(block ? parseVorbisComments(block.body) : {}, desired);
+}
+function checkTags(read, desired) {
+  for (const k of FIELDS) {
+    if (!desired[k]) continue;
+    const want = k === "year" ? (yearOf(desired[k]) || desired[k]) : desired[k];
+    if ((read[k] || "") !== want) throw new Error(`failed a safety check (${FIELD_LABELS[k].toLowerCase()} didn't read back), so it was left unchanged`);
+  }
+}
+
+/* ============================================================ tag reading for other formats */
+function walkAtoms(b, start, end, cb) {
+  let p = start;
+  while (p + 8 <= end) {
+    let len = u32(b, p);
+    const type = latin1(b.subarray(p + 4, p + 8));
+    if (len < 8 || p + len > end) len = end - p;
+    cb(type, p + 8, p + len);
+    p += len;
+  }
+}
+const MP4_KEYS = { title: "\u00a9nam", artist: "\u00a9ART", albumartist: "aART", album: "\u00a9alb", year: "\u00a9day", genre: "\u00a9gen", comment: "\u00a9cmt" };
+/** A "meta" box is usually a full box (4 version bytes before its children); QuickTime-style ones aren't. */
+function metaChildStart(b, s) { return latin1(b.subarray(s + 4, s + 8)) === "hdlr" ? s : s + 4; }
+function parseMoov(b) {
+  const out = {}, td = new TextDecoder("utf-8");
+  const keys = Object.fromEntries(Object.entries(MP4_KEYS).map(([k, v]) => [v, k]));
+  const walk = (start, end) => walkAtoms(b, start, end, (type, s, e) => {
+    if (type === "udta" || type === "ilst") walk(s, e);
+    else if (type === "meta") walk(metaChildStart(b, s), e);
+    else if (keys[type]) walkAtoms(b, s, e, (t2, s2, e2) => {
+      if (t2 === "data" && !out[keys[type]]) out[keys[type]] = td.decode(b.subarray(s2 + 8, e2)).trim();
+    });
+    else if (type === "----") {
+      let name = "", value = "";
+      walkAtoms(b, s, e, (t2, s2, e2) => {
+        if (t2 === "name") name = td.decode(b.subarray(s2 + 4, e2));
+        else if (t2 === "data") value = td.decode(b.subarray(s2 + 8, e2)).trim();
+      });
+      if (name.toUpperCase() === "PRODUCER" && !out.producer) out.producer = value;
+    }
+  });
+  walk(0, b.length);
+  if (out.year) out.year = yearOf(out.year) || out.year;
+  return out;
+}
+
+/* ============================================================ M4A writing */
+/** Lists the boxes between start and end, strictly. A few stray trailing bytes (QuickTime's 4-byte terminator) are ignored. */
+function readAtoms(b, start, end) {
+  const out = [];
+  let p = start;
+  while (p + 8 <= end) {
+    let size = u32(b, p), hdr = 8;
+    const type = latin1(b.subarray(p + 4, p + 8));
+    if (size === 1) {
+      if (p + 16 > end) throw new Error("has a damaged MP4 header");
+      size = u32(b, p + 8) * 4294967296 + u32(b, p + 12);
+      hdr = 16;
+    } else if (size === 0) size = end - p;
+    if (size < hdr || p + size > end) throw new Error("has a damaged MP4 header");
+    out.push({ type, start: p, hdr, end: p + size });
+    p += size;
+  }
+  return out;
+}
+function mp4Box(type, ...parts) {
+  const body = concatBytes(parts), n = body.length + 8;
+  if (n > 0xffffffff) throw new Error("has a tag block that's too large to edit");
+  return concatBytes([Uint8Array.of((n >>> 24) & 255, (n >> 16) & 255, (n >> 8) & 255, n & 255), ascii(type), body]);
+}
+const MP4_TEXT_FLAGS = Uint8Array.of(0, 0, 0, 1, 0, 0, 0, 0);
+const mp4DataItem = (key, value) => mp4Box(key, mp4Box("data", MP4_TEXT_FLAGS, enc8.encode(value)));
+const mp4FreeformItem = (name, value) => mp4Box("----",
+  mp4Box("mean", new Uint8Array(4), ascii("com.apple.iTunes")), mp4Box("name", new Uint8Array(4), enc8.encode(name)), mp4Box("data", MP4_TEXT_FLAGS, enc8.encode(value)));
+function freeformName(b, item) {
+  for (const c of readAtoms(b, item.start + item.hdr, item.end)) if (c.type === "name") return new TextDecoder("utf-8").decode(b.subarray(c.start + c.hdr + 4, c.end));
+  return "";
+}
+const MP4_CONTAINERS = new Set(["moov", "trak", "mdia", "minf", "stbl"]);
+/** Finds every chunk offset table (stco or co64) in the boxes between s and e. */
+function stcoTables(b, s, e, out = []) {
+  for (const a of readAtoms(b, s, e)) {
+    if (MP4_CONTAINERS.has(a.type)) stcoTables(b, a.start + a.hdr, a.end, out);
+    else if (a.type === "stco" || a.type === "co64") {
+      const p = a.start + a.hdr, wide = a.type === "co64";
+      if (p + 8 > a.end) throw new Error("has a damaged MP4 header");
+      const n = u32(b, p + 4);
+      if (p + 8 + n * (wide ? 8 : 4) > a.end) throw new Error("has a damaged MP4 header");
+      out.push({ p: p + 8, n, wide });
+    }
+  }
+  return out;
+}
+function chunkOffsets(b, s, e) {
+  const dv = new DataView(b.buffer, b.byteOffset, b.byteLength), out = [];
+  for (const t of stcoTables(b, s, e)) for (let k = 0; k < t.n; k++) out.push(t.wide ? Number(dv.getBigUint64(t.p + k * 8)) : dv.getUint32(t.p + k * 4));
+  return out;
+}
+function sameRange(a, as, b, bs, n) {
+  if (as + n > a.length || bs + n > b.length) return false;
+  for (let k = 0; k < n; k++) if (a[as + k] !== b[bs + k]) return false;
+  return true;
+}
+/**
+ * Rewrites the iTunes tag list (moov/udta/meta/ilst) and leaves the audio bytes untouched.
+ * When the moov box sits before the audio and changes size, the chunk offsets are shifted to match.
+ */
+function writeM4a(orig, desired) {
+  const top = readAtoms(orig, 0, orig.length);
+  if (!top.length || top[0].type !== "ftyp") throw new Error("isn't a valid M4A file");
+  if (top.some(a => a.type === "moof")) throw new Error("is a fragmented MP4, which can't be edited here");
+  const moovs = top.filter(a => a.type === "moov");
+  if (moovs.length !== 1) throw new Error("has a damaged MP4 header");
+  if (!top.some(a => a.type === "mdat")) throw new Error("has no audio after its header");
+  const moov = moovs[0], raw = a => orig.subarray(a.start, a.end);
+
+  const kids = readAtoms(orig, moov.start + moov.hdr, moov.end);
+  const udta = kids.find(a => a.type === "udta");
+  const udtaKids = udta ? readAtoms(orig, udta.start + udta.hdr, udta.end) : [];
+  const meta = udtaKids.find(a => a.type === "meta");
+  if (!meta && kids.some(a => a.type === "meta")) throw new Error("uses an MP4 tag layout that can't be edited here");
+  let metaKids = [], metaPrefix = new Uint8Array(4);
+  if (meta) {
+    const s = meta.start + meta.hdr, cs = metaChildStart(orig, s);
+    metaPrefix = orig.slice(s, cs);
+    metaKids = readAtoms(orig, cs, meta.end);
+  }
+  const ilst = metaKids.find(a => a.type === "ilst");
+  const drop = new Set();
+  for (const [k, key] of Object.entries(MP4_KEYS)) if (desired[k]) drop.add(key);
+  if (desired.genre) drop.add("gnre");
+  const items = ilst ? readAtoms(orig, ilst.start + ilst.hdr, ilst.end) : [];
+  const kept = items.filter(it => {
+    if (drop.has(it.type)) return false;
+    if (desired.producer && it.type === "----") return freeformName(orig, it).toUpperCase() !== "PRODUCER";
+    return true;
+  }).map(raw);
+  const added = [];
+  for (const [k, key] of Object.entries(MP4_KEYS)) if (desired[k]) added.push(mp4DataItem(key, desired[k]));
+  if (desired.producer) added.push(mp4FreeformItem("PRODUCER", desired.producer));
+  const newIlst = mp4Box("ilst", ...kept, ...added);
+
+  const hdlr = metaKids.find(a => a.type === "hdlr");
+  const hdlrBytes = hdlr ? raw(hdlr) : mp4Box("hdlr", new Uint8Array(8), ascii("mdirappl"), new Uint8Array(9));
+  const newMeta = mp4Box("meta", metaPrefix, hdlrBytes, newIlst, ...metaKids.filter(a => a.type !== "hdlr" && a.type !== "ilst").map(raw));
+  const udtaParts = udtaKids.map(a => (a === meta ? newMeta : raw(a)));
+  if (!meta) udtaParts.push(newMeta);
+  const newUdta = mp4Box("udta", ...udtaParts);
+  const moovParts = kids.map(a => (a === udta ? newUdta : raw(a)));
+  if (!udta) moovParts.push(newUdta);
+  const newMoov = mp4Box("moov", ...moovParts);
+
+  const delta = newMoov.length - (moov.end - moov.start);
+  if (delta) {
+    const dv = new DataView(newMoov.buffer, newMoov.byteOffset, newMoov.byteLength);
+    for (const t of stcoTables(newMoov, 0, newMoov.length)) for (let k = 0; k < t.n; k++) {
+      if (t.wide) {
+        const at = t.p + k * 8, v = dv.getBigUint64(at);
+        if (v > BigInt(moov.start)) dv.setBigUint64(at, v + BigInt(delta));
+      } else {
+        const at = t.p + k * 4, v = dv.getUint32(at);
+        if (v > moov.start) {
+          const nv = v + delta;
+          if (nv > 0xffffffff || nv < 0) throw new Error("would need 64-bit audio offsets, which can't be edited here");
+          dv.setUint32(at, nv);
+        }
+      }
+    }
+  }
+  return {
+    out: concatBytes([orig.subarray(0, moov.start), newMoov, orig.subarray(moov.end)]),
+    delta, moovStart: moov.start, oldMoovEnd: moov.end,
+  };
+}
+function verifyM4a(orig, res, desired) {
+  const fail = why => { throw new Error(`failed a safety check (${why}), so it was left unchanged`); };
+  let top, moov;
+  try { top = readAtoms(res.out, 0, res.out.length); moov = top.find(a => a.type === "moov"); } catch (e) { fail("new header unreadable"); }
+  if (!moov || moov.start !== res.moovStart || res.out.length !== orig.length + res.delta
+    || moov.end - moov.start !== res.oldMoovEnd - res.moovStart + res.delta) fail("layout changed");
+  if (!sameRange(orig, 0, res.out, 0, res.moovStart) || !sameRange(orig, res.oldMoovEnd, res.out, moov.end, orig.length - res.oldMoovEnd)) fail("audio mismatch");
+  let before, after;
+  try { before = chunkOffsets(orig, res.moovStart, res.oldMoovEnd); after = chunkOffsets(res.out, moov.start, moov.end); } catch (e) { fail("audio offsets unreadable"); }
+  if (!before.length || before.length !== after.length || before.some((v, n) => after[n] !== (v > res.moovStart ? v + res.delta : v))) fail("audio offsets");
+  checkTags(parseMoov(res.out.subarray(moov.start + moov.hdr, moov.end)), desired);
+}
+async function readMp4(file) {
+  let pos = 0;
+  for (let i = 0; i < 64 && pos + 8 <= file.size; i++) {
+    const h = await bytes(file, pos, pos + 16);
+    let len = u32(h, 0), hdr = 8;
+    const type = latin1(h.subarray(4, 8));
+    if (len === 1) { len = Number(new DataView(h.buffer).getBigUint64(8)); hdr = 16; }
+    else if (len === 0) len = file.size - pos;
+    if (len < 8) break;
+    if (type === "moov") return parseMoov(await bytes(file, pos + hdr, pos + Math.min(len, 16 * 1024 * 1024)));
+    pos += len;
+  }
+  return null;
+}
+async function readId3v2(file) {
+  const h = await bytes(file, 0, 10);
+  if (h.length < 10 || latin1(h.subarray(0, 3)) !== "ID3") return null;
+  const p = parseId3(await bytes(file, 0, 10 + Math.min(synchsafe(h, 6), 4 * 1024 * 1024)));
+  return p ? tagsFromId3(p) : null;
+}
+async function readId3v1(file) {
+  if (file.size < 128) return null;
+  const b = await bytes(file, file.size - 128, file.size);
+  if (latin1(b.subarray(0, 3)) !== "TAG") return null;
+  return { title: cleanText(latin1(b.subarray(3, 33))), artist: cleanText(latin1(b.subarray(33, 63))), album: cleanText(latin1(b.subarray(63, 93))), year: yearOf(latin1(b.subarray(93, 97))) };
+}
+async function readFlac(file) {
+  if (latin1(await bytes(file, 0, 4)) !== "fLaC") return null;
+  let pos = 4;
+  for (let i = 0; i < 64; i++) {
+    const h = await bytes(file, pos, pos + 4);
+    if (h.length < 4) break;
+    const last = h[0] & 0x80, type = h[0] & 0x7f, len = (h[1] << 16) | (h[2] << 8) | h[3];
+    if (type === 4) return parseVorbisComments(await bytes(file, pos + 4, pos + 4 + Math.min(len, 1 << 20)));
+    pos += 4 + len;
+    if (last) break;
+  }
+  return {};
+}
+async function readOgg(file) {
+  const b = await bytes(file, 0, 256 * 1024), s = latin1(b);
+  let i = s.indexOf("OpusTags");
+  if (i >= 0) return parseVorbisComments(b.subarray(i + 8));
+  i = s.indexOf("\u0003vorbis");
+  if (i >= 0) return parseVorbisComments(b.subarray(i + 7));
+  return {};
+}
+async function readTags(file, ext) {
+  try {
+    if (ext === "flac") return (await readFlac(file)) || {};
+    if (ext === "ogg" || ext === "opus") return await readOgg(file);
+    if (ext === "m4a" || ext === "m4b" || ext === "alac") return (await readMp4(file)) || (await readId3v2(file)) || {};
+    let tags = (await readId3v2(file)) || {};
+    if (!tags.title && ext === "mp3") tags = { ...(await readId3v1(file)), ...tags };
+    return tags;
+  } catch (e) {
+    return {};
+  }
+}
+
+/* ============================================================ scanning and fetching */
+async function walkHandle(dir, prefix, out = [], onCount) {
+  for await (const [name, h] of dir.entries()) {
+    if (name.startsWith(".")) continue;
+    if (h.kind === "directory") await walkHandle(h, `${prefix}${name}/`, out, onCount);
+    else if (AUDIO_EXTS.has(extOf(name))) { out.push({ handle: h, path: prefix + name }); if (onCount && out.length % 200 === 0) onCount(out.length); }
+  }
+  return out;
+}
+async function scanFiles(items, onlyJuice, onProgress) {
+  const audio = items.filter(it => AUDIO_EXTS.has(extOf(it.path)));
+  const found = [];
+  let next = 0, done = 0;
+  const worker = async () => {
+    while (next < audio.length) {
+      const it = audio[next++];
+      const ext = extOf(it.path);
+      try {
+        const file = it.file || await it.handle.getFile();
+        const tags = await readTags(file, ext);
+        if (!onlyJuice || hasArtist(it.path) || hasArtist(`${tags.artist || ""} ${tags.albumartist || ""}`)) {
+          const title = tags.title || titleFromFilename(it.path);
+          found.push({ path: it.path, handle: it.handle || null, ext, tags, title, key: normalize(title), stem: stemOf(it.path), fromTags: Boolean(tags.title), size: file.size });
+        }
+      } catch (e) { /* unreadable file: skip */ }
+      done++;
+      if (done % 20 === 0) onProgress(done, audio.length);
+    }
+  };
+  await Promise.all(Array.from({ length: 8 }, worker));
+  onProgress(audio.length, audio.length);
+  return { found: found.sort((a, b) => a.path.localeCompare(b.path)), audioCount: audio.length };
+}
+async function fetchCatalog(onProgress) {
+  const raw = [];
+  let total = null;
+  for (let page = 1; page <= 500; page++) {
+    let res;
+    for (let attempt = 0; attempt < 5; attempt++) {
+      res = await fetch(`${API}?page=${page}&page_size=100`, { headers: { Accept: "application/json" } });
+      if (res.status !== 429) break;
+      await sleep(2 ** attempt * 3000);
+    }
+    if (res.status === 404 && page > 1) break;
+    if (!res.ok) throw new Error(`The catalog request failed (status ${res.status}).`);
+    const data = await res.json();
+    const results = songsFromJson(data);
+    raw.push(...results);
+    total = data.count ?? total;
+    onProgress(raw.length, total);
+    if (!data.next || !results.length || (total && raw.length >= total)) break;
+    await sleep(300);
+  }
+  return { songs: mergeSongs([raw]), eras: collectEras(raw) };
+}
+async function fetchEraList() {
+  const eras = {};
+  let url = "https://juicewrldapi.com/juicewrld/eras/?page_size=100";
+  for (let n = 0; url && n < 20; n++) {
+    const res = await fetch(url, { headers: { Accept: "application/json" } });
+    if (!res.ok) break;
+    const data = await res.json();
+    const list = Array.isArray(data) ? data : (data.results || []);
+    for (const e of list) {
+      if (e && e.name) eras[e.name] = { id: e.id ?? null, description: textOf(e.description), timeFrame: textOf(e.time_frame ?? e.timeFrame) };
+    }
+    url = Array.isArray(data) ? null : (data.next ? String(data.next).replace(/^http:/, "https:") : null);
+  }
+  return eras;
+}
+function readStore() { try { return JSON.parse(localStorage.getItem(STORE_KEY)) || {}; } catch (e) { return {}; } }
+function writeStore(obj) { try { localStorage.setItem(STORE_KEY, JSON.stringify(obj)); return true; } catch (e) { return false; } }
+
+/* ============================================================ UI */
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const fmt = n => Number(n).toLocaleString();
+const plural = (n, one, many) => `${fmt(n)} ${n === 1 ? one : many}`;
+const PAGE = 100, FIX_PAGE = 200;
+const canEditFolders = typeof window.showDirectoryPicker === "function";
+
+const state = {
+  catalog: null, library: null, lastItems: null, rootHandle: null, backupDir: null,
+  owned: new Map(), unmatched: [],
+  newIds: new Set(), releasedIds: new Set(), prevCheck: null, firstCheck: false,
+  tab: "all", query: "", limit: PAGE,
+  plan: null, fixSel: new Map(), fixLimit: FIX_PAGE, writing: false,
+  eras: {}, dialog: null, dialogToken: 0, era: null, showAllEras: false, layout: null, links: null, chooseFiles: [],
+  filters: { category: "", producer: "", artist: "", engineer: "", studio: "", recYear: "", relYear: "" }, exact: {}, derived: [], focusAfterClose: null,
+  people: { role: "producers", q: "", limit: 15, open: null, scoped: false },
+  stats: { scoped: false, eraMode: "category" },
+  trivia: { type: "mixed", pool: "all", round: null }, setupCollapsed: false, dupLimit: 50, dupGroups: [], personal: { wish: {}, notes: {}, trivia: {}, linkTemplate: "", matchOverrides: {}, opened: {}, fixGenre: "" },
+};
+
+function setStatus(id, text, isError = false) { const el = $(id); el.textContent = text; el.classList.toggle("error", isError); }
+/** Keeps the collapsed setup bar in step with what's loaded, and tucks it away once both are. */
+function renderSetup() {
+  const songs = state.catalog ? `<b>${fmt(state.catalog.length)}</b> ${state.catalog.length === 1 ? "song" : "songs"} in the catalog` : `<span class="warn">No catalog loaded</span>`;
+  const files = state.library ? `<b>${fmt(state.library.length)}</b> ${state.library.length === 1 ? "file" : "files"} in your music folder` : `<span class="warn">No music folder chosen</span>`;
+  $("setup-state").innerHTML = `<span>${songs}</span><span>${files}</span>`;
+  $("setup-bar").hidden = !state.catalog && !state.library;
+  $("rescan-btn").hidden = !state.rootHandle;
+  if (!state.setupCollapsed && state.catalog && state.library && state.library.length) {
+    state.setupCollapsed = true;
+    $("setup").open = false;
+  }
+}
+function timeAgo(iso) {
+  const mins = Math.round((Date.now() - new Date(iso)) / 60000);
+  if (mins < 60) return `${Math.max(mins, 1)} min ago`;
+  const hrs = Math.round(mins / 60);
+  return hrs < 48 ? `${hrs} hr ago` : `${Math.round(hrs / 24)} days ago`;
+}
+
+function useCatalog(songs, sourceText, { trackChanges, eras = {} }) {
+  const store = readStore();
+  if (trackChanges) {
+    const ids = songs.map(s => s.id);
+    const releaseSnap = Object.fromEntries(songs.map(s => [s.id, isReleased(s) ? 1 : 0]));
+    if (Array.isArray(store.knownIds)) {
+      const known = new Set(store.knownIds);
+      store.newIds = ids.filter(id => !known.has(id));
+      store.prevCheck = store.lastCheck || null;
+      store.firstCheck = false;
+    } else {
+      store.newIds = []; store.prevCheck = null; store.firstCheck = true;
+    }
+    store.releasedIds = store.releaseSnap ? songs.filter(s => store.releaseSnap[s.id] === 0 && releaseSnap[s.id] === 1).map(s => s.id) : [];
+    store.releaseSnap = releaseSnap;
+    store.knownIds = ids;
+    store.lastCheck = new Date().toISOString();
+    store.catalog = { fetchedAt: store.lastCheck, songs, eras };
+    if (!writeStore(store)) {
+      // Too big for browser storage: save a lighter copy and fetch song details when a card is opened.
+      store.catalog = { fetchedAt: store.lastCheck, songs: songs.map(slimSong), eras, slim: true };
+      if (!writeStore(store)) store.firstCheck = null;
+    }
+  }
+  state.catalog = songs;
+  state.trivia.round = null;
+  state.eras = { ...(store.catalog?.eras || {}), ...eras };
+  state.newIds = new Set(store.newIds || []);
+  state.releasedIds = new Set(store.releasedIds || []);
+  state.prevCheck = store.prevCheck || null;
+  state.firstCheck = store.firstCheck;
+  $("step-catalog").classList.add("done");
+  setStatus("catalog-status", sourceText);
+  renderLinkSetting();
+  renderSetup();
+  update();
+}
+
+(function restore() {
+  const store = readStore();
+  if (store.catalog?.songs?.length) {
+    const ageHrs = (Date.now() - new Date(store.catalog.fetchedAt)) / 3600000;
+    if (ageHrs < CACHE_HOURS) {
+      useCatalog(store.catalog.songs.map(cleanSong), `${fmt(store.catalog.songs.length)} songs, loaded ${timeAgo(store.catalog.fetchedAt)}.`, { trackChanges: false, eras: store.catalog.eras || {} });
+      $("fetch-btn").textContent = "Reload catalog";
+    }
+  }
+})();
+renderSetup();
+renderLinkSetting();
+
+$("fetch-btn").addEventListener("click", async () => {
+  const btn = $("fetch-btn");
+  btn.disabled = true;
+  setStatus("catalog-status", "Connecting to juicewrldapi.com…");
+  try {
+    const { songs, eras: songEras } = await fetchCatalog((n, total) => setStatus("catalog-status", total ? `Loaded ${fmt(n)} of ${fmt(total)} songs…` : `Loaded ${fmt(n)} songs…`));
+    if (!songs.length) throw new Error("The catalog came back empty.");
+    let eras = songEras;
+    try {
+      const listed = await fetchEraList();
+      eras = { ...songEras };
+      for (const [name, info] of Object.entries(listed)) {
+        const have = eras[name] || {};
+        eras[name] = { id: info.id, description: hasValue(have.description) ? have.description : info.description, timeFrame: hasValue(have.timeFrame) ? have.timeFrame : info.timeFrame };
+      }
+    } catch (e) { /* the era list is optional */ }
+    useCatalog(songs, `${fmt(songs.length)} songs loaded.`, { trackChanges: true, eras });
+    btn.textContent = "Reload catalog";
+  } catch (err) {
+    setStatus("catalog-status", err instanceof TypeError
+      ? "Couldn't reach juicewrldapi.com from this page. Open the downloaded file in Chrome or Safari while online. If it still fails, the site is blocking requests from other pages; use the steps below instead."
+      : `${err.message} Try again in a minute, or use the steps below.`, true);
+    $("catalog-help").open = true;
+  } finally {
+    btn.disabled = false;
+  }
+});
+
+$("catalog-files").addEventListener("change", async e => {
+  const files = [...e.target.files];
+  if (!files.length) return;
+  try {
+    const lists = await Promise.all(files.map(async f => songsFromJson(JSON.parse(await f.text()))));
+    const songs = mergeSongs(lists);
+    if (!songs.length) throw new Error();
+    useCatalog(songs, `${fmt(songs.length)} songs loaded from ${plural(files.length, "saved file", "saved files")}.`, { trackChanges: true, eras: collectEras(lists.flat()) });
+  } catch (err) {
+    setStatus("catalog-status", "Those files don't contain catalog songs. Save the catalog page itself as .json and select it again.", true);
+  }
+  e.target.value = "";
+});
+
+/* ---------- folder selection */
+async function handleFolder(items) {
+  if (!items.length) { setStatus("folder-status", "That folder is empty.", true); return; }
+  const onlyJuice = $("only-juice").checked;
+  setStatus("folder-status", `Reading ${plural(items.length, "file", "files")}…`);
+  const { found, audioCount } = await scanFiles(items, onlyJuice, (done, total) => setStatus("folder-status", `Reading song info: ${fmt(done)} of ${fmt(total)}…`));
+  state.library = found;
+  state.lastItems = items;
+  state.fixSel.clear();
+  $("step-folder").classList.add("done");
+  if (!audioCount) setStatus("folder-status", "No audio files found in that folder. Choose the folder that holds your music.", true);
+  else if (!found.length) setStatus("folder-status", `Found ${plural(audioCount, "audio file", "audio files")}, but none look like Juice WRLD. Untick the checkbox if this folder only has his music.`, true);
+  else setStatus("folder-status", `${plural(found.length, "Juice WRLD file", "Juice WRLD files")} found${onlyJuice ? ` out of ${fmt(audioCount)} audio files` : ""}.`);
+  renderSetup();
+  update();
+}
+async function loadFromHandle(dir) {
+  state.rootHandle = dir;
+  setStatus("folder-status", "Collecting files…");
+  const items = await walkHandle(dir, `${dir.name}/`, [], n => setStatus("folder-status", `Collecting files: ${fmt(n)} found…`));
+  await handleFolder(items);
+}
+
+$("folder-btn").addEventListener("click", async () => {
+  if (!canEditFolders) { $("folder-input").click(); return; }
+  try {
+    await loadFromHandle(await window.showDirectoryPicker({ id: "plex-music", mode: "read" }));
+  } catch (err) {
+    if (err.name !== "AbortError") setStatus("folder-status", `Couldn't open that folder: ${err.message}`, true);
+  }
+});
+async function rescanFolder() {
+  if (!state.rootHandle) return false;
+  try { await loadFromHandle(state.rootHandle); return true; }
+  catch (err) { setStatus("folder-status", `Couldn't read the folder again: ${err.message}. Choose it again.`, true); return false; }
+}
+$("rescan-btn").addEventListener("click", rescanFolder);
+$("folder-input").addEventListener("change", e => {
+  state.rootHandle = null;
+  handleFolder([...e.target.files].map(f => ({ file: f, path: f.webkitRelativePath || f.name })));
+});
+$("only-juice").addEventListener("change", () => { if (state.lastItems) handleFolder(state.lastItems); });
+
+const dropZone = $("step-folder");
+["dragenter", "dragover"].forEach(t => dropZone.addEventListener(t, e => { e.preventDefault(); dropZone.classList.add("drag"); }));
+["dragleave", "drop"].forEach(t => dropZone.addEventListener(t, () => dropZone.classList.remove("drag")));
+dropZone.addEventListener("drop", async e => {
+  e.preventDefault();
+  const dtItems = [...e.dataTransfer.items];
+  // Chrome and Edge: get editable folder handles
+  if (dtItems.length && typeof dtItems[0].getAsFileSystemHandle === "function") {
+    const handles = await Promise.all(dtItems.map(it => it.getAsFileSystemHandle()));
+    const dir = handles.find(h => h && h.kind === "directory");
+    if (dir) { loadFromHandle(dir); return; }
+  }
+  const entries = dtItems.map(it => it.webkitGetAsEntry && it.webkitGetAsEntry()).filter(Boolean);
+  const out = [];
+  const walk = async (entry, prefix) => {
+    if (entry.isFile) {
+      const f = await new Promise((res, rej) => entry.file(res, rej));
+      out.push({ file: f, path: prefix + f.name });
+    } else if (entry.isDirectory) {
+      const reader = entry.createReader();
+      let batch;
+      do {
+        batch = await new Promise((res, rej) => reader.readEntries(res, rej));
+        for (const child of batch) await walk(child, `${prefix}${entry.name}/`);
+      } while (batch.length);
+    }
+  };
+  setStatus("folder-status", "Collecting files…");
+  for (const entry of entries) await walk(entry, "");
+  state.rootHandle = null;
+  handleFolder(out);
+});
+
+/* ---------- results */
+function update() {
+  if (!state.catalog || !state.library) return;
+  const { owned, unmatched } = matchLibrary(state.catalog, state.library, state.personal.matchOverrides);
+  state.owned = owned;
+  state.unmatched = unmatched;
+  computeLayout();
+  state.limit = PAGE;
+  $("results").hidden = false;
+  $("await").hidden = true;
+
+  const total = state.catalog.length, have = owned.size;
+  const pct = total ? Math.round((have / total) * 1000) / 10 : 0;
+  $("meter-title").innerHTML = `You have ${fmt(have)} <span class="of">of ${fmt(total)} songs</span>`;
+  $("meter").setAttribute("aria-valuenow", pct);
+  $("meter").setAttribute("aria-label", `${pct}% of the catalog`);
+  requestAnimationFrame(() => { $("meter-fill").style.width = `${pct}%`; });
+
+  const cats = new Map();
+  state.catalog.forEach((s, i) => {
+    const c = cats.get(s.category) || { have: 0, total: 0 };
+    c.total++; if (owned.has(i)) c.have++;
+    cats.set(s.category, c);
+  });
+  $("cats").innerHTML = [...cats.entries()].sort((a, b) => b[1].total - a[1].total).map(([name, c]) => `
+    <div>
+      <div class="cat-name"><span>${esc(capital(name))}</span><span>${fmt(c.have)} / ${fmt(c.total)}</span></div>
+      <div class="cat-bar"><span style="width:${c.total ? (c.have / c.total) * 100 : 0}%"></span></div>
+    </div>`).join("");
+
+  renderNotices();
+  if (state.era !== null && !state.catalog.some(s => eraName(s) === state.era)) state.era = null;
+  buildFilterOptions();
+  renderEras();
+  renderTable();
+  renderPeople();
+  renderStats();
+  renderDuplicates();
+  renderTrivia();
+  renderExportPanel();
+  renderFixer();
+}
+
+function renderNotices() {
+  const notes = [];
+  const since = state.prevCheck ? ` since your last check on ${new Date(state.prevCheck).toLocaleDateString()}` : "";
+  if (state.releasedIds.size) {
+    const names = state.catalog.filter(s => state.releasedIds.has(s.id)).map(s => s.name);
+    const shown = names.slice(0, 4).map(esc).join(", ") + (names.length > 4 ? `, and ${fmt(names.length - 4)} more` : "");
+    notes.push(`<p class="notice released"><strong>Now officially released${esc(since)}:</strong> ${shown}. The Now released tab has links to find them on Apple Music and Spotify.</p>`);
+  }
+  if (state.newIds.size) {
+    notes.push(`<p class="notice">${plural(state.newIds.size, "song was", "songs were")} added to the catalog${esc(since)}. See the New tab.</p>`);
+  }
+  if (state.firstCheck === true) {
+    notes.push(`<p class="notice">This is your first check. Next time you load the catalog, newly added songs and songs that get officially released will be flagged here.</p>`);
+  } else if (state.firstCheck === null) {
+    notes.push(`<p class="notice">This browser isn't saving data for this page (a private window can cause this), so new songs and releases can't be tracked between visits.</p>`);
+  } else if (state.prevCheck && !state.newIds.size && !state.releasedIds.size) {
+    notes.push(`<p class="notice">No new songs or releases${esc(since)}.</p>`);
+  }
+  $("notices").innerHTML = notes.join("");
+}
+
+/* ---------- links to the song's page on juicewrldapi.com ---------- */
+function defaultSongLink() { return "https://juicewrldapi.com/player?song={id}&playlist={id}"; }
+function slugify(name) {
+  return String(name).toLowerCase().normalize("NFKD").replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+}
+function songUrl(song) {
+  const t = state.personal.linkTemplate || defaultSongLink();
+  return t.replace(/\{public_id\}/g, encodeURIComponent(song.publicId || song.id))
+    .replace(/\{id\}/g, encodeURIComponent(song.id))
+    .replace(/\{slug\}/g, slugify(song.name))
+    .replace(/\{name\}/g, encodeURIComponent(song.name));
+}
+const SITE_ICON = `<svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true" focusable="false"><path d="M6.5 3h-3A1.5 1.5 0 0 0 2 4.5v8A1.5 1.5 0 0 0 3.5 14h8a1.5 1.5 0 0 0 1.5-1.5v-3" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/><path d="M9.5 2.5H14V7M13.6 2.9 7.4 9.1" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+function siteLink(song, text) {
+  return `<a class="${text ? "site-link" : "ext"}" href="${esc(songUrl(song))}" target="_blank" rel="noopener"${text ? "" : ` aria-label="Play ${esc(song.name)} on juicewrldapi.com"`} title="${text ? "Open this song on juicewrldapi.com" : "Play on juicewrldapi.com"}">${SITE_ICON}${text ? `<span>${text}</span>` : ""}</a>`;
+}
+function fileUrl(song) {
+  return song.filePath ? `https://juicewrldapi.com/juicewrld/files/download/?path=${encodeURIComponent(song.filePath)}` : "";
+}
+function fileLink(song, text) {
+  const href = fileUrl(song);
+  if (!href) return "";
+  const label = text || "File";
+  const folder = saveFolder(song);
+  const tip = `Opens the file on juicewrldapi.com. Save it from your browser${folder ? ` into ${folder}/` : ""}.`;
+  return `<a class="${text ? "site-link" : "find"}" href="${esc(href)}" target="_blank" rel="noopener" title="${esc(tip)}">${text ? SITE_ICON : ""}<span>${esc(label)}</span></a>`;
+}
+
+/* ---------- where a missing song should be saved in your music folder ---------- */
+function safeName(s) {
+  return String(s).replace(/[\\/:*?"<>|\u0000-\u001f]/g, "").replace(/\s+/g, " ").trim().replace(/[. ]+$/, "") || "Unknown";
+}
+function mostCommon(counts) { let best = null, n = 0; for (const [k, c] of counts) if (c > n) { best = k; n = c; } return best; }
+/**
+ * Learns how the library is laid out from the files that already matched:
+ * where each era's songs live, whether folders are named after eras, and where most Juice WRLD files sit.
+ */
+function computeLayout() {
+  const perEra = new Map(), parents = new Map();
+  const bump = (m, k) => m.set(k, (m.get(k) || 0) + 1);
+  state.owned.forEach((files, i) => {
+    const era = eraName(state.catalog[i]);
+    for (const f of files) {
+      if (f.songs.length !== 1 || f.fuzzy) continue;
+      const p = parentOf(f.path);
+      if (!p) continue;
+      if (!perEra.has(era)) perEra.set(era, new Map());
+      bump(perEra.get(era), p);
+      bump(parents, p);
+    }
+  });
+  const byEra = new Map([...perEra].map(([e, m]) => [e, mostCommon(m)]));
+  const roots = new Map();
+  let eraLike = 0;
+  byEra.forEach((folder, era) => {
+    const a = normalize(baseName(folder)), b = normalize(era);
+    if (a && b && (a === b || a.includes(b) || b.includes(a))) { eraLike++; bump(roots, parentOf(folder)); }
+  });
+  const rootName = (state.library && state.library[0] ? state.library[0].path.split("/")[0] : "") || "Music";
+  state.layout = {
+    byEra,
+    eraRoot: eraLike && eraLike >= byEra.size / 2 ? mostCommon(roots) : null,
+    topParent: mostCommon(parents),
+    fallback: `${rootName}/Juice WRLD`,
+  };
+}
+function saveFolder(song) {
+  const L = state.layout;
+  if (!L) return "";
+  const era = eraName(song);
+  if (L.byEra.has(era)) return L.byEra.get(era);
+  if (L.eraRoot !== null) return L.eraRoot ? `${L.eraRoot}/${safeName(era)}` : safeName(era);
+  if (L.topParent) return L.topParent;
+  return `${L.fallback}/${safeName(era)}`;
+}
+function saveFileName(song) { return song.filePath ? baseName(song.filePath) : `${safeName(song.name)}.mp3`; }
+/** Turns a pasted song page address into a reusable template by spotting the id or title in it. */
+function deriveTemplate(url, songs) {
+  const raw = url.trim();
+  if (!raw) return "";
+  if (/\{(id|slug|name)\}/.test(raw)) return raw;
+  if (!/^https?:\/\//i.test(raw)) throw new Error("That doesn't look like a web address. Copy the whole address, starting with https://");
+  const decoded = decodeURI(raw);
+  const findNumber = (value, token) => {
+    if (!value) return null;
+    const v = String(value);
+    const pattern = new RegExp(`(^|[/=?&#-])${v.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?=$|[/?&#])`, "g");
+    if (!pattern.test(decoded)) return null;
+    pattern.lastIndex = 0;
+    return decoded.replace(pattern, (_, lead) => lead + token);
+  };
+  for (const song of songs) {
+    const byId = findNumber(song.id, "{id}");
+    if (byId) return byId;
+    const byPublic = song.publicId && song.publicId !== String(song.id) ? findNumber(song.publicId, "{public_id}") : null;
+    if (byPublic) return byPublic;
+    const slug = slugify(song.name);
+    if (slug.length > 3 && decoded.toLowerCase().includes(slug)) {
+      const at = decoded.toLowerCase().indexOf(slug);
+      return decoded.slice(0, at) + "{slug}" + decoded.slice(at + slug.length);
+    }
+  }
+  throw new Error("Couldn't find a song name or ID in that address. Open a song you have in the list, then copy its address.");
+}
+function renderLinkSetting() {
+  const input = $("song-link-template");
+  if (document.activeElement !== input) input.value = state.personal.linkTemplate || "";
+  input.placeholder = defaultSongLink();
+  const sample = state.catalog && state.catalog[0];
+  const test = $("song-link-test");
+  test.hidden = !sample;
+  if (sample) {
+    test.href = songUrl(sample);
+    test.textContent = `Test with “${sample.name}”`;
+  }
+
+}
+$("song-link-template").addEventListener("change", e => {
+  try {
+    const t = deriveTemplate(e.target.value, state.catalog || []);
+    state.personal.linkTemplate = t;
+    savePersonal();
+    e.target.value = t;
+    setStatus("song-link-status", t ? "Saved. Every song link now uses this address." : "Back to the default address.");
+    renderLinkSetting();
+    if (state.catalog && state.library) renderTable();
+  } catch (err) {
+    setStatus("song-link-status", err.message, true);
+  }
+});
+$("song-link-reset").addEventListener("click", () => {
+  state.personal.linkTemplate = "";
+  savePersonal();
+  setStatus("song-link-status", "Back to the default address.");
+  renderLinkSetting();
+  if (state.catalog && state.library) renderTable();
+});
+
+function findLinks(song) {
+  const q = encodeURIComponent(`Juice WRLD ${song.name}`);
+  return `<span class="find">Find on <a href="https://music.apple.com/us/search?term=${q}" target="_blank" rel="noopener">Apple Music</a> or <a href="https://open.spotify.com/search/${q}" target="_blank" rel="noopener">Spotify</a></span>`;
+}
+
+function searchText(song) {
+  return [song.name, ...song.alt, song.era, song.category, song.producers, song.artists, song.engineers, noteOf(song)].map(normalize).join(" | ");
+}
+function eraRows() {
+  const f = state.filters;
+  const q = { producer: normalize(f.producer), artist: normalize(f.artist), engineer: normalize(f.engineer), studio: normalize(f.studio) };
+  const anyName = (names, needle, role) => !needle || names.some(n => (state.exact[role] ? n === needle : n.includes(needle)));
+  return state.catalog.map((song, i) => ({ song, i })).filter(({ song, i }) => {
+    if (state.era !== null && eraName(song) !== state.era) return false;
+    if (f.category && song.category !== f.category) return false;
+    const d = state.derived[i] || deriveSong(song);
+    if (!anyName(d.producersN, q.producer, "producer") || !anyName(d.artistsN, q.artist, "artist") || !anyName(d.engineersN, q.engineer, "engineer")) return false;
+    if (!anyName(d.studiosN, q.studio, "studio")) return false;
+    if (f.recYear && !d.recYears.has(Number(f.recYear))) return false;
+    if (f.relYear && d.relYear !== Number(f.relYear)) return false;
+    return true;
+  });
+}
+function rowsForTab() {
+  const q = normalize(state.query);
+  if (state.tab === "unmatched") return state.unmatched.filter(f => !q || normalize(`${f.title} ${f.path}`).includes(q));
+  return eraRows()
+    .filter(({ song, i }) =>
+      state.tab === "all" ||
+      (state.tab === "have" && state.owned.has(i)) ||
+      (state.tab === "missing" && !state.owned.has(i)) ||
+      (state.tab === "new" && state.newIds.has(song.id)) ||
+      (state.tab === "released" && state.releasedIds.has(song.id)) ||
+      (state.tab === "wishlist" && isWished(song)))
+    .filter(({ song }) => !q || searchText(song).includes(q))
+    .sort((a, b) => a.song.name.localeCompare(b.song.name));
+}
+
+const TAB_LABELS = { all: "All songs", have: "In your library", missing: "Not in your library", wishlist: "Wishlist", new: "New", released: "Now released", unmatched: "Unmatched files" };
+function renderTable() {
+  syncFilters();
+  const base = eraRows();
+  const haveCount = base.filter(r => state.owned.has(r.i)).length;
+  const counts = {
+    all: base.length, have: haveCount, missing: base.length - haveCount,
+    new: base.filter(r => state.newIds.has(r.song.id)).length,
+    released: base.filter(r => state.releasedIds.has(r.song.id)).length,
+    wishlist: base.filter(r => isWished(r.song)).length,
+    unmatched: state.unmatched.length,
+  };
+  $("tabs").innerHTML = Object.keys(TAB_LABELS).map(k =>
+    `<button type="button" data-tab="${k}" aria-pressed="${state.tab === k}">${TAB_LABELS[k]} <span class="count">${fmt(counts[k])}</span></button>`).join("");
+  $("links-btn").disabled = state.tab === "unmatched" || state.tab === "have";
+
+  const rows = rowsForTab();
+  const shown = rows.slice(0, state.limit);
+  const table = $("table");
+  if (state.tab === "unmatched") {
+    table.innerHTML = `<thead><tr><th>Title used for matching</th><th>File</th></tr></thead><tbody>${
+      shown.map(f => `<tr><td>${esc(f.title)}<span class="alt">${f.fromTags ? "From tags" : "From file name"}</span></td><td class="file">${esc(f.path)}</td></tr>`).join("")}</tbody>`;
+  } else {
+    table.innerHTML = `<thead><tr><th>Song</th><th class="hide-sm">Era</th><th class="hide-sm">Category</th><th class="hide-sm">Length</th><th>Status</th></tr></thead><tbody>${
+      shown.map(({ song, i }) => {
+        const files = state.owned.get(i);
+        const status = files
+          ? `<span class="st have">In library</span><span class="file">${esc(baseName(files[0].path))}${files.length > 1 ? ` and ${fmt(files.length - 1)} more` : ""}</span>`
+          : `<span class="st">Not in library</span>${fileLink(song)}${isReleased(song) ? findLinks(song) : ""}`;
+        const badges = (state.releasedIds.has(song.id) ? '<span class="badge released">Now released</span>' : "") + (state.newIds.has(song.id) ? '<span class="badge">New</span>' : "");
+        return `<tr>
+          <td>${wishButton(song, i)}<button type="button" class="song-link" data-song="${i}">${esc(song.name)}</button>${badges}${siteLink(song)}${song.alt.length ? `<span class="alt">Also known as ${esc(song.alt.join(", "))}</span>` : ""}${noteOf(song) ? `<span class="note-snippet">Note: ${esc(noteOf(song).length > 90 ? `${noteOf(song).slice(0, 90)}…` : noteOf(song))}</span>` : ""}</td>
+          <td class="hide-sm">${esc(song.era)}</td>
+          <td class="hide-sm">${esc(capital(song.category))}</td>
+          <td class="len hide-sm">${esc(song.length)}</td>
+          <td>${status}</td></tr>`;
+      }).join("")}</tbody>`;
+  }
+  if (!rows.length) {
+    const empty = {
+      new: "No new songs to show.",
+      released: "No songs have moved to released since your last check.",
+      unmatched: "Every file matched a catalog song.",
+      wishlist: "Your wishlist is empty. Click the star next to any song to add it.",
+      have: "None of your files matched yet. Check the Unmatched files tab to see which titles were read.",
+    }[state.tab] || "No songs to show.";
+    const filtered = state.tab !== "unmatched" && activeFilterCount() > 0;
+    table.innerHTML = `<tbody><tr><td class="empty">${state.query ? "No songs match your search." : filtered ? "No songs match these filters." : empty}</td></tr></tbody>`;
+  }
+  const more = $("more-btn");
+  more.hidden = rows.length <= state.limit;
+  more.textContent = `Show ${fmt(Math.min(PAGE, rows.length - state.limit))} more`;
+}
+
+
+/* ---------- advanced filters */
+function yearsIn(text) {
+  const t = String(text || "");
+  const out = new Set([...t.matchAll(/\b(?:19|20)\d{2}\b/g)].map(m => Number(m[0])));
+  for (const m of t.matchAll(/\b((?:19|20)\d{2})\s*(?:-|–|—|to)\s*((?:19|20)\d{2})\b/g)) {
+    const a = Number(m[1]), b = Number(m[2]);
+    if (b > a && b - a <= 6) for (let y = a; y <= b; y++) out.add(y);
+  }
+  return out;
+}
+function splitStudios(text) {
+  return String(text || "").split(/\s*(?:;|\n|\||\/)\s*/).map(x => x.trim()).filter(hasValue)
+    .filter((x, i, arr) => arr.findIndex(y => y.toLowerCase() === x.toLowerCase()) === i);
+}
+function deriveSong(song) {
+  const producers = splitNames(song.producers), artists = splitNames(song.artists), engineers = splitNames(song.engineers), studios = splitStudios(song.locations);
+  const rel = yearOf(song.release);
+  return {
+    producers, artists, engineers, studios,
+    producersN: producers.map(normalize), artistsN: artists.map(normalize), engineersN: engineers.map(normalize), studiosN: studios.map(normalize),
+    recYears: yearsIn(song.recordDates), relYear: rel ? Number(rel) : null,
+  };
+}
+function rebuildDerived() { state.derived = state.catalog.map(deriveSong); }
+
+function countNames(key, skip) {
+  const counts = new Map();
+  state.derived.forEach(d => {
+    for (const n of d[key]) {
+      if (skip && skip(n)) continue;
+      const k = n.toLowerCase();
+      const c = counts.get(k) || { name: n, n: 0 };
+      c.n++; counts.set(k, c);
+    }
+  });
+  return [...counts.values()].sort((a, b) => b.n - a.n || a.name.localeCompare(b.name));
+}
+function buildFilterOptions() {
+  rebuildDerived();
+  const opt = (value, label) => `<option value="${esc(value)}">${esc(label)}</option>`;
+  $("f-era").innerHTML = opt("", "Any era") + eraStats().map(e => opt(e.name, `${e.name} (${fmt(e.total)})`)).join("");
+  const cats = new Map();
+  state.catalog.forEach(s => cats.set(s.category, (cats.get(s.category) || 0) + 1));
+  $("f-category").innerHTML = opt("", "Any category") + [...cats.entries()].sort((a, b) => b[1] - a[1])
+    .map(([c, n]) => opt(c, `${capital(c)} (${fmt(n)})`)).join("");
+  const years = pick => {
+    const m = new Map();
+    state.derived.forEach(d => pick(d).forEach(y => m.set(y, (m.get(y) || 0) + 1)));
+    return [...m.entries()].sort((a, b) => a[0] - b[0]);
+  };
+  const recYears = years(d => d.recYears), relYears = years(d => (d.relYear ? [d.relYear] : []));
+  $("f-recYear").innerHTML = opt("", "Any year") + recYears.map(([y, n]) => opt(y, `${y} (${fmt(n)})`)).join("");
+  $("f-relYear").innerHTML = opt("", "Any year") + relYears.map(([y, n]) => opt(y, `${y} (${fmt(n)})`)).join("");
+  const dl = (id, list) => { $(id).innerHTML = list.slice(0, 400).map(c => `<option value="${esc(c.name)}"></option>`).join(""); };
+  dl("dl-producer", countNames("producers"));
+  dl("dl-artist", countNames("artists", n => hasArtist(n)));
+  dl("dl-engineer", countNames("engineers"));
+  dl("dl-studio", countNames("studios"));
+  // Drop selections that don't exist in this catalog
+  if (state.filters.category && !cats.has(state.filters.category)) state.filters.category = "";
+  if (state.filters.recYear && !recYears.some(([y]) => String(y) === state.filters.recYear)) state.filters.recYear = "";
+  if (state.filters.relYear && !relYears.some(([y]) => String(y) === state.filters.relYear)) state.filters.relYear = "";
+}
+
+const FILTER_LABELS = { category: "Category", producer: "Producer", artist: "Artist", engineer: "Engineer", studio: "Studio", recYear: "Recorded in", relYear: "Released in" };
+function activeFilterCount() { return Object.values(state.filters).filter(v => String(v).trim()).length + (state.era !== null ? 1 : 0); }
+function syncFilters() {
+  const setVal = (id, v) => { const el = $(id); if (el !== document.activeElement && el.value !== v) el.value = v; };
+  setVal("f-era", state.era ?? "");
+  for (const k of Object.keys(state.filters)) setVal(`f-${k}`, state.filters[k]);
+  const n = activeFilterCount();
+  $("filters-btn").textContent = n ? `Filters (${n})` : "Filters";
+  const chips = [];
+  if (state.era !== null) chips.push({ key: "era", label: `Era: ${state.era}` });
+  for (const [k, raw] of Object.entries(state.filters)) {
+    const v = String(raw).trim();
+    if (v) chips.push({ key: k, label: `${FILTER_LABELS[k]}: ${k === "category" ? capital(v) : v}` });
+  }
+  const box = $("active-filters");
+  box.hidden = !chips.length;
+  box.innerHTML = chips.map(c => `<button type="button" class="chip" data-clear="${c.key}" aria-label="Remove filter ${esc(c.label)}">${esc(c.label)} <span class="x" aria-hidden="true">×</span></button>`).join("")
+    + (chips.length > 1 ? `<button type="button" class="ghost small" data-clear="all">Clear all</button>` : "");
+}
+function applyFilters() {
+  state.limit = PAGE;
+  renderTable();
+  if (state.people.scoped) renderPeople();
+  if (state.stats.scoped) renderStats();
+}
+function clearFilters() {
+  for (const k of Object.keys(state.filters)) state.filters[k] = "";
+  state.exact = {};
+  if (state.era !== null) { state.era = null; renderEras(); }
+  applyFilters();
+}
+/** Used by credit buttons and the explorer: show every song for exactly one person or studio. */
+function filterToPerson(role, name) {
+  for (const k of Object.keys(state.filters)) state.filters[k] = "";
+  state.filters[role] = name;
+  state.exact = { [role]: true };
+  state.era = null;
+  state.tab = "all";
+  state.query = "";
+  $("search").value = "";
+  renderEras();
+  applyFilters();
+}
+
+$("filters-btn").addEventListener("click", () => {
+  const panel = $("filters"), open = panel.hidden;
+  panel.hidden = !open;
+  $("filters-btn").setAttribute("aria-expanded", String(open));
+  if (open) $("f-era").focus();
+});
+$("filters-clear").addEventListener("click", clearFilters);
+$("f-era").addEventListener("change", e => selectEra(e.target.value === "" ? null : e.target.value, { scroll: false }));
+for (const k of ["category", "recYear", "relYear"]) $(`f-${k}`).addEventListener("change", e => { state.filters[k] = e.target.value; applyFilters(); });
+let filterTimer = null;
+for (const k of ["producer", "artist", "engineer", "studio"]) {
+  $(`f-${k}`).addEventListener("input", e => {
+    state.filters[k] = e.target.value;
+    delete state.exact[k];
+    clearTimeout(filterTimer);
+    filterTimer = setTimeout(applyFilters, 160);
+  });
+}
+$("active-filters").addEventListener("click", e => {
+  const b = e.target.closest("button[data-clear]");
+  if (!b) return;
+  const key = b.dataset.clear;
+  if (key === "all") clearFilters();
+  else if (key === "era") selectEra(null, { scroll: false });
+  else { state.filters[key] = ""; delete state.exact[key]; applyFilters(); }
+  ($("active-filters").querySelector("button[data-clear]") || $("filters-btn")).focus({ preventScroll: true });
+});
+
+/* ---------- producer and collaborator explorer */
+const PEOPLE_ROLES = {
+  producers: { label: "Producers", filter: "producer", one: "producer", many: "producers" },
+  artists: { label: "Artists and features", filter: "artist", one: "artist", many: "artists" },
+  engineers: { label: "Engineers", filter: "engineer", one: "engineer", many: "engineers" },
+  studios: { label: "Studios", filter: "studio", one: "studio", many: "studios" },
+};
+const PEOPLE_PAGE = 15;
+
+function peopleIndex(role, indices) {
+  const map = new Map();
+  for (const i of indices) {
+    const d = state.derived[i];
+    if (!d) continue;
+    for (const name of d[role]) {
+      if (role === "artists" && hasArtist(name)) continue;
+      const key = name.toLowerCase();
+      if (!map.has(key)) map.set(key, { key, name, songs: [] });
+      map.get(key).songs.push(i);
+    }
+  }
+  return [...map.values()].sort((a, b) => b.songs.length - a.songs.length || a.name.localeCompare(b.name));
+}
+function scopeIndices() {
+  return state.people.scoped ? eraRows().map(r => r.i) : state.catalog.map((_, i) => i);
+}
+
+function personDetails(person, role) {
+  const songs = person.songs.map(i => state.catalog[i]);
+  const years = new Set();
+  person.songs.forEach(i => state.derived[i].recYears.forEach(y => years.add(y)));
+  const ys = [...years].sort((a, b) => a - b);
+  const eras = new Map(), cats = new Map();
+  songs.forEach(s => {
+    eras.set(eraName(s), (eras.get(eraName(s)) || 0) + 1);
+    cats.set(s.category, (cats.get(s.category) || 0) + 1);
+  });
+  const eraOrder = new Map(eraStats().map((e, n) => [e.name, n]));
+  const collab = new Map();
+  person.songs.forEach(i => {
+    const d = state.derived[i];
+    for (const r of ["producers", "artists", "engineers"]) {
+      for (const n of d[r]) {
+        const k = n.toLowerCase();
+        if (k === person.key || hasArtist(n)) continue;
+        const c = collab.get(k) || { name: n, n: 0, roles: {} };
+        c.n++; c.roles[r] = (c.roles[r] || 0) + 1;
+        collab.set(k, c);
+      }
+    }
+  });
+  const collaborators = [...collab.values()].sort((a, b) => b.n - a.n || a.name.localeCompare(b.name)).slice(0, 10)
+    .map(c => ({ ...c, role: Object.entries(c.roles).sort((a, b) => b[1] - a[1])[0][0] }));
+
+  const firstLast = ys.length ? (ys[0] === ys[ys.length - 1] ? String(ys[0]) : `${ys[0]} to ${ys[ys.length - 1]}`) : "";
+  return `
+    <div class="person-detail">
+      <p>${firstLast ? `Recorded ${firstLast}. ` : ""}<span class="muted">${[...cats.entries()].sort((a, b) => b[1] - a[1]).map(([c, n]) => `${esc(capital(c))}: ${fmt(n)}`).join(". ")}.</span></p>
+      <h4>Eras</h4>
+      <p class="chips">${[...eras.entries()].sort((a, b) => (eraOrder.get(a[0]) ?? 1e9) - (eraOrder.get(b[0]) ?? 1e9))
+        .map(([e, n]) => `<span class="chip static">${esc(e)} <span class="muted">${fmt(n)}</span></span>`).join("")}</p>
+      ${role !== "studios" && collaborators.length ? `<h4>Often worked with</h4><p class="chips">${collaborators.map(c =>
+        `<button type="button" class="chip" data-person="${esc(c.name)}" data-person-role="${c.role}" title="${esc(PEOPLE_ROLES[c.role].one)}">${esc(c.name)} <span class="muted">${fmt(c.n)}</span></button>`).join("")}</p>` : ""}
+      ${role === "studios" && collaborators.length ? `<h4>Worked here most</h4><p class="chips">${collaborators.map(c =>
+        `<button type="button" class="chip" data-person="${esc(c.name)}" data-person-role="${c.role}">${esc(c.name)} <span class="muted">${fmt(c.n)}</span></button>`).join("")}</p>` : ""}
+      <button type="button" class="small" data-show-songs="${esc(person.name)}">Show ${role === "studios" ? "songs recorded here" : "their songs"}</button>
+    </div>`;
+}
+
+function renderPeople() {
+  if (!state.catalog || !state.library) return;
+  const P = state.people;
+  const indices = scopeIndices();
+  const lists = Object.fromEntries(Object.keys(PEOPLE_ROLES).map(r => [r, peopleIndex(r, indices)]));
+  const top = lists.producers[0];
+  $("people-sub").textContent = top ? ` Top producer: ${top.name}, ${plural(top.songs.length, "song", "songs")}` : " No producer credits in the catalog";
+
+  $("people-roles").innerHTML = Object.entries(PEOPLE_ROLES).map(([r, info]) =>
+    `<button type="button" data-role-tab="${r}" aria-pressed="${P.role === r}">${info.label} <span class="count">${fmt(lists[r].length)}</span></button>`).join("");
+
+  const q = normalize(P.q);
+  const all = lists[P.role].map((p, n) => ({ ...p, rank: n + 1 }));
+  const list = q ? all.filter(p => normalize(p.name).includes(q)) : all;
+  const max = all[0]?.songs.length || 1;
+  const shown = list.slice(0, P.limit);
+  const box = $("people-list");
+  if (!list.length) {
+    box.innerHTML = `<p class="empty">${all.length ? "Nobody matches that name." : `No ${PEOPLE_ROLES[P.role].many} are credited${P.scoped ? " in the songs matching your filters" : ""}.`}</p>`;
+  } else {
+    box.innerHTML = `<ol class="people">${shown.map(p => {
+      const open = P.open === `${P.role}:${p.key}`;
+      const owned = p.songs.filter(i => state.owned.has(i)).length;
+      const id = `person-${P.role}-${p.rank}`;
+      return `<li>
+        <button type="button" class="person-row" data-open="${esc(p.key)}" aria-expanded="${open}" aria-controls="${id}">
+          <span class="rank">${fmt(p.rank)}</span>
+          <span class="person-main">
+            <span class="person-name">${esc(p.name)}</span>
+            <span class="person-bar"><span style="width:${(p.songs.length / max) * 100}%"></span></span>
+          </span>
+          <span class="person-count"><strong>${fmt(p.songs.length)}</strong> <span class="muted">${p.songs.length === 1 ? "song" : "songs"}</span><span class="own">You have ${fmt(owned)}</span></span>
+        </button>
+        <div id="${id}" ${open ? "" : "hidden"}>${open ? personDetails(p, P.role) : ""}</div>
+      </li>`;
+    }).join("")}</ol>`;
+  }
+  const more = $("people-more");
+  more.hidden = list.length <= P.limit;
+  more.textContent = `Show ${fmt(Math.min(30, list.length - P.limit))} more`;
+}
+
+function openPerson(role, name) {
+  const P = state.people;
+  P.role = role;
+  P.q = "";
+  $("people-search").value = "";
+  const key = name.toLowerCase();
+  P.open = `${role}:${key}`;
+  const list = peopleIndex(role, scopeIndices());
+  const pos = list.findIndex(p => p.key === key);
+  if (pos >= P.limit) P.limit = pos + 1;
+  renderPeople();
+  const row = document.querySelector(`#people-list button[data-open="${CSS.escape(key)}"]`);
+  if (row) { row.focus({ preventScroll: true }); row.scrollIntoView({ behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: "nearest" }); }
+}
+
+$("people-roles").addEventListener("click", e => {
+  const b = e.target.closest("button[data-role-tab]");
+  if (!b) return;
+  Object.assign(state.people, { role: b.dataset.roleTab, limit: PEOPLE_PAGE, open: null });
+  renderPeople();
+});
+$("people-search").addEventListener("input", e => { state.people.q = e.target.value; state.people.limit = PEOPLE_PAGE; renderPeople(); });
+$("people-scoped").addEventListener("change", e => { state.people.scoped = e.target.checked; state.people.open = null; renderPeople(); });
+$("people-more").addEventListener("click", () => { state.people.limit += 30; renderPeople(); });
+$("people-list").addEventListener("click", e => {
+  const P = state.people;
+  const row = e.target.closest("button[data-open]");
+  if (row) {
+    const id = `${P.role}:${row.dataset.open}`;
+    P.open = P.open === id ? null : id;
+    renderPeople();
+    document.querySelector(`#people-list button[data-open="${CSS.escape(row.dataset.open)}"]`)?.focus({ preventScroll: true });
+    return;
+  }
+  const collab = e.target.closest("button[data-person]");
+  if (collab) { openPerson(collab.dataset.personRole, collab.dataset.person); return; }
+  const show = e.target.closest("button[data-show-songs]");
+  if (show) {
+    filterToPerson(PEOPLE_ROLES[P.role].filter, show.dataset.showSongs);
+    $("tabs").scrollIntoView({ behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: "center" });
+    ($("active-filters").querySelector("button[data-clear]"))?.focus({ preventScroll: true });
+  }
+});
+
+/* ---------- stats dashboard */
+const KNOWN_CAT_COLORS = { released: "var(--have)", unreleased: "var(--lavender)", unsurfaced: "var(--new)" };
+const EXTRA_CAT_COLORS = ["#7cc4f2", "#e6b3f2", "#9fb4c7", "#f2c29b", "var(--missing)"];
+function categoryColors() {
+  const cats = new Map();
+  state.catalog.forEach(s => cats.set(s.category, (cats.get(s.category) || 0) + 1));
+  const colors = {};
+  let extra = 0;
+  [...cats.entries()].sort((a, b) => b[1] - a[1]).forEach(([c]) => {
+    colors[c] = KNOWN_CAT_COLORS[c.toLowerCase()] || EXTRA_CAT_COLORS[extra++ % EXTRA_CAT_COLORS.length];
+  });
+  return colors;
+}
+const capital = c => (String(c).charAt(0).toUpperCase() + String(c).slice(1)).replace(/_/g, " ");
+const pct = (n, d) => (d ? Math.round((n / d) * 100) : 0);
+function legend(items) {
+  return `<div class="legend">${items.map(([label, color]) => `<span><i style="background:${color}"></i>${esc(label)}</span>`).join("")}</div>`;
+}
+function yearSpan(counts) {
+  const ys = [...counts.keys()].sort((a, b) => a - b);
+  if (!ys.length) return [];
+  const out = [];
+  if (ys[ys.length - 1] - ys[0] > 40) return ys;
+  for (let y = ys[0]; y <= ys[ys.length - 1]; y++) out.push(y);
+  return out;
+}
+
+function renderStats() {
+  if (!state.catalog || !state.library) return;
+  const all = state.catalog.map((_, i) => i);
+  const indices = state.stats.scoped ? eraRows().map(r => r.i) : all;
+  const eraCount = new Set(state.catalog.map(eraName)).size;
+  $("stats-sub").textContent = ` ${plural(state.catalog.length, "song", "songs")} across ${plural(eraCount, "era", "eras")}`;
+  if (!$("stats").open) return;
+
+  const colors = categoryColors();
+  const total = indices.length;
+  const have = indices.filter(i => state.owned.has(i)).length;
+  const recYears = new Set();
+  let released = 0, surfaced = 0;
+  indices.forEach(i => {
+    state.derived[i].recYears.forEach(y => recYears.add(y));
+    if (isReleased(state.catalog[i])) released++;
+    if (hasValue(state.catalog[i].leakDate)) surfaced++;
+  });
+  const ry = [...recYears].sort((a, b) => a - b);
+  $("stats-summary").innerHTML = total
+    ? `${state.stats.scoped && activeFilterCount() ? "Matching your filters: " : ""}<strong>${fmt(total)}</strong> ${total === 1 ? "song" : "songs"}${ry.length ? `, recorded ${ry[0] === ry[ry.length - 1] ? ry[0] : `${ry[0]} to ${ry[ry.length - 1]}`}` : ""}. You have <strong>${fmt(have)}</strong> (${pct(have, total)}%). ${fmt(released)} officially released${surfaced ? `, ${fmt(surfaced)} with a surfaced date` : ""}.`
+    : "No songs match your current filters.";
+
+  /* Songs per era */
+  const eras = eraStats().map(e => ({ name: e.name, total: 0, have: 0, cats: new Map() }));
+  const byName = new Map(eras.map(e => [e.name, e]));
+  indices.forEach(i => {
+    const s = state.catalog[i], e = byName.get(eraName(s));
+    e.total++;
+    if (state.owned.has(i)) e.have++;
+    e.cats.set(s.category, (e.cats.get(s.category) || 0) + 1);
+  });
+  const shownEras = eras.filter(e => e.total);
+  const maxEra = Math.max(1, ...shownEras.map(e => e.total));
+  const libraryMode = state.stats.eraMode === "library";
+  const catOrder = Object.keys(colors);
+  $("stats-era-legend").innerHTML = libraryMode
+    ? legend([["In your library", "var(--have)"], ["Not in your library", "var(--line)"]])
+    : legend(catOrder.map(c => [capital(c), colors[c]]));
+  $("stats-eras").innerHTML = shownEras.length ? shownEras.map(e => {
+    const segs = libraryMode
+      ? [["In your library", e.have, "var(--have)"], ["Not in your library", e.total - e.have, "var(--line)"]]
+      : catOrder.filter(c => e.cats.get(c)).map(c => [capital(c), e.cats.get(c), colors[c]]);
+    const label = `${e.name}: ${plural(e.total, "song", "songs")}. ${segs.map(([l, n]) => `${l} ${fmt(n)}`).join(", ")}.`;
+    return `<button type="button" class="hbar-row" data-stats-era="${esc(e.name)}" aria-label="${esc(label)} Show this era." title="${esc(label)}">
+      <span class="hbar-label">${esc(e.name)}</span>
+      <span class="hbar-track"><span class="hbar-fill" style="width:${(e.total / maxEra) * 100}%">${
+        segs.filter(([, n]) => n).map(([, n, c]) => `<span style="flex:${n} 0 0;background:${c}"></span>`).join("")}</span></span>
+      <span class="hbar-val">${libraryMode ? `${fmt(e.have)} / ${fmt(e.total)}` : fmt(e.total)}</span>
+    </button>`;
+  }).join("") : `<p class="empty">No songs to chart.</p>`;
+
+  /* Recordings by year */
+  const years = new Map();
+  indices.forEach(i => state.derived[i].recYears.forEach(y => {
+    const c = years.get(y) || { total: 0, have: 0 };
+    c.total++; if (state.owned.has(i)) c.have++;
+    years.set(y, c);
+  }));
+  const yList = yearSpan(years);
+  const maxYear = Math.max(1, ...[...years.values()].map(c => c.total));
+  $("stats-years").innerHTML = yList.length ? `<div class="vbars">${yList.map(y => {
+    const c = years.get(y) || { total: 0, have: 0 };
+    const label = `${y}: ${plural(c.total, "song", "songs")} recorded, ${fmt(c.have)} in your library.`;
+    return `<button type="button" class="vbar" data-stats-year="${y}" ${c.total ? "" : "disabled"} aria-label="${esc(label)}${c.total ? " Filter to this year." : ""}" title="${esc(label)}">
+      <span class="vbar-area"><span class="vbar-val">${c.total ? fmt(c.total) : ""}</span><span class="vbar-stack" style="height:calc((100% - 20px) * ${c.total / maxYear})">
+        <span style="flex:${c.have} 0 0;background:var(--have)"></span><span style="flex:${c.total - c.have} 0 0;background:var(--lavender)"></span>
+      </span></span>
+      <span class="vbar-label">${y}</span>
+    </button>`;
+  }).join("")}</div>` : `<p class="empty">No recording dates to chart.</p>`;
+
+  /* Previews, leaks, and releases by year */
+  const series = [["Previewed", "previewDate", "var(--new)"], ["Surfaced", "leakDate", "var(--missing)"], ["Released", "release", "var(--have)"]];
+  const events = new Map();
+  indices.forEach(i => {
+    const s = state.catalog[i];
+    series.forEach(([, key], n) => {
+      const y = yearOf(s[key]);
+      if (!y || (key === "release" && !isReleased(s))) return;
+      const row = events.get(Number(y)) || [0, 0, 0];
+      row[n]++; events.set(Number(y), row);
+    });
+  });
+  const eList = yearSpan(events);
+  const maxEvent = Math.max(1, ...[...events.values()].flat());
+  const missingDetails = state.catalog.some(s => !s.hasDetails);
+  $("stats-surfaced").innerHTML = eList.length ? `${legend(series.map(([l, , c]) => [l, c]))}<div class="vbars grouped">${eList.map(y => {
+    const row = events.get(y) || [0, 0, 0];
+    const label = `${y}: ${series.map(([l], n) => `${l.toLowerCase()} ${fmt(row[n])}`).join(", ")}.`;
+    return `<div class="vbar" role="img" aria-label="${esc(label)}" title="${esc(label)}">
+      <span class="vbar-area group">${row.map((n, k) => `<span class="gbar" style="height:${(n / maxEvent) * 100}%;background:${series[k][2]}"><span class="gval">${n ? fmt(n) : ""}</span></span>`).join("")}</span>
+      <span class="vbar-label">${y}</span>
+    </div>`;
+  }).join("")}</div>${missingDetails ? `<p class="hint">Some preview and surfaced dates weren't saved in this browser. Click Reload catalog for the full picture.</p>` : ""}`
+    : `<p class="empty">No preview, surfaced, or release dates to chart.${missingDetails ? " Click Reload catalog to load them." : ""}</p>`;
+}
+
+$("stats").addEventListener("toggle", () => { if ($("stats").open) renderStats(); });
+$("stats-scoped").addEventListener("change", e => { state.stats.scoped = e.target.checked; renderStats(); });
+$("stats-era-mode").addEventListener("click", e => {
+  const b = e.target.closest("button[data-mode]");
+  if (!b) return;
+  state.stats.eraMode = b.dataset.mode;
+  $("stats-era-mode").querySelectorAll("button").forEach(x => x.setAttribute("aria-pressed", String(x === b)));
+  renderStats();
+});
+$("stats-eras").addEventListener("click", e => {
+  const b = e.target.closest("button[data-stats-era]");
+  if (b) selectEra(b.dataset.statsEra);
+});
+$("stats-years").addEventListener("click", e => {
+  const b = e.target.closest("button[data-stats-year]");
+  if (!b) return;
+  state.filters.recYear = b.dataset.statsYear;
+  state.tab = "all";
+  applyFilters();
+  $("tabs").scrollIntoView({ behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: "center" });
+});
+
+/* ---------- shared download helpers */
+function csvText(lines) {
+  const cell = v => `"${String(v ?? "").replace(/"/g, '""')}"`;
+  return "\ufeff" + lines.map(r => r.map(cell).join(",")).join("\r\n");
+}
+function downloadText(filename, text, type) {
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob([text], { type }));
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+}
+const today = () => new Date().toISOString().slice(0, 10);
+function formatSize(bytes) {
+  if (!bytes && bytes !== 0) return "";
+  if (bytes >= 1e9) return `${(bytes / 1e9).toFixed(2)} GB`;
+  if (bytes >= 1e6) return `${(bytes / 1e6).toFixed(1)} MB`;
+  return `${Math.max(1, Math.round(bytes / 1e3))} KB`;
+}
+
+/* ---------- wishlist and notes */
+const PERSONAL_KEY = "jw-collection-tracker-personal-v1";
+function readPersonal() {
+  try {
+    const d = JSON.parse(localStorage.getItem(PERSONAL_KEY)) || {};
+    return {
+      wish: d.wish || {}, notes: d.notes || {}, trivia: d.trivia || {}, linkTemplate: d.linkTemplate || "",
+      matchOverrides: d.matchOverrides || {}, opened: d.opened || {}, fixGenre: d.fixGenre || "",
+    };
+  } catch (e) {
+    return { wish: {}, notes: {}, trivia: {}, linkTemplate: "", matchOverrides: {}, opened: {}, fixGenre: "" };
+  }
+}
+state.personal = readPersonal();
+function savePersonal() {
+  try { localStorage.setItem(PERSONAL_KEY, JSON.stringify(state.personal)); return true; } catch (e) { return false; }
+}
+const isWished = song => Boolean(state.personal.wish[song.id]);
+const noteOf = song => state.personal.notes[song.id] || "";
+function toggleWish(song) {
+  if (isWished(song)) delete state.personal.wish[song.id];
+  else state.personal.wish[song.id] = new Date().toISOString();
+  savePersonal();
+}
+function wishButton(song, i) {
+  const on = isWished(song);
+  return `<button type="button" class="star" data-wish="${i}" aria-pressed="${on}" aria-label="${on ? "Remove" : "Add"} ${esc(song.name)} ${on ? "from" : "to"} your wishlist" title="${on ? "On your wishlist" : "Add to wishlist"}">${on ? "★" : "☆"}</button>`;
+}
+
+let noteTimer = null;
+function flushNote() {
+  if (noteTimer) { clearTimeout(noteTimer); noteTimer = null; savePersonal(); }
+}
+function personalSectionHtml(song) {
+  const on = isWished(song);
+  return `<h3 class="section-h">Your wishlist and notes</h3>
+    <button type="button" class="ghost small" id="card-wish" aria-pressed="${on}">${on ? "★ On your wishlist" : "☆ Add to wishlist"}</button>
+    <label class="visually-hidden" for="card-note">Your note about ${esc(song.name)}</label>
+    <textarea id="card-note" class="note-box" rows="3" placeholder="Add a note, like which version you're after or where you heard it">${esc(noteOf(song))}</textarea>
+    <p class="hint" id="card-note-status" aria-live="polite">Notes and your wishlist are saved in this browser.</p>`;
+}
+
+/* ---------- duplicate finder */
+const LOSSLESS = new Set(["flac", "wav", "aiff", "aif", "alac"]);
+function duplicateGroups() {
+  const groups = [];
+  state.owned.forEach((files, i) => {
+    const unique = [...new Map(files.map(f => [f.path, f])).values()];
+    if (unique.length > 1) groups.push({ i, title: state.catalog[i].name, files: unique });
+  });
+  const byKey = new Map();
+  state.unmatched.forEach(f => {
+    if (!f.key) return;
+    if (!byKey.has(f.key)) byKey.set(f.key, []);
+    byKey.get(f.key).push(f);
+  });
+  byKey.forEach(files => { if (files.length > 1) groups.push({ i: null, title: files[0].title, files }); });
+  groups.forEach(g => {
+    g.files = [...g.files].sort((a, b) => (b.size || 0) - (a.size || 0));
+    g.extra = g.files.slice(1).reduce((n, f) => n + (f.size || 0), 0);
+  });
+  return groups.sort((a, b) => b.files.length - a.files.length || b.extra - a.extra || a.title.localeCompare(b.title));
+}
+function renderDuplicates() {
+  if (!state.catalog || !state.library) return;
+  const groups = state.dupGroups = duplicateGroups();
+  const extra = groups.reduce((n, g) => n + g.extra, 0);
+  $("dup-sub").textContent = groups.length
+    ? ` ${plural(groups.length, "song has", "songs have")} more than one file`
+    : " No duplicates found";
+  if (!$("dups").open) return;
+  $("dup-summary").textContent = groups.length
+    ? `${plural(groups.length, "song", "songs")} with ${plural(groups.reduce((n, g) => n + g.files.length, 0), "file", "files")} in total. Extra copies use about ${formatSize(extra)}.`
+    : "Every song in your library has a single file.";
+  $("dup-export").hidden = !groups.length;
+  const shown = groups.slice(0, state.dupLimit);
+  $("dup-list").innerHTML = shown.map(g => {
+    const largest = g.files[0];
+    return `<div class="dup-group">
+      <div class="dup-head">
+        ${g.i !== null ? `<button type="button" class="song-link dup-title" data-song="${g.i}">${esc(g.title)}</button>` : `<span class="dup-title">${esc(g.title)}</span> <span class="badge cat">Not in catalog</span>`}
+        <span class="muted">${plural(g.files.length, "file", "files")}${g.extra ? `, extra copies ${formatSize(g.extra)}` : ""}</span>
+      </div>
+      <ul class="dup-files">${g.files.map(f => {
+        const folder = f.path.split("/").slice(0, -1).join("/");
+        const hints = [
+          f === largest && g.files.length > 1 && (f.size || 0) > (g.files[1].size || 0) ? "Largest" : "",
+          LOSSLESS.has(f.ext) ? "Lossless" : "",
+        ].filter(Boolean);
+        return `<li>
+          <span class="dup-name">${esc(baseName(f.path))}${hints.map(h => ` <span class="badge released">${h}</span>`).join("")}</span>
+          <span class="dup-meta">${esc(f.ext.toUpperCase())}, ${formatSize(f.size)}. Read as “${esc(f.title)}” from ${f.fromTags ? "tags" : "the file name"}${f.fuzzy ? ", close match" : ""}.</span>
+          <span class="file">${esc(folder)}</span>
+        </li>`;
+      }).join("")}</ul>
+    </div>`;
+  }).join("") || `<p class="empty">Nothing to show.</p>`;
+  const more = $("dup-more");
+  more.hidden = groups.length <= state.dupLimit;
+  more.textContent = `Show ${fmt(Math.min(50, groups.length - state.dupLimit))} more`;
+}
+$("dups").addEventListener("toggle", () => { if ($("dups").open) renderDuplicates(); });
+$("dup-more").addEventListener("click", () => { state.dupLimit += 50; renderDuplicates(); });
+$("dup-list").addEventListener("click", e => {
+  const b = e.target.closest("button[data-song]");
+  if (b) openSong(Number(b.dataset.song));
+});
+$("dup-export").addEventListener("click", () => {
+  const lines = [["song", "in_catalog", "file_count", "file", "format", "size_bytes", "read_as", "path"]];
+  (state.dupGroups || []).forEach(g => g.files.forEach(f => lines.push([g.title, g.i !== null ? "yes" : "no", g.files.length, baseName(f.path), f.ext, f.size ?? "", f.title, f.path])));
+  downloadText(`juice-wrld-duplicates-${today()}.csv`, csvText(lines), "text/csv");
+});
+
+/* ---------- full export and backup */
+const FULL_COLUMNS = [
+  ["id", s => s.id], ["name", s => s.name], ["also_known_as", s => s.alt.join(" / ")], ["category", s => s.category],
+  ["era", s => s.era], ["era_time_frame", s => (state.eras[s.era] || {}).timeFrame || ""], ["length", s => s.length], ["original_key", s => s.key],
+  ["credited_artists", s => s.artists], ["producers", s => s.producers], ["engineers", s => s.engineers], ["recording_locations", s => s.locations],
+  ["record_dates", s => s.recordDates], ["preview_date", s => s.previewDate], ["release_date", s => s.release], ["date_surfaced", s => s.leakDate],
+  ["surfaced_type", s => s.leakType], ["session_titles", s => s.sessions], ["other_dates", s => s.dates], ["notes", s => s.notes],
+  ["additional_information", s => s.info], ["site_file_url", s => fileUrl(s)],
+];
+function renderExportPanel() {
+  if (!state.catalog || !state.library) return;
+  const missing = state.catalog.filter(s => !s.hasDetails).length;
+  const wishes = Object.keys(state.personal.wish).length, notes = Object.keys(state.personal.notes).length;
+  $("export-sub").textContent = ` ${plural(wishes, "wishlist song", "wishlist songs")}, ${plural(notes, "note", "notes")}`;
+  $("export-details-note").textContent = missing
+    ? `${plural(missing, "song is", "songs are")} missing full details in this browser. Click Reload catalog first for complete credits and dates.`
+    : "Includes every song with all credits, dates, and notes from the catalog, plus your library, wishlist, and notes.";
+}
+$("export")?.addEventListener("toggle", () => { if ($("export").open) renderExportPanel(); });
+$("export-full").addEventListener("click", () => {
+  const lines = [[...FULL_COLUMNS.map(([h]) => h), "in_your_library", "your_files", "on_wishlist", "your_note", "new_since_last_check", "now_released"]];
+  state.catalog.forEach((s, i) => lines.push([
+    ...FULL_COLUMNS.map(([, get]) => get(s)),
+    state.owned.has(i) ? "yes" : "no", (state.owned.get(i) || []).map(f => f.path).join(" | "),
+    isWished(s) ? "yes" : "", noteOf(s), state.newIds.has(s.id) ? "yes" : "", state.releasedIds.has(s.id) ? "yes" : "",
+  ]));
+  downloadText(`juice-wrld-full-catalog-${today()}.csv`, csvText(lines), "text/csv");
+  setStatus("export-status", `Exported ${plural(state.catalog.length, "song", "songs")}.`);
+});
+$("export-backup").addEventListener("click", () => {
+  const byId = new Map(state.catalog.map(s => [s.id, s.name]));
+  const backup = {
+    app: "juice-wrld-collection-tracker", version: 1, exportedAt: new Date().toISOString(),
+    wishlist: Object.entries(state.personal.wish).map(([id, added]) => ({ id, name: byId.get(id) || "", added })),
+    notes: Object.entries(state.personal.notes).map(([id, text]) => ({ id, name: byId.get(id) || "", text })),
+    trivia: state.personal.trivia, linkTemplate: state.personal.linkTemplate || "",
+    matchOverrides: state.personal.matchOverrides, opened: state.personal.opened, fixGenre: state.personal.fixGenre || "",
+  };
+  downloadText(`juice-wrld-tracker-backup-${today()}.json`, JSON.stringify(backup, null, 2), "application/json");
+  setStatus("export-status", `Backed up ${plural(backup.wishlist.length, "wishlist song", "wishlist songs")} and ${plural(backup.notes.length, "note", "notes")}.`);
+});
+$("export-restore").addEventListener("change", async e => {
+  const file = e.target.files[0];
+  e.target.value = "";
+  if (!file) return;
+  try {
+    const data = JSON.parse(await file.text());
+    if (data.app !== "juice-wrld-collection-tracker") throw new Error();
+    let addedWish = 0, addedNotes = 0;
+    for (const w of data.wishlist || []) if (w.id && !state.personal.wish[w.id]) { state.personal.wish[w.id] = w.added || new Date().toISOString(); addedWish++; }
+    for (const n of data.notes || []) if (n.id && n.text && !state.personal.notes[n.id]) { state.personal.notes[n.id] = n.text; addedNotes++; }
+    for (const [k, v] of Object.entries(data.trivia || {})) state.personal.trivia[k] = Math.max(state.personal.trivia[k] || 0, Number(v) || 0);
+    if (data.linkTemplate && !state.personal.linkTemplate) state.personal.linkTemplate = data.linkTemplate;
+    for (const [path, id] of Object.entries(data.matchOverrides || {})) if (!(path in state.personal.matchOverrides)) state.personal.matchOverrides[path] = id;
+    for (const [id, at] of Object.entries(data.opened || {})) if (!state.personal.opened[id]) state.personal.opened[id] = at;
+    if (data.fixGenre && !state.personal.fixGenre) { state.personal.fixGenre = data.fixGenre; $("fix-genre").value = data.fixGenre; }
+    savePersonal();
+    update();
+    renderExportPanel();
+    setStatus("export-status", `Restored ${plural(addedWish, "wishlist song", "wishlist songs")} and ${plural(addedNotes, "note", "notes")}. Anything you already had was kept.`);
+  } catch (err) {
+    setStatus("export-status", "That file isn't a backup from this tracker.", true);
+  }
+});
+
+/* ---------- trivia */
+const TRIVIA_TYPES = { mixed: "Mixed", era: "Eras", producer: "Producers", year: "Recording years", release: "Released or not" };
+const ROUND_LENGTH = 10;
+const shuffle = arr => { const a = [...arr]; for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
+const pickOne = arr => arr[Math.floor(Math.random() * arr.length)];
+
+function triviaBuilders() {
+  const eraNames = eraStats().map(e => e.name).filter(n => n !== NO_ERA);
+  const producers = countNames("producers").map(p => p.name);
+  const allYears = [...new Set(state.derived.flatMap(d => [...d.recYears]))].sort((a, b) => a - b);
+  const hasReleased = state.catalog.some(isReleased), hasUnreleased = state.catalog.some(s => !isReleased(s));
+  return {
+    era: {
+      ok: i => hasValue(state.catalog[i].era) && eraNames.length >= 4,
+      make: i => {
+        const s = state.catalog[i];
+        return { prompt: `Which era is “${s.name}” from?`, answer: s.era, options: shuffle([s.era, ...shuffle(eraNames.filter(n => n !== s.era)).slice(0, 3)]) };
+      },
+    },
+    producer: {
+      ok: i => state.derived[i].producers.length > 0 && producers.length >= 6,
+      make: i => {
+        const s = state.catalog[i], own = state.derived[i].producers;
+        const ownKeys = new Set(own.map(n => n.toLowerCase()));
+        const answer = pickOne(own);
+        const pool = producers.filter(n => !ownKeys.has(n.toLowerCase()));
+        const likely = shuffle(pool.slice(0, 40)).slice(0, 3);
+        const decoys = likely.length >= 3 ? likely : shuffle(pool).slice(0, 3);
+        return { prompt: own.length > 1 ? `Which of these producers worked on “${s.name}”?` : `Who produced “${s.name}”?`, answer, options: shuffle([answer, ...decoys]) };
+      },
+    },
+    year: {
+      ok: i => state.derived[i].recYears.size === 1 && allYears.length >= 2,
+      make: i => {
+        const s = state.catalog[i], y = [...state.derived[i].recYears][0];
+        const near = [y - 2, y - 1, y + 1, y + 2].filter(n => n >= allYears[0] - 1 && n <= allYears[allYears.length - 1] + 1);
+        const decoys = shuffle(near).slice(0, 3);
+        return { prompt: `What year was “${s.name}” recorded?`, answer: String(y), options: shuffle([y, ...decoys]).map(String) };
+      },
+    },
+    release: {
+      ok: () => hasReleased && hasUnreleased,
+      make: i => {
+        const s = state.catalog[i], answer = isReleased(s) ? "Yes, it's officially released" : "No, it hasn't been released";
+        return { prompt: `Has “${s.name}” been officially released?`, answer, options: ["Yes, it's officially released", "No, it hasn't been released"] };
+      },
+    },
+  };
+}
+
+function buildRound(type, poolName) {
+  const builders = triviaBuilders();
+  const pool = shuffle(poolName === "library" ? [...state.owned.keys()] : state.catalog.map((_, i) => i));
+  const types = type === "mixed" ? Object.keys(builders) : [type];
+  const questions = [], used = new Set();
+  for (let attempt = 0; attempt < pool.length * 2 && questions.length < ROUND_LENGTH; attempt++) {
+    const i = pool[attempt % pool.length];
+    if (used.has(i)) continue;
+    const available = shuffle(types.filter(t => builders[t].ok(i)));
+    // Keep yes/no questions to a small share of a mixed round
+    const t = available.find(x => x !== "release" || type !== "mixed" || questions.filter(q => q.type === "release").length < 2);
+    if (!t) continue;
+    const q = builders[t].make(i);
+    if (new Set(q.options).size !== q.options.length || q.options.length < 2) continue;
+    used.add(i);
+    questions.push({ ...q, type: t, i });
+  }
+  return questions;
+}
+
+function renderTrivia() {
+  if (!state.catalog || !state.library) return;
+  const T = state.trivia, box = $("trivia-body");
+  const bestKey = `${T.type}:${T.pool}`;
+  const best = state.personal.trivia[bestKey];
+  $("trivia-sub").textContent = best !== undefined ? ` Your best in ${TRIVIA_TYPES[T.type].toLowerCase()}: ${best} of ${ROUND_LENGTH}` : " Test what you know about the catalog";
+  if (!$("trivia").open) return;
+
+  const r = T.round;
+  if (!r) {
+    box.innerHTML = `<div class="trivia-setup">
+      <label class="field">Question type<select id="trivia-type">${Object.entries(TRIVIA_TYPES).map(([k, v]) => `<option value="${k}" ${T.type === k ? "selected" : ""}>${v}</option>`).join("")}</select></label>
+      <label class="field">Songs<select id="trivia-pool"><option value="all" ${T.pool === "all" ? "selected" : ""}>Whole catalog</option><option value="library" ${T.pool === "library" ? "selected" : ""}>Only songs in my library</option></select></label>
+      <button type="button" id="trivia-start">Start a round</button>
+    </div>
+    <p class="hint">${ROUND_LENGTH} questions per round. Press 1 to 4 to answer and Enter for the next question.${best !== undefined ? ` Your best for this setup is ${best} of ${ROUND_LENGTH}.` : ""}</p>
+    <p class="status error" id="trivia-error" role="status"></p>`;
+    return;
+  }
+  if (r.n >= r.questions.length) {
+    const prevBest = r.prevBest;
+    const newBest = prevBest === undefined || r.score > prevBest;
+    box.innerHTML = `<div class="trivia-card">
+      <p class="trivia-progress">Round complete</p>
+      <p class="trivia-score">You got ${r.score} of ${r.questions.length}.</p>
+      <p>${newBest && r.questions.length === ROUND_LENGTH ? "That's your best score for this setup." : prevBest !== undefined ? `Your best for this setup is ${prevBest} of ${ROUND_LENGTH}.` : ""}</p>
+      <div class="row"><button type="button" id="trivia-again">Play again</button><button type="button" class="ghost" id="trivia-change">Change settings</button></div>
+    </div>`;
+    $("trivia-again").focus({ preventScroll: true });
+    return;
+  }
+  const q = r.questions[r.n];
+  const answered = r.picked !== null;
+  const right = answered && r.picked === q.answer;
+  box.innerHTML = `<div class="trivia-card">
+    <p class="trivia-progress">Question ${r.n + 1} of ${r.questions.length}. Score ${r.score}.</p>
+    <h3 class="trivia-q" id="trivia-q">${esc(q.prompt)}</h3>
+    <div class="trivia-options ${q.options.length === 2 ? "two" : ""}" role="group" aria-labelledby="trivia-q">${q.options.map((o, n) => {
+      const cls = !answered ? "" : o === q.answer ? "right" : o === r.picked ? "wrong" : "dim";
+      const mark = cls === "right" ? "Correct answer" : cls === "wrong" ? "Your pick" : "";
+      return `<button type="button" class="trivia-opt ${cls}" data-answer="${esc(o)}" ${answered ? "disabled" : ""}><span class="key">${n + 1}</span><span>${esc(o)}</span>${mark ? `<span class="mark">${mark}</span>` : ""}</button>`;
+    }).join("")}</div>
+    ${answered ? `<p class="trivia-feedback ${right ? "good" : "bad"}" role="status">${right ? "Correct." : `Not quite. The answer is ${esc(q.answer)}.`}
+      <button type="button" class="song-link" data-song="${q.i}">Open the song card</button></p>
+      <div class="row"><button type="button" id="trivia-next">${r.n + 1 < r.questions.length ? "Next question" : "See your score"}</button></div>` : ""}
+  </div>`;
+  if (answered) $("trivia-next").focus({ preventScroll: true });
+}
+
+function startRound() {
+  const T = state.trivia;
+  const questions = buildRound(T.type, T.pool);
+  if (questions.length < 3) {
+    const err = $("trivia-error");
+    if (err) err.textContent = T.pool === "library"
+      ? "There aren't enough matched songs in your library with that kind of info. Try the whole catalog or another question type."
+      : "The catalog doesn't have enough of that info for a round. Try another question type.";
+    return;
+  }
+  T.round = { questions, n: 0, score: 0, picked: null, prevBest: state.personal.trivia[`${T.type}:${T.pool}`] };
+  renderTrivia();
+  $("trivia-body").querySelector(".trivia-opt")?.focus({ preventScroll: true });
+}
+function answerTrivia(value) {
+  const r = state.trivia.round;
+  if (!r || r.picked !== null || r.n >= r.questions.length) return;
+  r.picked = value;
+  if (value === r.questions[r.n].answer) r.score++;
+  renderTrivia();
+}
+function nextTrivia() {
+  const T = state.trivia, r = T.round;
+  if (!r || r.picked === null) return;
+  r.n++;
+  r.picked = null;
+  if (r.n >= r.questions.length && r.questions.length === ROUND_LENGTH) {
+    const key = `${T.type}:${T.pool}`;
+    state.personal.trivia[key] = Math.max(state.personal.trivia[key] || 0, r.score);
+    savePersonal();
+  }
+  renderTrivia();
+  $("trivia-body").querySelector(".trivia-opt")?.focus({ preventScroll: true });
+}
+$("trivia").addEventListener("toggle", () => { if ($("trivia").open) renderTrivia(); });
+$("trivia-body").addEventListener("change", e => {
+  if (e.target.id === "trivia-type") { state.trivia.type = e.target.value; renderTrivia(); $("trivia-type").focus(); }
+  if (e.target.id === "trivia-pool") { state.trivia.pool = e.target.value; renderTrivia(); $("trivia-pool").focus(); }
+});
+$("trivia-body").addEventListener("click", e => {
+  const t = e.target;
+  if (t.closest("#trivia-start")) return startRound();
+  if (t.closest("#trivia-again")) return startRound();
+  if (t.closest("#trivia-change")) { state.trivia.round = null; renderTrivia(); $("trivia-start")?.focus(); return; }
+  if (t.closest("#trivia-next")) return nextTrivia();
+  const opt = t.closest("button[data-answer]");
+  if (opt) return answerTrivia(opt.dataset.answer);
+  const song = t.closest("button[data-song]");
+  if (song) openSong(Number(song.dataset.song));
+});
+$("trivia").addEventListener("keydown", e => {
+  const r = state.trivia.round;
+  if (!r || ["INPUT", "SELECT", "TEXTAREA"].includes(e.target.tagName)) return;
+  if (r.picked === null && /^[1-4]$/.test(e.key)) {
+    const opt = $("trivia-body").querySelectorAll("button[data-answer]")[Number(e.key) - 1];
+    if (opt) { e.preventDefault(); answerTrivia(opt.dataset.answer); }
+  } else if (r.picked !== null && e.key === "Enter" && e.target.id !== "trivia-next" && !e.target.closest("button[data-song]")) {
+    e.preventDefault();
+    nextTrivia();
+  }
+});
+
+/* ---------- era browser */
+const NO_ERA = "No era listed";
+const MONTHS = { jan: 0, feb: 1, mar: 2, apr: 3, may: 4, jun: 5, jul: 6, aug: 7, sep: 8, oct: 9, nov: 10, dec: 11 };
+function eraName(song) { return hasValue(song.era) ? song.era : NO_ERA; }
+function timeKey(text) {
+  const m = /(?:\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?,?\s+)?\b((?:19|20)\d{2})\b/i.exec(String(text || ""));
+  return m ? Number(m[2]) * 12 + (m[1] ? MONTHS[m[1].toLowerCase()] : 0) : null;
+}
+function eraStats() {
+  const map = new Map();
+  state.catalog.forEach((song, i) => {
+    const name = eraName(song);
+    if (!map.has(name)) map.set(name, { name, total: 0, have: 0, cats: new Map(), earliest: null });
+    const e = map.get(name);
+    e.total++;
+    const owned = state.owned.has(i);
+    if (owned) e.have++;
+    const c = e.cats.get(song.category) || { have: 0, total: 0 };
+    c.total++; if (owned) c.have++;
+    e.cats.set(song.category, c);
+    const k = timeKey(song.recordDates) ?? timeKey(song.release);
+    if (k !== null && (e.earliest === null || k < e.earliest)) e.earliest = k;
+  });
+  const list = [...map.values()].map(e => {
+    const info = state.eras[e.name] || {};
+    return { ...e, info, sortKey: e.name === NO_ERA ? Infinity : (timeKey(info.timeFrame) ?? e.earliest ?? Infinity) };
+  });
+  return list.sort((a, b) => (a.sortKey - b.sortKey) || ((a.info.id ?? 1e9) - (b.info.id ?? 1e9)) || a.name.localeCompare(b.name));
+}
+
+const ERA_PREVIEW = 12;
+function eraFolderHref(name) {
+  const counts = new Map();
+  state.catalog.forEach(song => {
+    if (eraName(song) !== name || !song.filePath) return;
+    const folder = song.filePath.split("/").slice(0, -1).join("/");
+    if (folder) counts.set(folder, (counts.get(folder) || 0) + 1);
+  });
+  let best = "", n = 0;
+  for (const [p, c] of counts) if (c > n) { best = p; n = c; }
+  return best ? `https://juicewrldapi.com/files/?path=${encodeURIComponent(best)}` : "";
+}
+function renderEras() {
+  const list = eraStats();
+  const shown = state.showAllEras ? list : list.slice(0, ERA_PREVIEW);
+  if (state.era !== null && !shown.some(e => e.name === state.era)) {
+    const picked = list.find(e => e.name === state.era);
+    if (picked) shown.push(picked);
+  }
+  $("era-grid").innerHTML = shown.map(e => {
+    const pct = e.total ? (e.have / e.total) * 100 : 0;
+    return `<button type="button" class="era-card" data-era="${esc(e.name)}" aria-pressed="${state.era === e.name}">
+      <span class="era-name">${esc(e.name)}</span>
+      ${hasValue(e.info.timeFrame) ? `<span class="era-time">${esc(e.info.timeFrame)}</span>` : ""}
+      ${hasValue(e.info.description) ? `<span class="era-desc">${esc(e.info.description)}</span>` : ""}
+      <span class="era-foot">
+        <span class="era-mini"><span style="width:${pct}%"></span></span>
+        <span class="era-count">${fmt(e.have)} of ${plural(e.total, "song", "songs")}</span>
+      </span>
+    </button>`;
+  }).join("");
+  const toggle = $("era-toggle");
+  toggle.hidden = list.length <= ERA_PREVIEW;
+  toggle.textContent = state.showAllEras ? "Show fewer eras" : `Show all ${fmt(list.length)} eras`;
+
+  const banner = $("era-banner");
+  const picked = state.era !== null && list.find(e => e.name === state.era);
+  if (!picked) { banner.hidden = true; banner.innerHTML = ""; return; }
+  const catText = [...picked.cats.entries()].sort((a, b) => b[1].total - a[1].total)
+    .map(([c, v]) => `${esc(capital(c))}: ${fmt(v.have)} of ${fmt(v.total)}`).join(". ");
+  const folder = eraFolderHref(picked.name);
+  banner.innerHTML = `<div>
+      <h3>${esc(picked.name)}</h3>
+      ${hasValue(picked.info.timeFrame) ? `<p class="muted">${esc(picked.info.timeFrame)}</p>` : ""}
+      ${hasValue(picked.info.description) ? `<p class="era-full">${esc(picked.info.description)}</p>` : ""}
+      <p>You have ${fmt(picked.have)} of ${plural(picked.total, "song", "songs")} from this era. <span class="muted">${catText}.</span></p>
+      <p class="hint">Songs you don't have show a File link in the table. That opens the file on the site so you can save it yourself. Get file links lists all of them, with the folder to save each one in.</p>
+    </div>
+    <div class="row" style="flex-direction:column;align-items:flex-end">
+      ${picked.have < picked.total ? `<button type="button" class="small" id="era-links">Get file links</button>` : ""}
+      ${folder ? `<a class="site-link" href="${esc(folder)}" target="_blank" rel="noopener"><span>Open this era's folder</span></a>` : ""}
+      <button type="button" class="ghost small" id="era-clear">Show all eras</button>
+    </div>`;
+  banner.hidden = false;
+}
+
+function selectEra(name, { scroll = true } = {}) {
+  state.era = name;
+  state.limit = PAGE;
+  renderEras();
+  renderTable();
+  if (state.people.scoped) renderPeople();
+  if (state.stats.scoped) renderStats();
+  if (scroll && name !== null) $("era-banner").scrollIntoView({ behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: "start" });
+}
+$("era-grid").addEventListener("click", e => {
+  const card = e.target.closest("button[data-era]");
+  if (!card) return;
+  const name = card.dataset.era;
+  selectEra(state.era === name ? null : name, { scroll: state.era !== name });
+});
+$("era-toggle").addEventListener("click", () => { state.showAllEras = !state.showAllEras; renderEras(); });
+$("era-banner").addEventListener("click", e => {
+  if (e.target.closest("#era-links") && state.era !== null) { openLinks(eraRows(), `${state.era} era${Object.values(state.filters).some(v => String(v).trim()) ? ", with your filters" : ""}`, "#era-links"); return; }
+  if (e.target.closest("#era-clear")) {
+    selectEra(null);
+    document.querySelector(`#era-grid button[data-era]`)?.focus({ preventScroll: true });
+  }
+});
+
+// Keep the sticky column headers parked directly below the browse bar as it changes height
+const browseBar = document.querySelector(".browse-bar");
+const syncBarHeight = () => document.documentElement.style.setProperty("--bar-h", `${browseBar.offsetHeight}px`);
+if (typeof ResizeObserver === "function") new ResizeObserver(syncBarHeight).observe(browseBar);
+window.addEventListener("resize", syncBarHeight);
+syncBarHeight();
+
+$("tabs").addEventListener("click", e => {
+  const b = e.target.closest("button[data-tab]");
+  if (!b) return;
+  state.tab = b.dataset.tab; state.limit = PAGE; renderTable();
+});
+$("search").addEventListener("input", e => { state.query = e.target.value; state.limit = PAGE; renderTable(); });
+
+/* ---------- bulk file links for missing songs */
+function scopeText() {
+  const parts = [TAB_LABELS[state.tab]];
+  if (state.era !== null) parts.push(`${state.era} era`);
+  const n = Object.values(state.filters).filter(v => String(v).trim()).length;
+  if (n) parts.push(plural(n, "filter", "filters"));
+  if (state.query.trim()) parts.push(`search “${state.query.trim()}”`);
+  return parts.join(", ");
+}
+function linkGroups(rows) {
+  const missing = rows.filter(r => !state.owned.has(r.i));
+  const withFile = missing.filter(r => r.song.filePath);
+  const groups = new Map();
+  for (const r of withFile) {
+    const folder = saveFolder(r.song);
+    if (!groups.has(folder)) groups.set(folder, []);
+    groups.get(folder).push(r);
+  }
+  return {
+    missing, withFile,
+    groups: [...groups].sort((a, b) => a[0].localeCompare(b[0]))
+      .map(([folder, items]) => ({ folder, items: items.sort((a, b) => a.song.name.localeCompare(b.song.name)) })),
+  };
+}
+function openLinks(rows, scope, returnFocus = "#links-btn") {
+  state.links = { rows, scope, returnFocus };
+  renderLinksDialog();
+  const dlg = $("links-dialog");
+  if (!dlg.open) dlg.showModal();
+  $("links-close")?.focus();
+}
+function renderLinksDialog() {
+  const { rows, scope } = state.links;
+  const { missing, withFile, groups } = linkGroups(rows);
+  const opened = withFile.filter(r => state.personal.opened[r.song.id]).length;
+  const noPaths = !state.catalog.some(s => s.filePath);
+  const off = withFile.length ? "" : "disabled";
+  const body = $("links-body");
+  const scroll = body.scrollTop;
+  body.innerHTML = `
+    <div class="dlg-top">
+      <div>
+        <h2 class="song-title" id="links-title">Files to save</h2>
+        <p class="song-sub">${esc(scope)}: ${plural(missing.length, "song", "songs")} not in your library, ${fmt(withFile.length)} with a file on the site${opened ? `, ${fmt(opened)} opened` : ""}.</p>
+      </div>
+      <button type="button" class="dlg-close" id="links-close" aria-label="Close">×</button>
+    </div>
+    ${noPaths
+      ? `<p class="dlg-note">No file locations are saved yet. Click Reload catalog in Setup, then open this again.</p>`
+      : `<p class="hint" style="margin-top:14px">Click a song to open its file in a new tab, then save it into the folder shown above it. Opened songs get a check mark, so you can pick up where you left off. When you're done, rescan your folder.</p>
+    <div class="row" style="margin-top:14px">
+      <button type="button" class="small" id="links-copy" ${off}>Copy links</button>
+      <button type="button" class="ghost small" id="links-page" ${off}>Save as a link page</button>
+      <button type="button" class="ghost small" id="links-txt" ${off}>Save as .txt</button>
+      ${state.rootHandle ? `<button type="button" class="ghost small" id="links-rescan">Rescan your folder</button>` : ""}
+      ${opened ? `<button type="button" class="ghost small" id="links-reset">Clear check marks</button>` : ""}
+    </div>`}
+    <p class="status" id="links-status" role="status" aria-live="polite"></p>
+    ${groups.map(g => `<div class="link-group">
+      <h4>Save into <code>${esc(g.folder)}/</code></h4>
+      <ul class="link-list">${g.items.map(({ song }) => `<li class="${state.personal.opened[song.id] ? "opened" : ""}">
+        <a href="${esc(fileUrl(song))}" target="_blank" rel="noopener" data-open-id="${esc(song.id)}">${esc(song.name)}</a>
+        <span class="fname">${esc(saveFileName(song))}</span></li>`).join("")}</ul>
+    </div>`).join("")}
+    ${missing.length > withFile.length && !noPaths ? `<p class="hint" style="margin-top:18px">${plural(missing.length - withFile.length, "song has", "songs have")} no file on the site.</p>` : ""}
+    ${!missing.length ? `<p class="empty">You have every song in this view.</p>` : ""}`;
+  body.scrollTop = scroll;
+}
+function linkPageHtml(groups, scope) {
+  const items = groups.map(g => `<h2>Save into: ${esc(g.folder)}/</h2><ol>${g.items.map(({ song }) =>
+    `<li><a href="${esc(fileUrl(song))}" target="_blank" rel="noopener">${esc(song.name)}</a> <span>${esc(saveFileName(song))}</span></li>`).join("")}</ol>`).join("");
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Juice WRLD files to save</title>
+<style>body{font:15px/1.6 system-ui,sans-serif;background:#141029;color:#ece8f8;max-width:860px;margin:0 auto;padding:32px 20px}a{color:#b8a6f2}a:visited{color:#86d9b4}h1{font-size:20px}h2{font-size:14px;color:#9c93bf;font-weight:500;margin:28px 0 6px;word-break:break-all}span,p{color:#9c93bf;font-size:13px}</style></head>
+<body><h1>Juice WRLD files to save</h1><p>${esc(scope)}. Made ${today()}. Links you've opened turn green.</p>${items}</body></html>`;
+}
+
+$("links-btn").addEventListener("click", () => openLinks(rowsForTab(), scopeText()));
+$("links-dialog").addEventListener("close", () => {
+  const sel = state.links?.returnFocus;
+  state.links = null;
+  if (sel) document.querySelector(sel)?.focus({ preventScroll: true });
+});
+$("links-dialog").addEventListener("click", async e => {
+  const dlg = $("links-dialog");
+  if (e.target === dlg || e.target.closest("#links-close")) { dlg.close(); return; }
+  if (!state.links) return;
+  const link = e.target.closest("a[data-open-id]");
+  if (link) {
+    state.personal.opened[link.dataset.openId] = new Date().toISOString();
+    savePersonal();
+    link.closest("li").classList.add("opened");
+    return;
+  }
+  const { withFile, groups } = linkGroups(state.links.rows);
+  const urls = withFile.map(r => fileUrl(r.song));
+  const slug = state.links.scope.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 40);
+  if (e.target.closest("#links-copy")) {
+    try { await navigator.clipboard.writeText(urls.join("\n")); setStatus("links-status", `Copied ${plural(urls.length, "link", "links")}.`); }
+    catch (err) { setStatus("links-status", "Your browser blocked copying. Use Save as .txt instead.", true); }
+  } else if (e.target.closest("#links-page")) {
+    downloadText(`juice-wrld-files-${slug}-${today()}.html`, linkPageHtml(groups, state.links.scope), "text/html");
+    setStatus("links-status", "Saved a link page. Open it from your downloads.");
+  } else if (e.target.closest("#links-txt")) {
+    downloadText(`juice-wrld-files-${slug}-${today()}.txt`, urls.join("\r\n") + "\r\n", "text/plain");
+    setStatus("links-status", `Saved ${plural(urls.length, "link", "links")}.`);
+  } else if (e.target.closest("#links-reset")) {
+    withFile.forEach(r => delete state.personal.opened[r.song.id]);
+    savePersonal();
+    renderLinksDialog();
+  } else if (e.target.closest("#links-rescan")) {
+    const before = state.owned.size;
+    setStatus("links-status", "Rescanning your folder…");
+    if (await rescanFolder() && state.links) {
+      renderLinksDialog();
+      const gained = state.owned.size - before;
+      setStatus("links-status", gained > 0 ? `Found ${plural(gained, "new song", "new songs")} in your library.` : "Rescanned. No new songs found yet.");
+    } else if (state.links) setStatus("links-status", "Couldn't rescan. Choose your folder again in Setup.", true);
+  }
+});
+$("more-btn").addEventListener("click", () => { state.limit += PAGE; renderTable(); });
+
+/* ---------- song detail card */
+const detailRequests = new Map();
+async function ensureDetails(song) {
+  if (song.hasDetails) return;
+  if (!detailRequests.has(song.id)) {
+    detailRequests.set(song.id, (async () => {
+      const res = await fetch(`${API}${encodeURIComponent(song.id)}/`, { headers: { Accept: "application/json" } });
+      if (!res.ok) throw new Error(`status ${res.status}`);
+      const raw = await res.json();
+      const full = cleanSong(raw);
+      for (const k of DETAIL_FIELDS) song[k] = full[k];
+      for (const k of ["artists", "producers", "recordDates", "release"]) if (!hasValue(song[k]) && hasValue(full[k])) song[k] = full[k];
+      if (!song.alt.length && full.alt.length) song.alt = full.alt;
+      if (!song.publicId && full.publicId) song.publicId = full.publicId;
+      if (!song.filePath && full.filePath) song.filePath = full.filePath;
+      song.hasDetails = true;
+      const idx = state.catalog.indexOf(song);
+      if (idx >= 0) { state.derived[idx] = deriveSong(song); renderPeople(); renderStats(); }
+      collectEras([raw], state.eras);
+    })().finally(() => detailRequests.delete(song.id)));
+  }
+  await detailRequests.get(song.id);
+}
+
+function creditRow(label, names, role) {
+  if (!names.length) return "";
+  return `<div class="credit-row"><span class="label">${label}</span><div class="chips">${
+    names.map(n => `<button type="button" class="chip" data-credit="${esc(n)}" data-role="${role}" title="Show all songs with ${esc(n)}">${esc(n)}</button>`).join("")}</div></div>`;
+}
+
+function songCardHtml(song, i, detailState) {
+  const era = state.eras[song.era] || {};
+  const badges = [
+    `<span class="badge cat">${esc(capital(song.category))}</span>`,
+    state.releasedIds.has(song.id) ? '<span class="badge released">Now released</span>' : "",
+    state.newIds.has(song.id) ? '<span class="badge">New</span>' : "",
+  ].join("");
+  const eraLine = hasValue(song.era) ? `<button type="button" class="song-link" data-era-link="${esc(song.era)}" title="Show all songs from this era">${esc(song.era)} era</button>${hasValue(era.timeFrame) ? `, ${esc(era.timeFrame)}` : ""}` : "";
+  const leaked = [stripLabel(song.leakDate, "Surfaced").replace(/[.,;\s]+$/, ""), song.leakType].filter(hasValue).join(", ");
+  const facts = [
+    ["Length", song.length], ["Original key", song.key], ["Recorded", song.recordDates],
+    ["Previewed", song.previewDate], ["Released", song.release], ["Surfaced", leaked], ["Session titles", song.sessions], ["Other dates", song.dates],
+  ].map(([k, v]) => [k, stripLabel(v, k)]).filter(([, v]) => hasValue(v));
+  const credits = creditRow("Artists", splitNames(song.artists), "artist") + creditRow("Producers", splitNames(song.producers), "producer")
+    + creditRow("Engineers", splitNames(song.engineers), "engineer") + creditRow("Studios", splitStudios(song.locations), "studio");
+  const files = state.owned.get(i) || [];
+  const notes = [song.notes, song.info].filter(hasValue);
+
+  return `
+    <div class="dlg-top">
+      <div>
+        <h2 class="song-title" id="song-title">${esc(song.name)}</h2>
+        <p class="song-sub">${badges}${eraLine}</p>
+      </div>
+      <span class="dlg-actions">
+        ${siteLink(song, "Open in the player")}
+        ${fileUrl(song) ? fileLink(song, "Open the file") : ""}
+        <button type="button" class="dlg-close" id="song-close" aria-label="Close">×</button>
+      </span>
+    </div>
+    ${song.alt.length ? `<p class="song-sub">Also known as ${esc(song.alt.join(", "))}</p>` : ""}
+    ${hasValue(era.description) ? `<p class="era-desc">${esc(era.description)}</p>` : ""}
+    ${detailState === "loading" ? `<p class="dlg-note" role="status">Loading full details…</p>` : ""}
+    ${detailState === "error" ? `<p class="dlg-note" role="status">Couldn't load the full details right now, so only saved info is shown.</p>` : ""}
+    ${facts.length ? `<h3 class="section-h">Details</h3><dl class="facts">${facts.map(([k, v]) => `<dt>${k}</dt><dd>${esc(v)}</dd>`).join("")}</dl>` : ""}
+    ${credits ? `<h3 class="section-h">Credits</h3>${credits}` : ""}
+    ${notes.length ? `<h3 class="section-h">Notes</h3>${notes.map(n => `<p class="prose">${esc(n)}</p>`).join("")}` : ""}
+    ${personalSectionHtml(song)}
+    <h3 class="section-h">Your library</h3>
+    ${files.length
+      ? `<ul class="paths">${files.map(f => `<li>${esc(f.path)}</li>`).join("")}</ul>`
+      : `<p class="prose" style="color:var(--muted)">Not in your library.</p>${fileUrl(song) ? `<p class="hint" style="margin-top:6px">Open the file, then save it as <code>${esc(saveFileName(song))}</code> in <code>${esc(saveFolder(song))}/</code>. Keeping the site's file name lets the tracker match it even if its tags are different.</p>` : ""}${isReleased(song) ? findLinks(song) : ""}`}
+  `;
+}
+
+async function renderSongDialog() {
+  const { list, pos } = state.dialog;
+  const i = list[pos], song = state.catalog[i];
+  const token = ++state.dialogToken;
+  const body = $("song-body");
+  body.innerHTML = songCardHtml(song, i, song.hasDetails ? null : "loading");
+  body.scrollTop = 0;
+  $("song-pos").textContent = list.length > 1 ? `${fmt(pos + 1)} of ${fmt(list.length)}` : "";
+  $("song-prev").disabled = pos === 0;
+  $("song-next").disabled = pos >= list.length - 1;
+  if (!song.hasDetails) {
+    let result = null;
+    try { await ensureDetails(song); } catch (err) { result = "error"; }
+    if (token !== state.dialogToken) return;
+    const note = $("card-note"), typing = document.activeElement === note;
+    const caret = typing ? [note.selectionStart, note.selectionEnd] : null;
+    const scroll = body.scrollTop;
+    body.innerHTML = songCardHtml(song, i, result);
+    body.scrollTop = scroll;
+    if (typing) { const n = $("card-note"); n.focus({ preventScroll: true }); n.setSelectionRange(caret[0], caret[1]); }
+  }
+}
+
+function openSong(i) {
+  const list = rowsForTab().map(r => r.i);
+  const pos = Math.max(0, list.indexOf(i));
+  state.dialog = { list: list.length ? list : [i], pos: list.length ? pos : 0 };
+  renderSongDialog();
+  const dlg = $("song-dialog");
+  if (!dlg.open) dlg.showModal();
+  $("song-close")?.focus();
+}
+function stepSong(delta) {
+  if (!state.dialog) return;
+  flushNote();
+  const next = state.dialog.pos + delta;
+  if (next < 0 || next >= state.dialog.list.length) return;
+  state.dialog.pos = next;
+  renderSongDialog();
+}
+
+$("table").addEventListener("click", e => {
+  const star = e.target.closest("button[data-wish]");
+  if (star) {
+    const i = Number(star.dataset.wish);
+    toggleWish(state.catalog[i]);
+    renderTable();
+    renderExportPanel();
+    (document.querySelector(`#table button[data-wish="${i}"]`) || $("tabs").querySelector('button[aria-pressed="true"]'))?.focus({ preventScroll: true });
+    return;
+  }
+  const b = e.target.closest("button[data-song]");
+  if (b) openSong(Number(b.dataset.song));
+});
+$("song-prev").addEventListener("click", () => stepSong(-1));
+$("song-next").addEventListener("click", () => stepSong(1));
+$("song-dialog").addEventListener("click", e => {
+  const dlg = $("song-dialog");
+  if (e.target === dlg || e.target.closest("#song-close")) { dlg.close(); return; }
+  if (e.target.closest("#card-wish") && state.dialog) {
+    const song = state.catalog[state.dialog.list[state.dialog.pos]];
+    toggleWish(song);
+    const b = $("card-wish"), on = isWished(song);
+    b.setAttribute("aria-pressed", String(on));
+    b.textContent = on ? "★ On your wishlist" : "☆ Add to wishlist";
+    return;
+  }
+  const eraLink = e.target.closest("button[data-era-link]");
+  if (eraLink) {
+    dlg.close();
+    state.tab = "all";
+    state.query = "";
+    $("search").value = "";
+    selectEra(eraLink.dataset.eraLink);
+    return;
+  }
+  const chip = e.target.closest("button[data-credit]");
+  if (chip) {
+    state.focusAfterClose = "#active-filters button[data-clear]";
+    dlg.close();
+    filterToPerson(chip.dataset.role || "producer", chip.dataset.credit);
+    $("tabs").scrollIntoView({ behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: "center" });
+  }
+});
+$("song-dialog").addEventListener("input", e => {
+  if (e.target.id !== "card-note" || !state.dialog) return;
+  const song = state.catalog[state.dialog.list[state.dialog.pos]];
+  const text = e.target.value;
+  if (text.trim()) state.personal.notes[song.id] = text; else delete state.personal.notes[song.id];
+  $("card-note-status").textContent = "Saving…";
+  clearTimeout(noteTimer);
+  noteTimer = setTimeout(() => {
+    noteTimer = null;
+    $("card-note-status") && ($("card-note-status").textContent = savePersonal() ? "Saved in this browser." : "Couldn't save. This browser may be blocking storage.");
+  }, 400);
+});
+$("song-dialog").addEventListener("keydown", e => {
+  if (e.target.id === "card-note") return;
+  if (e.key === "ArrowLeft") { e.preventDefault(); stepSong(-1); }
+  if (e.key === "ArrowRight") { e.preventDefault(); stepSong(1); }
+});
+$("song-dialog").addEventListener("close", () => {
+  const i = state.dialog && state.dialog.list[state.dialog.pos];
+  flushNote();
+  state.dialog = null;
+  state.dialogToken++;
+  renderTable();
+  renderExportPanel();
+  if (state.focusAfterClose) { const sel = state.focusAfterClose; state.focusAfterClose = null; document.querySelector(sel)?.focus({ preventScroll: true }); return; }
+  document.querySelector(`#table button[data-song="${i}"]`)?.focus({ preventScroll: true });
+});
+
+
+$("export-btn").addEventListener("click", () => {
+  const rows = rowsForTab();
+  const lines = state.tab === "unmatched"
+    ? [["title_used_for_matching", "source", "path"], ...rows.map(f => [f.title, f.fromTags ? "tags" : "filename", f.path])]
+    : [["status", "name", "also_known_as", "category", "era", "length", "release_date", "producers", "credited_artists", "new", "now_released", "your_files", "on_wishlist", "your_note"],
+      ...rows.map(({ song, i }) => [
+        state.owned.has(i) ? "In library" : "Not in library", song.name, song.alt.join(" / "), song.category, song.era, song.length,
+        song.release, song.producers, song.artists, state.newIds.has(song.id) ? "yes" : "", state.releasedIds.has(song.id) ? "yes" : "",
+        (state.owned.get(i) || []).map(f => f.path).join(" | "), isWished(song) ? "yes" : "", noteOf(song),
+      ])];
+  downloadText(`juice-wrld-tracker-${state.tab}-${today()}.csv`, csvText(lines), "text/csv");
+});
+
+/* ---------- tag fixer */
+function selectedFields() { return [...document.querySelectorAll("#fix-fields input:checked")].map(i => i.value); }
+const fixGenre = () => $("fix-genre").value.trim() || DEFAULT_GENRE;
+function buildPlan() {
+  const fields = selectedFields(), onlyBlanks = $("fix-blanks").checked, genre = fixGenre();
+  const plan = { changes: [], skipped: [], same: 0 };
+  for (const f of state.library) {
+    if (!f.songs || !f.songs.length) continue;
+    if (f.songs.length > 1) continue; // listed under "Pick the right song" instead
+    if (!EDITABLE_EXTS.has(f.ext)) { plan.skipped.push({ f, reason: `.${f.ext} files can't be edited yet` }); continue; }
+    const song = state.catalog[f.songs[0]];
+    const want = plannedTags(song, genre);
+    const changes = [], desired = {};
+    for (const k of fields) {
+      const to = String(want[k] || "").trim();
+      if (!to) continue;
+      const from = String(f.tags[k] || "").trim();
+      if ((onlyBlanks && from) || from === to) continue;
+      changes.push({ k, from, to });
+      desired[k] = to;
+    }
+    if (!changes.length) { plan.same++; continue; }
+    plan.changes.push({ f, song, changes, desired });
+  }
+  return plan;
+}
+const isSelected = item => state.fixSel.has(item.f.path) ? state.fixSel.get(item.f.path) : !item.f.fuzzy;
+
+function renderFixer() {
+  if (!state.catalog || !state.library) return;
+  const plan = state.plan = buildPlan();
+  const selected = plan.changes.filter(isSelected).length;
+
+  let support = "";
+  if (!canEditFolders) support = "Editing tags needs Chrome or Edge on a computer. You can still preview the changes here.";
+  else if (!state.rootHandle) support = "To edit tags, choose your music folder with the Choose folder button above (or drag it in) while using Chrome or Edge.";
+  $("fix-support").textContent = support;
+  $("fix-support").hidden = !support;
+  $("fix-backup").hidden = !canEditFolders;
+
+  $("fix-sub").textContent = plan.changes.length ? ` ${plural(plan.changes.length, "file", "files")} can be updated` : " Your matched files are up to date";
+  $("fix-summary").textContent = `${plural(selected, "file", "files")} selected of ${fmt(plan.changes.length)} with changes. ${plural(plan.same, "file already matches", "files already match")}.`;
+  const writeBtn = $("fix-write");
+  writeBtn.textContent = selected ? `Write tags to ${plural(selected, "file", "files")}` : "Write tags";
+  writeBtn.disabled = state.writing || !selected || Boolean(support);
+  $("fix-all").disabled = $("fix-none").disabled = state.writing || !plan.changes.length;
+
+  const shown = plan.changes.slice(0, state.fixLimit);
+  const table = $("fix-table");
+  if (!plan.changes.length) {
+    table.innerHTML = `<tbody><tr><td class="empty">${selectedFields().length ? "No changes needed for the tags you picked." : "Pick at least one tag to update."}</td></tr></tbody>`;
+  } else {
+    table.innerHTML = `<thead><tr><th style="width:36px"><span class="visually-hidden">Include</span></th><th>File and matched song</th><th>Changes</th></tr></thead><tbody>${
+      shown.map((item, n) => `<tr>
+        <td><input type="checkbox" class="row-check" data-fix="${n}" ${isSelected(item) ? "checked" : ""} ${state.writing ? "disabled" : ""} aria-label="Include ${esc(baseName(item.f.path))}"></td>
+        <td>${esc(baseName(item.f.path))}<span class="file">${esc(item.song.name)}${item.f.matchedBy === "file" ? " (matched by file name)" : item.f.manual ? " (matched by you)" : ""}${item.f.fuzzy
+          ? ` <span class="badge outline">Close match, check it</span> <button type="button" class="link-btn" data-confirm="${n}" ${state.writing ? "disabled" : ""}>Right song</button> · <button type="button" class="link-btn" data-reject="${n}" ${state.writing ? "disabled" : ""}>Wrong song</button>`
+          : ""}</span></td>
+        <td>${item.changes.map(c => `<span class="change"><span class="k">${FIELD_LABELS[c.k]}:</span> ${c.from ? `<del>${esc(c.from)}</del> → ` : ""}<ins>${esc(c.to)}</ins></span>`).join("")}</td>
+      </tr>`).join("")}</tbody>`;
+  }
+  const more = $("fix-more");
+  more.hidden = plan.changes.length <= state.fixLimit;
+  more.textContent = `Show ${fmt(Math.min(FIX_PAGE, plan.changes.length - state.fixLimit))} more`;
+
+  const sk = $("fix-skipped");
+  sk.hidden = !plan.skipped.length;
+  sk.querySelector("summary").textContent = `${plural(plan.skipped.length, "matched file", "matched files")} can't be edited`;
+  $("fix-skipped-list").innerHTML = plan.skipped.slice(0, 500).map(s => `<li>${esc(baseName(s.f.path))}: ${esc(s.reason)}</li>`).join("");
+  renderChoose();
+}
+
+/** Files whose title fits several catalog songs: let the user pick one, so the file counts once and can be tagged. */
+function renderChoose() {
+  const multi = state.chooseFiles = state.library.filter(f => f.songs && f.songs.length > 1);
+  const manual = Object.keys(state.personal.matchOverrides).length;
+  const shown = multi.slice(0, 200);
+  $("fix-choose").innerHTML = (multi.length ? `<div class="choose">
+      <h4>${plural(multi.length, "file matches", "files match")} more than one song. Pick the right one so it counts once and can be tagged.</h4>
+      <ul class="choose-list">${shown.map((f, n) => `<li>
+        <span><span class="dup-name">${esc(baseName(f.path))}</span><span class="file">${esc(parentOf(f.path))}</span></span>
+        <select data-choose="${n}" aria-label="Song for ${esc(baseName(f.path))}" ${state.writing ? "disabled" : ""}>
+          <option value="">Pick a song…</option>
+          ${f.songs.map(i => { const s = state.catalog[i]; return `<option value="${esc(s.id)}">${esc(s.name)} (${esc(eraName(s))}, ${esc(capital(s.category))})</option>`; }).join("")}
+          <option value="none">None of these</option>
+        </select></li>`).join("")}</ul>
+      ${multi.length > shown.length ? `<p class="hint" style="margin-top:12px">Showing the first ${fmt(shown.length)}.</p>` : ""}
+    </div>` : "")
+    + (manual ? `<p class="hint" style="margin-top:${multi.length ? 12 : 0}px">${plural(manual, "file is", "files are")} matched by hand. <button type="button" class="link-btn" id="fix-overrides-clear">Undo all hand matches</button></p>` : "");
+}
+function setOverride(path, value) {
+  if (value) state.personal.matchOverrides[path] = value; else delete state.personal.matchOverrides[path];
+  savePersonal();
+  update();
+}
+$("fix-choose").addEventListener("change", e => {
+  const sel = e.target.closest("select[data-choose]");
+  const f = sel && state.chooseFiles[Number(sel.dataset.choose)];
+  if (f && sel.value) setOverride(f.path, sel.value);
+});
+$("fix-choose").addEventListener("click", e => {
+  if (!e.target.closest("#fix-overrides-clear")) return;
+  if (!window.confirm("Undo every match you set by hand? Those files go back to automatic matching.")) return;
+  state.personal.matchOverrides = {};
+  savePersonal();
+  update();
+});
+$("fix-table").addEventListener("click", e => {
+  const b = e.target.closest("button[data-confirm], button[data-reject]");
+  if (!b || state.writing) return;
+  const item = state.plan.changes[Number(b.dataset.confirm ?? b.dataset.reject)];
+  if (!item) return;
+  if (b.dataset.confirm !== undefined) { state.fixSel.set(item.f.path, true); setOverride(item.f.path, item.song.id); }
+  else setOverride(item.f.path, "none");
+});
+$("fix-genre").value = state.personal.fixGenre || "";
+let genreTimer = null;
+$("fix-genre").addEventListener("input", e => {
+  state.personal.fixGenre = e.target.value.trim();
+  savePersonal();
+  clearTimeout(genreTimer);
+  genreTimer = setTimeout(() => { if (state.catalog && state.library) renderFixer(); }, 250);
+});
+
+$("fix-fields").addEventListener("change", () => { state.fixLimit = FIX_PAGE; renderFixer(); });
+$("fix-blanks").addEventListener("change", () => { state.fixLimit = FIX_PAGE; renderFixer(); });
+$("fix-more").addEventListener("click", () => { state.fixLimit += FIX_PAGE; renderFixer(); });
+$("fix-table").addEventListener("change", e => {
+  const box = e.target.closest("input[data-fix]");
+  if (!box) return;
+  state.fixSel.set(state.plan.changes[Number(box.dataset.fix)].f.path, box.checked);
+  renderFixer();
+});
+$("fix-all").addEventListener("click", () => { state.plan.changes.forEach(it => state.fixSel.set(it.f.path, true)); renderFixer(); });
+$("fix-none").addEventListener("click", () => { state.plan.changes.forEach(it => state.fixSel.set(it.f.path, false)); renderFixer(); });
+
+async function setBackupDir(dir) {
+  if (state.rootHandle && (await state.rootHandle.resolve(dir)) !== null) {
+    setStatus("fix-backup-status", "That folder is inside your music folder, so Plex would pick up the backups as duplicates. Choose a folder somewhere else.", true);
+    return false;
+  }
+  state.backupDir = dir;
+  setStatus("fix-backup-status", `Backups go to “${dir.name}”. Each original file is copied there once, before its first edit.`);
+  return true;
+}
+$("fix-backup").addEventListener("click", async () => {
+  try { await setBackupDir(await window.showDirectoryPicker({ id: "tag-backups", mode: "readwrite" })); }
+  catch (err) { if (err.name !== "AbortError") setStatus("fix-backup-status", `Couldn't use that folder: ${err.message}`, true); }
+});
+
+async function backupFile(dir, path, data) {
+  const parts = path.split("/").slice(1);
+  const name = parts.pop();
+  let d = dir;
+  for (const p of parts) d = await d.getDirectoryHandle(p, { create: true });
+  try { await d.getFileHandle(name); return; } catch (e) { /* no backup yet */ }
+  const fh = await d.getFileHandle(name, { create: true });
+  const w = await fh.createWritable();
+  await w.write(data);
+  await w.close();
+}
+
+const WRITERS = { mp3: [writeMp3, verifyMp3], flac: [writeFlac, verifyFlac], m4a: [writeM4a, verifyM4a] };
+$("fix-write").addEventListener("click", async () => {
+  const items = state.plan.changes.filter(isSelected);
+  if (!items.length || !state.rootHandle) return;
+  let perm = await state.rootHandle.queryPermission({ mode: "readwrite" });
+  if (perm !== "granted") perm = await state.rootHandle.requestPermission({ mode: "readwrite" });
+  if (perm !== "granted") { setStatus("fix-status", "Editing wasn't allowed. Click Write tags again and allow the browser to save changes to the folder.", true); return; }
+  if (!window.confirm(`Write new tags to ${plural(items.length, "file", "files")}?${state.backupDir ? "" : "\n\nNo backup folder is set, so the originals won't be saved."}`)) return;
+
+  state.writing = true;
+  renderFixer();
+  let ok = 0;
+  const failed = [];
+  for (let n = 0; n < items.length; n++) {
+    const it = items[n];
+    setStatus("fix-status", `Writing ${fmt(n + 1)} of ${fmt(items.length)}: ${baseName(it.f.path)}`);
+    try {
+      const orig = new Uint8Array(await (await it.f.handle.getFile()).arrayBuffer());
+      const [write, verify] = WRITERS[it.f.ext];
+      const res = write(orig, it.desired);
+      verify(orig, res, it.desired);
+      if (state.backupDir) await backupFile(state.backupDir, it.f.path, orig);
+      const w = await it.f.handle.createWritable();
+      await w.write(res.out);
+      await w.close();
+      const fresh = await it.f.handle.getFile();
+      it.f.tags = await readTags(fresh, it.f.ext);
+      it.f.title = it.f.tags.title || titleFromFilename(it.f.path);
+      it.f.key = normalize(it.f.title);
+      it.f.fromTags = Boolean(it.f.tags.title);
+      it.f.size = fresh.size;
+      state.fixSel.delete(it.f.path);
+      ok++;
+    } catch (err) {
+      failed.push(`${baseName(it.f.path)} ${err.message && /^(has|uses|isn't|is |would|failed)/.test(err.message) ? err.message : `couldn't be saved (${err.message || err})`}`);
+    }
+  }
+  state.writing = false;
+  update();
+  const msg = `Updated ${plural(ok, "file", "files")}.${failed.length ? ` ${plural(failed.length, "file", "files")} were left unchanged: ${failed.slice(0, 5).join("; ")}${failed.length > 5 ? "; and more" : ""}.` : ""} In Plex, refresh the library's metadata to see the new tags.`;
+  setStatus("fix-status", msg, failed.length > 0 && ok === 0);
+});
+
+</script>
+</body>
+</html>
