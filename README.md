@@ -30,3 +30,16 @@ CI (`.github/workflows/build.yml`) builds the DMG on every push and PR; pushing 
 In the Mac app, a song's **Download** link saves the file from juicewrldapi.com straight into the folder the tracker suggests inside your music folder, and adds it to your library right away (⌘-click opens the site instead).
 
 In the Mac app, the sidebar's **Ambient music** toggle plays your matched songs, shuffled, at very low volume. It's on by default and remembers when you turn it off.
+
+## Mac app extras
+
+- **Search:** ⌘K jumps to any song, era, producer/artist/engineer/studio, or page.
+- **Download all:** the File links list downloads every missing song in view, one at a time (stoppable). New downloads are auto-tagged with the tag fixer's settings (option in the tag fixer).
+- **Duplicates:** keep the best copy (lossless, then largest) and move the rest to the Trash. Only for files with exactly the same title, so remixes and versions are never touched.
+- **Player:** pause, next and volume for the ambient music, and Play buttons on your files in each song's card.
+- **Settings (⌘,):**
+  - Daily new-song and release alerts (macOS notifications), "Keep running when the window is closed", and "Open at login".
+  - Automatic app updates from GitHub releases (also Juice Tracker > Check for Updates…).
+  - Plex: server address plus token (kept in the Keychain). Plex rescans after downloads and tag edits, and Export & backup can make Plex playlists.
+
+Because the app is ad-hoc signed, macOS may ask once after each update to let it read the Plex token from the Keychain; choose Always Allow. Utilities that quit apps with no windows (for example Vorssaint) override "Keep running"; add Juice Tracker as an exception there.
