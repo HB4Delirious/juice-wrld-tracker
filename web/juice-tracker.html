@@ -3599,8 +3599,8 @@ $("fix-write").addEventListener("click", async () => {
 });
 
 /* ---------- views (sidebar) */
-// Your Ko-fi page, e.g. "https://ko-fi.com/yourname". The Support button stays hidden while this is empty.
-const TIP_URL = "";
+// Ko-fi page for the "Support this project" button. Empty hides the button.
+const TIP_URL = "https://ko-fi.com/hb4delirious";
 if (TIP_URL) { $("tip-link").href = TIP_URL; $("tip-link").hidden = false; }
 
 // Each tool is a <details class="panel">; opening it fires "toggle", which the tools already use to render lazily.

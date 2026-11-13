@@ -17,6 +17,6 @@ scripts/make-dmg.sh   # -> dist/JuiceTracker.dmg
 The app is ad-hoc signed ("Sign to Run Locally"), so the first launch from a downloaded DMG needs
 right-click > Open (or System Settings > Privacy & Security > Open Anyway).
 
-To show the "Support this project" button, set `TIP_URL` near the end of `web/juice-tracker.html` to your Ko-fi page.
+The "Support this project" button opens `TIP_URL` (near the end of `web/juice-tracker.html`), currently https://ko-fi.com/hb4delirious.
 
 CI (`.github/workflows/build.yml`) builds the DMG on every push and PR; pushing a `v*` tag attaches it to a GitHub Release.
