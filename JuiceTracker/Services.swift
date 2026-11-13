@@ -31,6 +31,9 @@ enum Keychain {
         let match: [String: Any] = [kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: service,
                                     kSecAttrAccount as String: account]
         SecItemDelete(match as CFDictionary)
+        // Lets the app know a token exists without touching the Keychain: an unsigned app gets a new identity with
+        // every update, so each Keychain read can bring up an "allow access" prompt.
+        UserDefaults.standard.set(!value.isEmpty, forKey: "keychain.\(account).saved")
         guard !value.isEmpty else { return }
         var add = match
         add[kSecValueData as String] = Data(value.utf8)
@@ -47,7 +50,7 @@ enum Plex {
         (UserDefaults.standard.string(forKey: Pref.plexServer) ?? "")
             .trimmingCharacters(in: .whitespacesAndNewlines).trimmingCharacters(in: CharacterSet(charactersIn: "/"))
     }
-    static var configured: Bool { !server.isEmpty && Keychain.read("plex-token") != nil }
+    static var configured: Bool { !server.isEmpty && UserDefaults.standard.bool(forKey: "keychain.plex-token.saved") }
 
     /// One Plex API call; returns the JSON "MediaContainer".
     private static func call(_ path: String, method: String = "GET", query: [URLQueryItem] = []) async throws -> [String: Any] {
@@ -114,10 +117,11 @@ enum Plex {
                 }
             }
         }
-        var keys: [String] = []
+        var keys: [String] = [], missing = 0
         for path in paths {
             let name = tail(path, 1)
-            if let key = byTail[tail(path, 2)] ?? (ambiguous.contains(name) ? nil : byName[name]), !keys.contains(key) { keys.append(key) }
+            guard let key = byTail[tail(path, 2)] ?? (ambiguous.contains(name) ? nil : byName[name]) else { missing += 1; continue }
+            if !keys.contains(key) { keys.append(key) }
         }
         guard !keys.isEmpty else { throw Failure(errorDescription: "None of these songs are in Plex yet. Let Plex finish scanning, then try again.") }
         let existing = try await call("/playlists", query: [URLQueryItem(name: "playlistType", value: "audio")])["Metadata"] as? [[String: Any]] ?? []
@@ -129,7 +133,7 @@ enum Plex {
             URLQueryItem(name: "type", value: "audio"), URLQueryItem(name: "title", value: title),
             URLQueryItem(name: "smart", value: "0"), URLQueryItem(name: "uri", value: uri),
         ])
-        return (keys.count, paths.count - keys.count)
+        return (keys.count, missing)
     }
 
     private static func tail(_ path: String, _ n: Int) -> String {
@@ -171,7 +175,8 @@ enum SongAlerts {
                         || !((s["release_date"] as? String) ?? "").trimmingCharacters(in: .whitespaces).isEmpty
                     songs.append((id, s["name"] as? String ?? "", released))
                 }
-                next = (json["next"] as? String).flatMap(URL.init(string:))
+                // The API's "next" link is plain http; apps may only use https (App Transport Security).
+                next = (json["next"] as? String).map { $0.replacingOccurrences(of: "http://", with: "https://") }.flatMap(URL.init(string:))
             }
         } catch { return } // offline: try again next hour
         guard !songs.isEmpty else { return }
@@ -276,7 +281,9 @@ enum Updater {
         let fm = FileManager.default
         let mount = fm.temporaryDirectory.appendingPathComponent("jt-update-\(UUID().uuidString)")
         try run("/usr/bin/hdiutil", ["attach", "-nobrowse", "-readonly", "-mountpoint", mount.path, tmp.path])
-        defer { _ = try? run("/usr/bin/hdiutil", ["detach", mount.path, "-force"]) }
+        // Detached explicitly before quitting below (a defer wouldn't run once NSApp.terminate ends the process).
+        var mounted = true
+        defer { if mounted { _ = try? run("/usr/bin/hdiutil", ["detach", mount.path, "-force"]) } }
         let newApp = mount.appendingPathComponent("JuiceTracker.app")
         let info = NSDictionary(contentsOf: newApp.appendingPathComponent("Contents/Info.plist"))
         guard info?["CFBundleIdentifier"] as? String == Bundle.main.bundleIdentifier,
@@ -288,6 +295,8 @@ enum Updater {
         let staged = installed.deletingLastPathComponent().appendingPathComponent(".JuiceTracker-\(version).app")
         try? fm.removeItem(at: staged)
         try run("/usr/bin/ditto", [newApp.path, staged.path])
+        _ = try? run("/usr/bin/hdiutil", ["detach", mount.path, "-force"])
+        mounted = false
         // Waits for this process to exit, moves the old copy to the Trash, puts the new one in its place, opens it.
         let swap = """
         while kill -0 "$1" 2>/dev/null; do sleep 0.2; done
@@ -331,7 +340,7 @@ struct SettingsView: View {
     @AppStorage(Pref.keepRunning) private var keepRunning = false
     @AppStorage(Pref.autoUpdate) private var autoUpdate = true
     @AppStorage(Pref.plexServer) private var plexServer = ""
-    @State private var plexToken = Keychain.read("plex-token") ?? ""
+    @State private var plexToken = "" // read when the window opens, never at app launch (see Keychain.write)
     @State private var plexStatus = ""
     @State private var openAtLogin = false
 
@@ -348,7 +357,7 @@ struct SettingsView: View {
                         }
                 }
                 Text("Daily checks run while Juice Tracker is open. Keep it running, or open it at login, to get alerts without the window.")
-                    .font(.caption).foregroundColor(.secondary)
+                    .font(.caption).foregroundColor(.secondary).fixedSize(horizontal: false, vertical: true)
             } header: { Text("New songs").bold() }
 
             Section {
@@ -375,10 +384,11 @@ struct SettingsView: View {
                 }
                 if !plexStatus.isEmpty { Text(plexStatus).font(.caption) }
                 Text("When set up, Plex rescans after downloads and tag edits, and Export & backup can make Plex playlists. The token is kept in your Keychain.")
-                    .font(.caption).foregroundColor(.secondary)
+                    .font(.caption).foregroundColor(.secondary).fixedSize(horizontal: false, vertical: true)
             } header: { Text("Plex").bold() }
         }
         .padding(20)
         .frame(width: 480)
+        .onAppear { plexToken = Keychain.read("plex-token") ?? "" }
     }
 }
