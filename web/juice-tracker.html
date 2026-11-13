@@ -80,8 +80,9 @@
       radial-gradient(40% 32% at 88% 14%, rgba(80, 130, 255, .32), transparent 70%),
       radial-gradient(30% 26% at 20% 18%, rgba(120, 110, 255, .22), transparent 70%),
       radial-gradient(60% 50% at 70% 90%, rgba(140, 40, 190, .36), transparent 75%); animation: nebula 48s ease-in-out infinite alternate; }
-  .sky-far { inset: -420px; background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='420' height='420'%3E%3Cg fill='%23fff'%3E%3Ccircle cx='22' cy='38' r='1'/%3E%3Ccircle cx='97' cy='12' r='.8'/%3E%3Ccircle cx='160' cy='70' r='1.2'/%3E%3Ccircle cx='240' cy='28' r='.7'/%3E%3Ccircle cx='318' cy='92' r='1'/%3E%3Ccircle cx='395' cy='40' r='.8'/%3E%3Ccircle cx='60' cy='150' r='.7'/%3E%3Ccircle cx='130' cy='210' r='1'/%3E%3Ccircle cx='205' cy='160' r='.6'/%3E%3Ccircle cx='280' cy='230' r='1.1'/%3E%3Ccircle cx='360' cy='180' r='.7'/%3E%3Ccircle cx='30' cy='280' r='1'/%3E%3Ccircle cx='110' cy='330' r='.7'/%3E%3Ccircle cx='190' cy='300' r='1'/%3E%3Ccircle cx='260' cy='360' r='.8'/%3E%3Ccircle cx='340' cy='310' r='1.2'/%3E%3Ccircle cx='400' cy='390' r='.7'/%3E%3Ccircle cx='70' cy='400' r='.9'/%3E%3Cpath d='M300 140l2 7 7 2-7 2-2 7-2-7-7-2 7-2z'/%3E%3Cpath d='M80 250l1.6 5.4 5.4 1.6-5.4 1.6-1.6 5.4-1.6-5.4-5.4-1.6 5.4-1.6z'/%3E%3Cpath d='M215 390l1.3 4.2 4.2 1.3-4.2 1.3-1.3 4.2-1.3-4.2-4.2-1.3 4.2-1.3z'/%3E%3C/g%3E%3C/svg%3E") 0 0 / 420px 420px; animation: drift-420 260s steps(420) infinite; }
-  .sky-near { inset: -690px; background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='420' height='420'%3E%3Cg fill='%23fff'%3E%3Ccircle cx='22' cy='38' r='1'/%3E%3Ccircle cx='97' cy='12' r='.8'/%3E%3Ccircle cx='160' cy='70' r='1.2'/%3E%3Ccircle cx='240' cy='28' r='.7'/%3E%3Ccircle cx='318' cy='92' r='1'/%3E%3Ccircle cx='395' cy='40' r='.8'/%3E%3Ccircle cx='60' cy='150' r='.7'/%3E%3Ccircle cx='130' cy='210' r='1'/%3E%3Ccircle cx='205' cy='160' r='.6'/%3E%3Ccircle cx='280' cy='230' r='1.1'/%3E%3Ccircle cx='360' cy='180' r='.7'/%3E%3Ccircle cx='30' cy='280' r='1'/%3E%3Ccircle cx='110' cy='330' r='.7'/%3E%3Ccircle cx='190' cy='300' r='1'/%3E%3Ccircle cx='260' cy='360' r='.8'/%3E%3Ccircle cx='340' cy='310' r='1.2'/%3E%3Ccircle cx='400' cy='390' r='.7'/%3E%3Ccircle cx='70' cy='400' r='.9'/%3E%3Cpath d='M300 140l2 7 7 2-7 2-2 7-2-7-7-2 7-2z'/%3E%3Cpath d='M80 250l1.6 5.4 5.4 1.6-5.4 1.6-1.6 5.4-1.6-5.4-5.4-1.6 5.4-1.6z'/%3E%3Cpath d='M215 390l1.3 4.2 4.2 1.3-4.2 1.3-1.3 4.2-1.3-4.2-4.2-1.3 4.2-1.3z'/%3E%3C/g%3E%3C/svg%3E") 157px 263px / 690px 690px; animation: drift-690 190s steps(690) infinite; }
+  .sky { --stars: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='420' height='420'%3E%3Cg fill='%23fff'%3E%3Ccircle cx='22' cy='38' r='1'/%3E%3Ccircle cx='97' cy='12' r='.8'/%3E%3Ccircle cx='160' cy='70' r='1.2'/%3E%3Ccircle cx='240' cy='28' r='.7'/%3E%3Ccircle cx='318' cy='92' r='1'/%3E%3Ccircle cx='395' cy='40' r='.8'/%3E%3Ccircle cx='60' cy='150' r='.7'/%3E%3Ccircle cx='130' cy='210' r='1'/%3E%3Ccircle cx='205' cy='160' r='.6'/%3E%3Ccircle cx='280' cy='230' r='1.1'/%3E%3Ccircle cx='360' cy='180' r='.7'/%3E%3Ccircle cx='30' cy='280' r='1'/%3E%3Ccircle cx='110' cy='330' r='.7'/%3E%3Ccircle cx='190' cy='300' r='1'/%3E%3Ccircle cx='260' cy='360' r='.8'/%3E%3Ccircle cx='340' cy='310' r='1.2'/%3E%3Ccircle cx='400' cy='390' r='.7'/%3E%3Ccircle cx='70' cy='400' r='.9'/%3E%3Cpath d='M300 140l2 7 7 2-7 2-2 7-2-7-7-2 7-2z'/%3E%3Cpath d='M80 250l1.6 5.4 5.4 1.6-5.4 1.6-1.6 5.4-1.6-5.4-5.4-1.6 5.4-1.6z'/%3E%3Cpath d='M215 390l1.3 4.2 4.2 1.3-4.2 1.3-1.3 4.2-1.3-4.2-4.2-1.3 4.2-1.3z'/%3E%3C/g%3E%3C/svg%3E"); }
+  .sky-far { inset: -420px; background: var(--stars) 0 0 / 420px 420px; animation: drift-420 260s steps(420) infinite; }
+  .sky-near { inset: -690px; background: var(--stars) 157px 263px / 690px 690px; animation: drift-690 190s steps(690) infinite; }
   .sky-flash { inset: -560px; background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='560' height='560'%3E%3Cg fill='none' stroke='%23ffd6f5' stroke-opacity='.075' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M70 40l12 26 28 3-21 19 6 28-25-14-25 14 6-28-21-19 28-3z'/%3E%3Cpath d='M300 92c-18-16-48-6-48 20 0 26 48 52 48 52s48-26 48-52c0-26-30-36-48-20l-8 18 12 12-8 16'/%3E%3Cpath d='M470 70c-10-24-40-30-44-14-4 16 18 26 44 18zM470 74c-24 2-36 18-28 28 8 10 24-2 28-24zM474 70c10-24 40-30 44-14 4 16-18 26-44 18zM474 74c24 2 36 18 28 28-8 10-24-2-28-24zM472 60v36M470 62c-2-8-6-12-10-14M474 62c2-8 6-12 10-14'/%3E%3Cpath d='M20 300h110M20 300v110M20 300l90 90M20 300l100 46M20 300l46 100M50 300c0 12 6 24 14 30 6 8 4 22 0 30M90 300c0 26 12 50 30 62M20 340c14 0 26 4 34 12M20 380c26 0 50 10 66 26'/%3E%3Cpath d='M300 420c-30-20-26-56 2-80-2 22 12 26 18 16 10 18 22 40 4 64-6 8-16 4-12-6-4 6-8 8-12 6z'/%3E%3Cpath d='M420 260a14 9 -30 1 1 24-14a14 9 -30 1 1-24 14zM440 248a14 9 -30 1 1 24-14a14 9 -30 1 1-24 14zM460 236a14 9 -30 1 1 24-14a14 9 -30 1 1-24 14z'/%3E%3Cpath d='M190 230l-24 44h22l-16 40 40-56h-22l18-28z'/%3E%3Cpath d='M440 470l10-30 18 20 14-28 14 28 18-20 10 30zM440 480h84'/%3E%3Cpath d='M120 500a30 30 0 1 0 34-44 24 24 0 1 1-34 44z'/%3E%3C/g%3E%3C/svg%3E") 40px 20px / 560px 560px; animation: drift-560 150s steps(560) infinite reverse; }
   @keyframes drift-420 { to { transform: translate3d(-420px, -420px, 0); } }
   @keyframes drift-690 { to { transform: translate3d(-690px, -690px, 0); } }
@@ -877,7 +878,8 @@
   <div class="dlg-body" id="links-body"></div>
 </dialog>
 
-<script>
+<script id="core">
+/* Pure logic: no page, storage or network access, so tests/core.test.mjs can load this block in Node. */
 /* ============================================================ constants and text helpers */
 const API = "https://juicewrldapi.com/juicewrld/songs/";
 const STORE_KEY = "jw-collection-tracker-v1";
@@ -1032,6 +1034,8 @@ function similarity(a, b) {
   }
   return (la + lb - prev[lb]) / (la + lb);
 }
+// Fuzzy matches are slow (edit distance against every title), and matchLibrary reruns on every tag write and manual match.
+const fuzzyCache = { catalog: null, hits: new Map() };
 function closestKey(key, keys, cutoff) {
   let best = null, bestScore = cutoff;
   for (const k of keys) {
@@ -1057,6 +1061,7 @@ function matchLibrary(catalog, files, overrides = {}) {
     if (song.filePath) { const st = stemOf(song.filePath); if (st) add(stems, st, i); }
   });
   const keys = [...index.keys()];
+  if (fuzzyCache.catalog !== catalog) { fuzzyCache.catalog = catalog; fuzzyCache.hits.clear(); }
   const owned = new Map(), unmatched = [];
   for (const f of files) {
     f.songs = []; f.fuzzy = false; f.manual = false; f.matchedBy = "";
@@ -1067,7 +1072,8 @@ function matchLibrary(catalog, files, overrides = {}) {
     if (!hits && f.key && index.has(f.key)) { hits = index.get(f.key); f.matchedBy = "title"; }
     if (!hits) { const st = f.stem ?? stemOf(f.path); if (st && stems.has(st)) { hits = stems.get(st); f.matchedBy = "file"; } }
     if (!hits && f.key) {
-      const k = closestKey(f.key, keys, FUZZY_CUTOFF);
+      if (!fuzzyCache.hits.has(f.key)) fuzzyCache.hits.set(f.key, closestKey(f.key, keys, FUZZY_CUTOFF));
+      const k = fuzzyCache.hits.get(f.key);
       if (k) { hits = index.get(k); f.fuzzy = true; f.matchedBy = "close"; }
     }
     if (!hits) { unmatched.push(f); continue; }
@@ -1575,6 +1581,54 @@ async function readTags(file, ext) {
   }
 }
 
+/* ============================================================ song links and backups */
+function slugify(name) {
+  return String(name).toLowerCase().normalize("NFKD").replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+}
+function deriveTemplate(url, songs) {
+  const raw = url.trim();
+  if (!raw) return "";
+  if (!/^https?:\/\//i.test(raw)) throw new Error("That doesn't look like a web address. Copy the whole address, starting with https://");
+  if (/\{(id|public_id|slug|name)\}/.test(raw)) return raw;
+  const decoded = decodeURI(raw);
+  const findNumber = (value, token) => {
+    if (!value) return null;
+    const v = String(value);
+    const pattern = new RegExp(`(^|[/=?&#-])${v.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?=$|[/?&#])`, "g");
+    if (!pattern.test(decoded)) return null;
+    pattern.lastIndex = 0;
+    return decoded.replace(pattern, (_, lead) => lead + token);
+  };
+  for (const song of songs) {
+    const byId = findNumber(song.id, "{id}");
+    if (byId) return byId;
+    const byPublic = song.publicId && song.publicId !== String(song.id) ? findNumber(song.publicId, "{public_id}") : null;
+    if (byPublic) return byPublic;
+    const slug = slugify(song.name);
+    if (slug.length > 3 && decoded.toLowerCase().includes(slug)) {
+      const at = decoded.toLowerCase().indexOf(slug);
+      return decoded.slice(0, at) + "{slug}" + decoded.slice(at + slug.length);
+    }
+  }
+  throw new Error("Couldn't find a song name or ID in that address. Open a song you have in the list, then copy its address.");
+}
+async function backupFile(dir, path, data) {
+  const parts = path.split("/").slice(1);
+  const name = parts.pop();
+  let d = dir;
+  for (const p of parts) d = await d.getDirectoryHandle(p, { create: true });
+  // Keep the first backup forever, but not an empty file: creating a file makes it empty before the (all-or-nothing)
+  // write, so a failed earlier attempt leaves one behind. Trusting it would let the original be overwritten unbacked.
+  try { if ((await (await d.getFileHandle(name)).getFile()).size > 0) return; } catch (e) { /* no backup yet */ }
+  const fh = await d.getFileHandle(name, { create: true });
+  const w = await fh.createWritable();
+  await w.write(data);
+  await w.close();
+}
+</script>
+
+<script>
 /* ============================================================ scanning and fetching */
 async function walkHandle(dir, prefix, out = [], onCount) {
   for await (const [name, h] of dir.entries()) {
@@ -1927,10 +1981,6 @@ function renderNotices() {
 
 /* ---------- links to the song's page on juicewrldapi.com ---------- */
 function defaultSongLink() { return "https://juicewrldapi.com/player?song={id}&playlist={id}"; }
-function slugify(name) {
-  return String(name).toLowerCase().normalize("NFKD").replace(/[\u0300-\u036f]/g, "")
-    .replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
-}
 function songUrl(song) {
   const t = state.personal.linkTemplate || defaultSongLink();
   return t.replace(/\{public_id\}/g, encodeURIComponent(song.publicId || song.id))
@@ -2003,33 +2053,6 @@ function saveFolder(song) {
 }
 function saveFileName(song) { return song.filePath ? baseName(song.filePath) : `${safeName(song.name)}.mp3`; }
 /** Turns a pasted song page address into a reusable template by spotting the id or title in it. */
-function deriveTemplate(url, songs) {
-  const raw = url.trim();
-  if (!raw) return "";
-  if (/\{(id|slug|name)\}/.test(raw)) return raw;
-  if (!/^https?:\/\//i.test(raw)) throw new Error("That doesn't look like a web address. Copy the whole address, starting with https://");
-  const decoded = decodeURI(raw);
-  const findNumber = (value, token) => {
-    if (!value) return null;
-    const v = String(value);
-    const pattern = new RegExp(`(^|[/=?&#-])${v.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?=$|[/?&#])`, "g");
-    if (!pattern.test(decoded)) return null;
-    pattern.lastIndex = 0;
-    return decoded.replace(pattern, (_, lead) => lead + token);
-  };
-  for (const song of songs) {
-    const byId = findNumber(song.id, "{id}");
-    if (byId) return byId;
-    const byPublic = song.publicId && song.publicId !== String(song.id) ? findNumber(song.publicId, "{public_id}") : null;
-    if (byPublic) return byPublic;
-    const slug = slugify(song.name);
-    if (slug.length > 3 && decoded.toLowerCase().includes(slug)) {
-      const at = decoded.toLowerCase().indexOf(slug);
-      return decoded.slice(0, at) + "{slug}" + decoded.slice(at + slug.length);
-    }
-  }
-  throw new Error("Couldn't find a song name or ID in that address. Open a song you have in the list, then copy its address.");
-}
 function renderLinkSetting() {
   const input = $("song-link-template");
   if (document.activeElement !== input) input.value = state.personal.linkTemplate || "";
@@ -2632,7 +2655,16 @@ function readPersonal() {
 }
 state.personal = readPersonal();
 function savePersonal() {
-  try { localStorage.setItem(PERSONAL_KEY, JSON.stringify(state.personal)); return true; } catch (e) { return false; }
+  const data = JSON.stringify(state.personal);
+  try { localStorage.setItem(PERSONAL_KEY, data); return true; } catch (e) { /* storage full: make room below */ }
+  // The cached catalog shares this storage. Swap it for the slim copy (details load when a song card opens), then retry,
+  // so a growing catalog can't silently crowd out the wishlist, notes and manual matches.
+  const store = readStore();
+  if (store.catalog && !store.catalog.slim && Array.isArray(store.catalog.songs)) {
+    store.catalog = { ...store.catalog, songs: store.catalog.songs.map(slimSong), slim: true };
+    writeStore(store);
+  }
+  try { localStorage.setItem(PERSONAL_KEY, data); return true; } catch (e) { return false; }
 }
 const isWished = song => Boolean(state.personal.wish[song.id]);
 const noteOf = song => state.personal.notes[song.id] || "";
@@ -2782,7 +2814,9 @@ $("export-restore").addEventListener("change", async e => {
     for (const w of data.wishlist || []) if (w.id && !state.personal.wish[w.id]) { state.personal.wish[w.id] = w.added || new Date().toISOString(); addedWish++; }
     for (const n of data.notes || []) if (n.id && n.text && !state.personal.notes[n.id]) { state.personal.notes[n.id] = n.text; addedNotes++; }
     for (const [k, v] of Object.entries(data.trivia || {})) state.personal.trivia[k] = Math.max(state.personal.trivia[k] || 0, Number(v) || 0);
-    if (data.linkTemplate && !state.personal.linkTemplate) state.personal.linkTemplate = data.linkTemplate;
+    if (data.linkTemplate && !state.personal.linkTemplate) {
+      try { state.personal.linkTemplate = deriveTemplate(String(data.linkTemplate), state.catalog || []); } catch (e) { /* not a web address: keep the default */ }
+    }
     for (const [path, id] of Object.entries(data.matchOverrides || {})) if (!(path in state.personal.matchOverrides)) state.personal.matchOverrides[path] = id;
     for (const [id, at] of Object.entries(data.opened || {})) if (!state.personal.opened[id]) state.personal.opened[id] = at;
     if (data.fixGenre && !state.personal.fixGenre) { state.personal.fixGenre = data.fixGenre; $("fix-genre").value = data.fixGenre; }
@@ -3573,17 +3607,6 @@ $("fix-backup").addEventListener("click", async () => {
   catch (err) { if (err.name !== "AbortError") setStatus("fix-backup-status", `Couldn't use that folder: ${err.message}`, true); }
 });
 
-async function backupFile(dir, path, data) {
-  const parts = path.split("/").slice(1);
-  const name = parts.pop();
-  let d = dir;
-  for (const p of parts) d = await d.getDirectoryHandle(p, { create: true });
-  try { await d.getFileHandle(name); return; } catch (e) { /* no backup yet */ }
-  const fh = await d.getFileHandle(name, { create: true });
-  const w = await fh.createWritable();
-  await w.write(data);
-  await w.close();
-}
 
 const WRITERS = { mp3: [writeMp3, verifyMp3], flac: [writeFlac, verifyFlac], m4a: [writeM4a, verifyM4a] };
 $("fix-write").addEventListener("click", async () => {
@@ -3655,7 +3678,8 @@ showView("collection");
 /* ---------- ambient music (Mac app only): your matched songs, shuffled, very quietly */
 function ambientOn() { try { return localStorage.getItem("jw-ambient") !== "off"; } catch (e) { return true; } }
 function ambientItems() {
-  return (state.library || []).filter(f => f.songs && f.songs.length && f.handle && f.handle._path)
+  const playable = new Set(["mp3", "m4a", "m4b", "aac", "alac", "flac", "wav", "aif", "aiff"]); // what AVAudioPlayer opens
+  return (state.library || []).filter(f => f.songs && f.songs.length && f.handle && f.handle._path && playable.has(extOf(f.path)))
     .map(f => ({ path: f.handle._path, title: (state.catalog && state.catalog[f.songs[0]]?.name) || baseName(f.path) }));
 }
 function syncAmbient() {
@@ -3663,10 +3687,12 @@ function syncAmbient() {
   const items = ambientItems(), on = ambientOn();
   $("ambient-btn").hidden = !items.length;
   $("ambient-btn").setAttribute("aria-pressed", String(on));
-  if (!on) $("ambient-now").textContent = "Off";
+  const label = $("ambient-now");
+  if (!on) label.textContent = "Off";
+  else if (label.textContent === "Off") label.textContent = "Starting…"; // runs on every library update; don't overwrite the song title
   if (items.length) window.jwAmbient({ items, play: on }).catch(() => {});
 }
-window.jwAmbientNow = title => { $("ambient-now").textContent = title || (ambientOn() ? "Starting…" : "Off"); };
+window.jwAmbientNow = title => { $("ambient-now").textContent = title || (ambientOn() ? "Not playing" : "Off"); };
 $("ambient-btn").addEventListener("click", () => {
   try { localStorage.setItem("jw-ambient", ambientOn() ? "off" : "on"); } catch (e) {}
   syncAmbient();

@@ -14,6 +14,8 @@ Open `JuiceTracker.xcodeproj` in Xcode and Run, or build a DMG:
 scripts/make-dmg.sh   # -> dist/JuiceTracker.dmg
 ```
 
+Tests for the matcher, tag writers, link setting and backups: `node --test tests/core.test.mjs` (they load the page's `<script id="core">` block, which must stay free of page, storage and network access). CI runs them before every build.
+
 The DMG window is themed (background in `design/dmg-background.svg`, layout in `scripts/dmg-settings.py`, built with `dmgbuild` in a local venv). Artwork in `design/` is rendered with `swift scripts/render-art.swift`.
 
 The app's version comes from the latest `v*` tag (override with `VERSION=1.5 scripts/make-dmg.sh`); the build number is the commit count.

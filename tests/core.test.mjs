@@ -1,0 +1,117 @@
+// Tests for the pure logic in web/juice-tracker.html (the <script id="core"> block).
+// Run: node --test tests/
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import vm from "node:vm";
+
+const html = readFileSync(new URL("../web/juice-tracker.html", import.meta.url), "utf8");
+const core = /<script id="core">([\s\S]*?)<\/script>/.exec(html);
+assert.ok(core, 'web/juice-tracker.html has no <script id="core"> block');
+const ctx = vm.createContext({ TextEncoder, TextDecoder, console });
+vm.runInContext(core[1], ctx);
+// Top-level const/function names live in the context's global scope.
+const g = name => vm.runInContext(name, ctx);
+const { normalize, stemOf, matchLibrary, deriveTemplate, backupFile, FIELDS } = Object.fromEntries(
+  ["normalize", "stemOf", "matchLibrary", "deriveTemplate", "backupFile", "FIELDS"].map(n => [n, g(n)]));
+
+const enc = new TextEncoder();
+const cat = (...parts) => { const n = parts.reduce((a, p) => a + p.length, 0), out = new Uint8Array(n); let o = 0; for (const p of parts) { out.set(p, o); o += p.length; } return out; };
+const u32be = n => Uint8Array.of(n >>> 24, (n >> 16) & 255, (n >> 8) & 255, n & 255);
+const box = (type, ...parts) => { const body = cat(...parts); return cat(u32be(body.length + 8), enc.encode(type), body); };
+const sameBytes = (a, b, msg) => assert.ok(Buffer.from(a).equals(Buffer.from(b)), msg || "bytes differ"); // works across vm contexts
+const audio = n => Uint8Array.from({ length: n }, (_, i) => (i * 37 + 11) & 255);
+
+const tags = { title: "Lucid Dreams", artist: "Juice WRLD", albumartist: "Juice WRLD", album: "Goodbye & Good Riddance", year: "2018", producer: "Nick Mira", genre: "Hip-Hop/Rap", comment: "Released" };
+const retag = { ...tags, title: "Lucid Dreams (Forget Me)", producer: "Nick Mira, DT" };
+
+/** Writes, runs the app's own safety check, and returns the new file. */
+function writeAndVerify(ext, orig, desired) {
+  const [write, verify] = g("WRITERS_FOR_TESTS")[ext];
+  const res = write(orig, desired);
+  verify(orig, res, desired); // throws if audio bytes, layout or tags don't check out
+  return res.out;
+}
+vm.runInContext("var WRITERS_FOR_TESTS = { mp3: [writeMp3, verifyMp3], flac: [writeFlac, verifyFlac], m4a: [writeM4a, verifyM4a] };", ctx);
+
+test("titles match exactly, ignoring bracketed extras, by near misses, and not at all", () => {
+  const catalog = [
+    { id: 1, name: "Lucid Dreams", alt: ["Forget Me"] },
+    { id: 2, name: "Robbery", alt: [] },
+    { id: 3, name: "All Girls Are The Same", alt: [] },
+  ];
+  const file = (title, path = `Juice WRLD/${title}.mp3`) => ({ path, title, key: normalize(title), stem: stemOf(path) });
+  const files = [file("Robbery"), file("Lucid Dreams (feat. Someone)"), file("Forget Me"), file("All Girls Are The Sam"), file("Some Other Song")];
+  const { owned, unmatched } = matchLibrary(catalog, files, {});
+  assert.deepEqual(files.map(f => [...f.songs]), [[1], [0], [0], [2], []]);
+  assert.equal(files[3].fuzzy, true, "a near miss is flagged as fuzzy");
+  assert.equal(files[0].fuzzy, false);
+  assert.deepEqual([...owned.keys()].sort(), [0, 1, 2]);
+  assert.deepEqual([...unmatched].map(f => f.title), ["Some Other Song"]);
+  // A manual match wins, and "none" un-matches.
+  matchLibrary(catalog, files, { [files[4].path]: 3, [files[0].path]: "none" }); // overrides store the catalog id; id 3 is position 2
+  assert.deepEqual([...files[4].songs], [2]);
+  assert.deepEqual([...files[0].songs], []);
+});
+
+test("MP3: writes tags, keeps the audio bytes, and re-tags an already tagged file", () => {
+  const sound = audio(4000);
+  const once = writeAndVerify("mp3", cat(Uint8Array.of(0xff, 0xfb), sound), tags);
+  const twice = writeAndVerify("mp3", once, retag);
+  sameBytes(twice.subarray(twice.length - sound.length), sound, "audio bytes unchanged");
+  const read = g("tagsFromId3")(g("parseId3")(twice));
+  for (const k of FIELDS) assert.equal(read[k], retag[k], k);
+});
+
+test("FLAC: writes tags, keeps the audio bytes, and re-tags an already tagged file", () => {
+  const sound = audio(4000);
+  const streaminfo = cat(Uint8Array.of(0x80, 0, 0, 34), new Uint8Array(34)); // last metadata block, STREAMINFO
+  const once = writeAndVerify("flac", cat(enc.encode("fLaC"), streaminfo, sound), tags);
+  const twice = writeAndVerify("flac", once, retag);
+  sameBytes(twice.subarray(twice.length - sound.length), sound, "audio bytes unchanged");
+});
+
+test("M4A: writes tags before the audio and shifts the audio offsets to match", () => {
+  const sound = audio(4000);
+  const ftyp = box("ftyp", enc.encode("M4A "), new Uint8Array(4), enc.encode("M4A mp42isom"));
+  const moovFor = offset => box("moov", box("mvhd", new Uint8Array(100)),
+    box("trak", box("mdia", box("minf", box("stbl", box("stco", new Uint8Array(4), u32be(1), u32be(offset)))))));
+  const moovLen = moovFor(0).length;
+  const orig = cat(ftyp, moovFor(ftyp.length + moovLen + 8), box("mdat", sound));
+  const once = writeAndVerify("m4a", orig, tags); // verify also checks every chunk offset moved by the size change
+  const twice = writeAndVerify("m4a", once, retag);
+  sameBytes(twice.subarray(twice.length - sound.length), sound, "audio bytes unchanged");
+});
+
+test("the song-link setting only accepts web addresses", () => {
+  assert.throws(() => deriveTemplate("javascript:alert(1)//{id}", []));
+  assert.throws(() => deriveTemplate("htps://juicewrldapi.com/player?song={id}", []));
+  assert.equal(deriveTemplate("https://juicewrldapi.com/player?song={id}", []), "https://juicewrldapi.com/player?song={id}");
+  assert.equal(deriveTemplate("https://juicewrldapi.com/player?song=96383", [{ id: 96383, name: "Lucid Dreams" }]), "https://juicewrldapi.com/player?song={id}");
+});
+
+test("a backup left empty by a failed attempt is written again, and a good one is kept", async () => {
+  // Minimal in-memory folder handle, like the File System Access API (and bridge.js) provide.
+  const dir = (entries = new Map()) => ({
+    entries,
+    async getDirectoryHandle(name, { create } = {}) {
+      if (!entries.has(name)) { if (!create) throw new Error("NotFound"); entries.set(name, dir()); }
+      return entries.get(name);
+    },
+    async getFileHandle(name, { create } = {}) {
+      if (!entries.has(name)) { if (!create) throw new Error("NotFound"); entries.set(name, { data: new Uint8Array(0) }); }
+      const node = entries.get(name);
+      return {
+        getFile: async () => ({ size: node.data.length }),
+        createWritable: async () => { let buf; return { write: async d => { buf = d; }, close: async () => { node.data = buf; } }; },
+      };
+    },
+  });
+  const root = dir(), original = audio(5000);
+  const album = await root.getDirectoryHandle("Juice WRLD", { create: true });
+  await album.getFileHandle("Lucid Dreams.mp3", { create: true }); // empty file from an attempt that failed mid-write
+  await backupFile(root, "Music/Juice WRLD/Lucid Dreams.mp3", original);
+  assert.equal(album.entries.get("Lucid Dreams.mp3").data.length, original.length, "the empty backup was replaced");
+  await backupFile(root, "Music/Juice WRLD/Lucid Dreams.mp3", audio(10)); // a later edit must not replace the first good backup
+  assert.equal(album.entries.get("Lucid Dreams.mp3").data.length, original.length, "the first good backup was kept");
+});
