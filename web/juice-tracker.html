@@ -140,6 +140,11 @@
   .ambient-toggle[aria-pressed="true"] .eq i:nth-child(2) { animation-duration: .8s; animation-delay: -.3s; }
   .ambient-toggle[aria-pressed="true"] .eq i:nth-child(3) { animation-duration: 1.3s; animation-delay: -.6s; }
   @keyframes eq { from { transform: scaleY(.25); } to { transform: scaleY(1); } }
+  .toast { position: fixed; left: 50%; bottom: 22px; transform: translateX(-50%); z-index: 60; max-width: min(560px, calc(100vw - 32px));
+    padding: 11px 18px; border-radius: 14px; font-size: var(--t-sm); color: var(--mist); background: rgba(26, 13, 56, .92);
+    border: 1px solid var(--line-2); box-shadow: 0 10px 30px rgba(0, 0, 0, .4); -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px); }
+  .toast.error { border-color: var(--missing); }
+  a[aria-busy="true"] { pointer-events: none; opacity: .7; }
   .tip { display: inline-flex; align-items: center; gap: 9px; align-self: flex-start; padding: 8px 14px; border-radius: 999px; font-weight: 600; font-size: var(--t-sm);
     color: var(--night); background: var(--new); text-decoration: none; }
   .tip:hover { background: #ffc68f; }
@@ -873,6 +878,8 @@
     <button type="button" class="ghost small" id="song-next">Next</button>
   </div>
 </dialog>
+
+<div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
 
 <dialog id="links-dialog" aria-labelledby="links-title">
   <div class="dlg-body" id="links-body"></div>
@@ -1998,10 +2005,12 @@ function fileUrl(song) {
 function fileLink(song, text) {
   const href = fileUrl(song);
   if (!href) return "";
-  const label = text || "File";
   const folder = saveFolder(song);
-  const tip = `Opens the file on juicewrldapi.com. Save it from your browser${folder ? ` into ${folder}/` : ""}.`;
-  return `<a class="${text ? "site-link" : "find"}" href="${esc(href)}" target="_blank" rel="noopener" title="${esc(tip)}">${text ? SITE_ICON : ""}<span>${esc(label)}</span></a>`;
+  const direct = canDownloadToLibrary() && Boolean(folder); // Mac app: one click saves it into the music folder
+  const label = direct ? (text ? "Download to library" : "Download") : (text || "File");
+  const tip = direct ? `Downloads into ${folder}/ so the tracker finds it. ⌘-click opens it on juicewrldapi.com instead.`
+    : `Opens the file on juicewrldapi.com. Save it from your browser${folder ? ` into ${folder}/` : ""}.`;
+  return `<a class="${text ? "site-link" : "find"}" href="${esc(href)}" target="_blank" rel="noopener" title="${esc(tip)}" data-file-id="${esc(song.id)}">${text ? SITE_ICON : ""}<span>${esc(label)}</span></a>`;
 }
 
 /* ---------- where a missing song should be saved in your music folder ---------- */
@@ -3184,7 +3193,9 @@ function renderLinksDialog() {
     </div>
     ${noPaths
       ? `<p class="dlg-note">No file locations are saved yet. Click Reload catalog in Setup, then open this again.</p>`
-      : `<p class="hint" style="margin-top:14px">Click a song to open its file in a new tab, then save it into the folder shown above it. Opened songs get a check mark, so you can pick up where you left off. When you're done, rescan your folder.</p>
+      : `<p class="hint" style="margin-top:14px">${canDownloadToLibrary()
+        ? "Click a song to download it straight into the folder shown above it; it shows up in your library right away. Downloaded songs get a check mark."
+        : "Click a song to open its file in a new tab, then save it into the folder shown above it. Opened songs get a check mark, so you can pick up where you left off. When you're done, rescan your folder."}</p>
     <div class="row" style="margin-top:14px">
       <button type="button" class="small" id="links-copy" ${off}>Copy links</button>
       <button type="button" class="ghost small" id="links-page" ${off}>Save as a link page</button>
@@ -3196,7 +3207,7 @@ function renderLinksDialog() {
     ${groups.map(g => `<div class="link-group">
       <h4>Save into <code>${esc(g.folder)}/</code></h4>
       <ul class="link-list">${g.items.map(({ song }) => `<li class="${state.personal.opened[song.id] ? "opened" : ""}">
-        <a href="${esc(fileUrl(song))}" target="_blank" rel="noopener" data-open-id="${esc(song.id)}">${esc(song.name)}</a>
+        <a href="${esc(fileUrl(song))}" target="_blank" rel="noopener" data-open-id="${esc(song.id)}" data-file-id="${esc(song.id)}">${esc(song.name)}</a>
         <span class="fname">${esc(saveFileName(song))}</span></li>`).join("")}</ul>
     </div>`).join("")}
     ${missing.length > withFile.length && !noPaths ? `<p class="hint" style="margin-top:18px">${plural(missing.length - withFile.length, "song has", "songs have")} no file on the site.</p>` : ""}
@@ -3674,6 +3685,65 @@ document.querySelectorAll(".panel > summary").forEach(s => {
   s.addEventListener("click", e => e.preventDefault()); // panels open from the sidebar, not by clicking their heading
 });
 showView("collection");
+
+/* ---------- downloads straight into the music folder (Mac app only) */
+function canDownloadToLibrary() { return Boolean(window.jwDownload && state.rootHandle && state.rootHandle._path); }
+let toastTimer = null;
+function toast(text, isError = false) {
+  const el = $("toast");
+  el.textContent = text;
+  el.classList.toggle("error", isError);
+  el.hidden = false;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { el.hidden = true; }, isError ? 9000 : 5000);
+}
+async function downloadToLibrary(song, link) {
+  const root = state.rootHandle, folder = saveFolder(song);
+  const rel = `${folder}/${saveFileName(song)}`;     // library-style path: starts with the music folder's own name
+  const inner = rel.split("/").slice(1);              // the same path inside the music folder
+  const label = link.querySelector("span") || link, before = label.textContent;
+  label.textContent = "Downloading…";
+  link.setAttribute("aria-busy", "true");
+  const where = inner.slice(0, -1).join("/") || root.name;
+  let r;
+  try {
+    r = await window.jwDownload(fileUrl(song), `${root._path.replace(/\/+$/, "")}/${inner.join("/")}`);
+  } catch (err) {
+    label.textContent = before;
+    link.removeAttribute("aria-busy");
+    toast(`Couldn't download “${song.name}”: ${err.message}`, true);
+    return;
+  }
+  state.personal.opened[song.id] = new Date().toISOString();
+  savePersonal();
+  try {
+    // Add just this file to the library instead of rescanning the whole folder (slow on network drives).
+    let dir = root;
+    for (const part of inner.slice(0, -1)) dir = await dir.getDirectoryHandle(part);
+    const handle = await dir.getFileHandle(inner[inner.length - 1]);
+    const { found } = await scanFiles([{ handle, path: rel }], $("only-juice").checked, () => {});
+    if (!state.library.some(f => f.path === rel)) state.library.push(...found);
+    if (state.lastItems && !state.lastItems.some(it => it.path === rel)) state.lastItems.push({ handle, path: rel });
+    update();
+    if (state.links) renderLinksDialog();
+    toast(r.existed ? `“${song.name}” was already in ${where}.`
+      : found.length ? `Saved “${song.name}” to ${where}.`
+      : `Saved “${song.name}” to ${where}, but it doesn't look like a Juice WRLD file, so it isn't counted.`);
+  } catch (err) {
+    toast(`Saved “${song.name}” to ${where}, but couldn't add it to the list (${err.message}). Rescan your folder to see it.`, true);
+  } finally {
+    link.removeAttribute("aria-busy");
+  }
+}
+// Capture phase, so it runs before the links dialog's own handler (which only marks the song as opened).
+document.addEventListener("click", e => {
+  const link = e.target.closest("a[data-file-id]");
+  if (!link || e.metaKey || e.ctrlKey || !canDownloadToLibrary()) return; // ⌘-click still opens the site
+  const song = state.catalog && state.catalog.find(s => String(s.id) === link.dataset.fileId);
+  if (!song || !saveFolder(song) || !fileUrl(song)) return;
+  e.preventDefault();
+  if (link.getAttribute("aria-busy") !== "true") downloadToLibrary(song, link);
+}, true);
 
 /* ---------- ambient music (Mac app only): your matched songs, shuffled, very quietly */
 function ambientOn() { try { return localStorage.getItem("jw-ambient") !== "off"; } catch (e) { return true; } }

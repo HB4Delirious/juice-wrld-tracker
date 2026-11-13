@@ -27,4 +27,6 @@ The "Support this project" button opens `TIP_URL` (near the end of `web/juice-tr
 
 CI (`.github/workflows/build.yml`) builds the DMG on every push and PR; pushing a `v*` tag attaches it to a GitHub Release.
 
+In the Mac app, a song's **Download** link saves the file from juicewrldapi.com straight into the folder the tracker suggests inside your music folder, and adds it to your library right away (⌘-click opens the site instead).
+
 In the Mac app, the sidebar's **Ambient music** toggle plays your matched songs, shuffled, at very low volume. It's on by default and remembers when you turn it off.

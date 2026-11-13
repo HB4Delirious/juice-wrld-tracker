@@ -127,6 +127,9 @@
     return new NativeDirectoryHandle(r.path, r.name);
   };
 
+  // Saves a juicewrldapi.com song file straight into the music folder: resolves { path, size } or { path, existed }.
+  window.jwDownload = (url, path) => call("download", { url, path });
+
   // Ambient background music: { items: [{ path, title }], play: true | false }.
   window.jwAmbient = cmd => call("ambient", cmd);
 

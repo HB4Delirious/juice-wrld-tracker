@@ -41,6 +41,23 @@ final class NativeBridge: NSObject, WKScriptMessageHandlerWithReply {
             if let play = body["play"] as? Bool { play ? ambient.play() : ambient.stop() }
             replyHandler(true, nil)
             return
+        case "download":
+            // A song file from juicewrldapi.com, saved straight into the picked music folder.
+            guard let path = body["path"] as? String, let dest = allowedURL(path) else {
+                replyHandler(nil, "NotAllowedError: That location isn't inside a folder you chose.")
+                return
+            }
+            guard let raw = body["url"] as? String, let url = URL(string: raw), url.scheme == "https",
+                  url.host == "juicewrldapi.com", url.path.hasPrefix("/juicewrld/files/download") else {
+                replyHandler(nil, "NotAllowedError: Only song files from juicewrldapi.com can be downloaded.")
+                return
+            }
+            guard Self.audioExtensions.contains(dest.pathExtension.lowercased()) else {
+                replyHandler(nil, "NotAllowedError: Only audio files can be saved there.")
+                return
+            }
+            Self.download(url, to: dest, reply: replyHandler)
+            return
         case "restoreFolder":
             replyHandler(restoreFolder(id: body["id"] as? String ?? ""), nil)
             return
@@ -112,6 +129,41 @@ final class NativeBridge: NSObject, WKScriptMessageHandlerWithReply {
             return URL(fileURLWithPath: p)
         }
         return nil
+    }
+
+    // MARK: Downloads
+
+    private static let audioExtensions: Set<String> = ["mp3", "m4a", "m4b", "aac", "alac", "flac", "wav", "aif", "aiff", "ogg", "opus", "wma"]
+
+    /// Downloads to a temporary file and moves it into place only when complete, so a dropped connection
+    /// never leaves half a song in the library. Never overwrites: an existing file is reported, not replaced.
+    private static func download(_ url: URL, to dest: URL, reply: @escaping (Any?, String?) -> Void) {
+        let finish = { (result: Any?, failure: String?) in DispatchQueue.main.async { reply(result, failure) } }
+        let fm = FileManager.default
+        if fm.fileExists(atPath: dest.path) { finish(["path": dest.path, "existed": true], nil); return }
+        URLSession.shared.downloadTask(with: url) { temp, response, error in
+            if let error { finish(nil, "NetworkError: \(error.localizedDescription)"); return }
+            let http = response as? HTTPURLResponse
+            guard let temp, let http, http.statusCode == 200 else {
+                finish(nil, "NetworkError: juicewrldapi.com answered \(http?.statusCode ?? 0)."); return
+            }
+            // An error page served as 200 must not land in the library as a song.
+            let type = (http.mimeType ?? "").lowercased()
+            guard type.hasPrefix("audio/") || type == "application/octet-stream" else {
+                finish(nil, "NetworkError: juicewrldapi.com didn't send an audio file."); return
+            }
+            do {
+                try fm.createDirectory(at: dest.deletingLastPathComponent(), withIntermediateDirectories: true)
+                if fm.fileExists(atPath: dest.path) { finish(["path": dest.path, "existed": true], nil); return }
+                try fm.moveItem(at: temp, to: dest) // the temp file is deleted when this handler returns
+                // Download temp files are private (600); make it readable like the rest of the library, so Plex can index it.
+                try? fm.setAttributes([.posixPermissions: 0o644], ofItemAtPath: dest.path)
+                let size = (try? fm.attributesOfItem(atPath: dest.path)[.size] as? NSNumber)?.intValue ?? 0
+                finish(["path": dest.path, "size": size], nil)
+            } catch {
+                finish(nil, "UnknownError: \(error.localizedDescription)")
+            }
+        }.resume()
     }
 
     // MARK: File operations (run off the main thread)
