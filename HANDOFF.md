@@ -17,14 +17,12 @@ an editable Xcode project, a DMG, and this GitHub repo for history.
   the tracker uses, so tag writing works in the app.
 - `JuiceTracker/Assets.xcassets`: AppIcon (all mac sizes) + AccentColor.
 
+## Also done
+- `JuiceTracker.xcodeproj` (macOS 12+, sandbox off, ad-hoc signed, shared scheme; bridge.js and web/juice-tracker.html bundled by reference).
+- `scripts/make-dmg.sh`, `.github/workflows/build.yml`, README.
+- Tested in the app: catalog loads from juicewrldapi.com, localStorage survives relaunch, folder scan + M4A tag writing via the bridge,
+  CSV export via save panel, target=_blank links open in the default browser.
+
 ## Not done yet
-1. `JuiceTracker.xcodeproj` (none written yet). Easiest: in Xcode, File > New > Project > macOS App (SwiftUI), name JuiceTracker,
-   bundle id com.hb4delirious.JuiceTracker, macOS 12.0+, then replace the generated sources with the files above and add as resources:
-   `JuiceTracker/bridge.js` and `web/juice-tracker.html` (reference, don't copy, so there's one source of truth).
-   Settings: App Sandbox OFF (or add user-selected read/write + outgoing network), Signing "Sign to Run Locally".
-   Share the scheme (Product > Scheme > Manage Schemes > Shared) so CI can build it.
-2. `scripts/make-dmg.sh`: xcodebuild Release into build/, stage the .app + /Applications symlink, `hdiutil create -format UDZO`.
-3. `.github/workflows/build.yml`: macos-14 runner, build + DMG, upload artifact; on `v*` tags, attach the DMG to a GitHub Release.
-4. README.md and .gitignore (build/, DerivedData/, xcuserdata/, *.dmg, .DS_Store).
-5. Test in the app: catalog loads from juicewrldapi.com (file:// origin + CORS), localStorage persists between launches,
-   folder scan + tag writing through the bridge, exports save, target=_blank links open in the browser.
+- Picked music folder isn't remembered between launches (pick it again each time).
+- Unsigned/un-notarized: Gatekeeper warns on first open of a downloaded DMG.
