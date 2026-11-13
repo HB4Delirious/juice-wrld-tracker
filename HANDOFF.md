@@ -24,5 +24,5 @@ an editable Xcode project, a DMG, and this GitHub repo for history.
   CSV export via save panel, target=_blank links open in the default browser.
 
 ## Not done yet
-- Picked music folder isn't remembered between launches (pick it again each time).
+- Ko-fi address: set `TIP_URL` in web/juice-tracker.html; the Support button is hidden until then.
 - Unsigned/un-notarized: Gatekeeper warns on first open of a downloaded DMG.

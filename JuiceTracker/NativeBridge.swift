@@ -18,6 +18,9 @@ final class NativeBridge: NSObject, WKScriptMessageHandlerWithReply {
         case "pickFolder":
             pickFolder(id: body["id"] as? String ?? "", reply: replyHandler)
             return
+        case "restoreFolder":
+            replyHandler(restoreFolder(id: body["id"] as? String ?? ""), nil)
+            return
         case "copy":
             NSPasteboard.general.clearContents()
             NSPasteboard.general.setString(body["text"] as? String ?? "", forType: .string)
@@ -68,6 +71,16 @@ final class NativeBridge: NSObject, WKScriptMessageHandlerWithReply {
             UserDefaults.standard.set(path, forKey: key)
             reply(["path": path, "name": url.lastPathComponent], nil)
         }
+    }
+
+    /// Re-grants the folder last picked for this id, so the music folder survives relaunches.
+    /// Only ever a folder the user chose in an open panel before; nil if it's gone (e.g. an unmounted drive).
+    private func restoreFolder(id: String) -> [String: String]? {
+        guard let path = UserDefaults.standard.string(forKey: "lastFolder.\(id)") else { return nil }
+        var isDir: ObjCBool = false
+        guard FileManager.default.fileExists(atPath: path, isDirectory: &isDir), isDir.boolValue else { return nil }
+        if !roots.contains(path) { roots.append(path) }
+        return ["path": path, "name": URL(fileURLWithPath: path).lastPathComponent]
     }
 
     private func allowedURL(_ path: String) -> URL? {

@@ -125,6 +125,12 @@
     return new NativeDirectoryHandle(r.path, r.name);
   };
 
+  // The folder picked last time for this picker id, or null. Lets the page rescan it at launch.
+  window.jwRestoreFolder = async id => {
+    const r = await call("restoreFolder", { id: String(id || "") });
+    return r ? new NativeDirectoryHandle(r.path, r.name) : null;
+  };
+
   // Clipboard writes from a file:// page can be refused by WebKit, so route them through the app.
   const writeText = text => call("copy", { text: String(text) }).then(() => undefined);
   try {

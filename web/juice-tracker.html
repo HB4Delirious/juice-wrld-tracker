@@ -5,30 +5,30 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Juice WRLD collection tracker</title>
 <meta name="description" content="Check the Juice WRLD song catalog against your own music folder: what you have, what's missing, and what just came out.">
-<meta name="theme-color" content="#141029">
+<meta name="theme-color" content="#120d22">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23141029'/%3E%3Cg fill='%23b8a6f2'%3E%3Crect x='7' y='17' width='5' height='8' rx='1.5'/%3E%3Crect x='13.5' y='12' width='5' height='13' rx='1.5'/%3E%3C/g%3E%3Crect x='20' y='7' width='5' height='18' rx='1.5' fill='%2386d9b4'/%3E%3C/svg%3E">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700&family=Unbounded:wght@500;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700&family=Permanent+Marker&display=swap" rel="stylesheet">
 <style>
   :root {
     /* surfaces */
-    --night: #141029;
-    --dusk: #1c1738;
-    --raise: #241e44;
-    --line: #2f2856;
-    --line-2: #443a72;
+    --night: #120d22;
+    --dusk: #1a1330;
+    --raise: #251b44;
+    --line: #31275a;
+    --line-2: #4a3b80;
     /* text */
-    --mist: #ece8f8;
-    --muted: #9c93bf;
-    /* accents, used to encode meaning only */
-    --lavender: #b8a6f2;
-    --lavender-hi: #c9bbf6;
-    --have: #86d9b4;
-    --new: #f5d27a;
-    --missing: #f0a0bc;
-    /* type */
-    --display: "Unbounded", "Figtree", system-ui, sans-serif;
+    --mist: #f3eeff;
+    --muted: #a99cca;
+    /* accents, used to encode meaning only: violet = the app, sunset = new, mint = have, rose = missing */
+    --lavender: #b48dff;
+    --lavender-hi: #c9adff;
+    --have: #7fe0b0;
+    --new: #ffb36b;
+    --missing: #ff86a2;
+    /* type: marker for the app's own voice (brand, hero, page titles), Figtree for everything you read */
+    --display: "Permanent Marker", "Figtree", system-ui, sans-serif;
     --body: "Figtree", system-ui, -apple-system, "Segoe UI", sans-serif;
     --t-xs: 12.5px;
     --t-sm: 13.5px;
@@ -61,7 +61,36 @@
   *::-webkit-scrollbar { height: 10px; width: 10px; }
   *::-webkit-scrollbar-thumb { background: var(--line-2); border-radius: 99px; border: 3px solid var(--night); }
   :focus-visible { outline: none; box-shadow: var(--ring); border-radius: 6px; }
-  .wrap { max-width: 1060px; margin: 0 auto; padding: 40px 24px 120px; }
+  .wrap { max-width: 1060px; margin: 0 auto; padding: 40px 32px 120px; min-width: 0; width: 100%; }
+  /* film grain over everything, like a scanned flyer */
+  body::after { content: ""; position: fixed; inset: 0; pointer-events: none; z-index: 50; opacity: .07; mix-blend-mode: overlay;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)'/%3E%3C/svg%3E"); }
+
+  /* ---------- shell: sidebar + views ---------- */
+  .shell { display: grid; grid-template-columns: 236px minmax(0, 1fr); min-height: 100vh; }
+  .rail { position: sticky; top: 0; height: 100vh; display: flex; flex-direction: column; gap: 26px; padding: 26px 14px 20px; border-right: 1px solid var(--line);
+    background: radial-gradient(120% 50% at 0% 0%, rgba(180, 141, 255, .16), transparent 70%), var(--night); }
+  .brand { display: flex; align-items: center; gap: 10px; padding: 0 8px; color: var(--mist); text-decoration: none; border-radius: var(--r-sm); }
+  .brand .mark { width: 46px; height: 46px; flex: none; transform: rotate(-8deg); }
+  .brand-name { font: 400 22px/1 var(--display); letter-spacing: .01em; transform: rotate(-2deg); }
+  .rail-nav { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+  .rail-nav button { width: 100%; justify-content: flex-start; gap: 12px; background: transparent; border: 0; border-radius: 12px; color: var(--muted); padding: 9px 12px; font-size: var(--t-md); }
+  .rail-nav button:hover:where(:not(:disabled)) { background: var(--raise); color: var(--mist); }
+  .rail-nav button[aria-current="page"] { background: var(--raise); color: var(--mist); box-shadow: inset 3px 0 0 var(--lavender); }
+  .rail-nav button[aria-current="page"] svg { color: var(--lavender); }
+  .rail-nav svg { width: 19px; height: 19px; flex: none; }
+  body:not(.ready) .rail-nav .tool { display: none; }
+  .rail-foot { margin-top: auto; display: flex; flex-direction: column; gap: 14px; padding: 0 8px; }
+  .rail-foot .intro { flex: none; font-size: var(--t-xs); line-height: 1.5; }
+  .tip { display: inline-flex; align-items: center; gap: 9px; align-self: flex-start; padding: 8px 14px; border-radius: 999px; font-weight: 600; font-size: var(--t-sm);
+    color: var(--night); background: var(--new); text-decoration: none; }
+  .tip:hover { background: #ffc68f; }
+  .tip svg { width: 16px; height: 16px; color: #c2345a; }
+
+  body:not([data-view="collection"]) #setup,
+  body:not([data-view="collection"]) #await,
+  body:not([data-view="collection"]) .collection-view,
+  body[data-view="collection"] .tools-stack { display: none; }
   h1, h2, h3, h4 { margin: 0; font-weight: 600; letter-spacing: -0.01em; }
   a { color: var(--lavender); text-underline-offset: 3px; }
   p { margin: 0; }
@@ -74,15 +103,11 @@
   .row.between { justify-content: space-between; }
 
   /* ---------- masthead ---------- */
-  .masthead { display: flex; flex-wrap: wrap; gap: 10px 28px; align-items: baseline; padding-bottom: 14px; border-bottom: 1px solid var(--line); }
-  .masthead h1 { font: 600 var(--t-xl) var(--body); letter-spacing: -0.015em; }
-  .source-link { margin-left: auto; flex: none; font-size: var(--t-sm); color: var(--lavender); text-decoration: none; border: 1px solid var(--line-2); border-radius: 999px; padding: 6px 14px; }
-  .source-link:hover { border-color: var(--lavender); background: var(--raise); }
   .colophon { margin-top: 48px; padding-top: 18px; border-top: 1px solid var(--line); color: var(--muted); font-size: var(--t-sm); }
   .intro { color: var(--muted); font-size: var(--t-md); max-width: 66ch; flex: 1 1 240px; min-width: 0; }
 
   /* ---------- setup ---------- */
-  .setup { margin-top: 14px; }
+  .setup { margin-top: 0; }
   .await { color: var(--muted); font-size: var(--t-md); margin-top: 26px; }
   .setup > summary { list-style: none; cursor: pointer; padding: 12px 2px; display: flex; align-items: center; gap: 14px; color: var(--muted); font-size: var(--t-md); border-radius: var(--r-sm); }
   .setup > summary::-webkit-details-marker { display: none; }
@@ -148,10 +173,12 @@
   .field select, .field input { width: 100%; min-width: 0; }
 
   /* ---------- scoreboard ---------- */
-  .scoreboard { padding: 34px 0 4px; }
-  .meter-title { font: 700 clamp(30px, 5.6vw, 52px)/1.05 var(--display); letter-spacing: -0.02em; }
-  .meter-title .of { color: var(--muted); font-weight: 500; }
-  .meter { height: 10px; border-radius: 999px; background: var(--raise); overflow: hidden; margin: 22px 0 24px; }
+  .scoreboard { position: relative; padding: 30px 0 4px; }
+  .scoreboard::before { content: ""; position: absolute; right: -10px; top: -6px; width: 170px; height: 170px; opacity: .14; transform: rotate(14deg); pointer-events: none;
+    background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cg fill='none' stroke='%23b48dff' stroke-width='1.6'%3E%3Cpath d='M31 30C25 13 9 7 5.5 15.5 2 24 13.5 31.5 31 32zM31 34c-12 .5-21 8-17.5 15.5C17 56 27 47.5 31 37zM33 30c6-17 22-23 25.5-14.5C62 24 50.5 31.5 33 32zM33 34c12 .5 21 8 17.5 15.5C47 56 37 47.5 33 37zM32 22v26'/%3E%3C/g%3E%3C/svg%3E") no-repeat center / contain; }
+  .meter-title { position: relative; font: 400 clamp(34px, 6.4vw, 64px)/1.08 var(--display); letter-spacing: .005em; transform: rotate(-1.2deg); transform-origin: left; max-width: 18ch; }
+  .meter-title .of { color: var(--muted); }
+  .meter { height: 12px; border-radius: 999px; background: var(--raise); overflow: hidden; margin: 24px 0 24px; }
   .meter > span { display: block; height: 100%; background: var(--lavender); border-radius: 999px; width: 0; transition: width .9s cubic-bezier(.2, .8, .2, 1); }
   .cats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 1px; background: var(--line); border: 1px solid var(--line); border-radius: var(--r-md); overflow: hidden; }
   .cats > div { background: var(--night); padding: 14px 16px; }
@@ -166,17 +193,13 @@
   .notice strong { font-weight: 600; }
 
   /* ---------- tool panels ---------- */
-  .tools-stack { margin-top: 34px; border: 1px solid var(--line); border-radius: var(--r-lg); background: var(--dusk); overflow: hidden; }
-  .panel + .panel { border-top: 1px solid var(--line); }
-  .panel > summary { list-style: none; cursor: pointer; padding: 16px var(--pad); display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+  .panel:not([open]) { display: none; }
+  .panel > summary { list-style: none; cursor: default; padding: 4px 0 22px; }
   .panel > summary::-webkit-details-marker { display: none; }
-  .panel > summary:hover { background: var(--raise); }
-  .panel > summary .title { font-weight: 600; font-size: var(--t-lg); }
-  .panel > summary .sub { color: var(--muted); font-size: var(--t-sm); }
-  .panel > summary::after { content: ""; flex: none; width: 8px; height: 8px; border: 1.5px solid var(--muted); border-width: 0 1.5px 1.5px 0; transform: rotate(45deg) translate(-2px, -2px); transition: transform .18s; }
-  .panel[open] > summary::after { transform: rotate(-135deg) translate(-2px, -2px); }
-  .panel[open] > summary { background: var(--raise); }
-  .panel-body { padding: 6px var(--pad) var(--pad); display: flex; flex-direction: column; gap: 20px; }
+  .panel > summary > span { display: flex; flex-direction: column; gap: 8px; }
+  .panel > summary .title { font: 400 clamp(28px, 4vw, 40px)/1.1 var(--display); transform: rotate(-1deg); transform-origin: left; }
+  .panel > summary .sub { color: var(--muted); font-size: var(--t-md); }
+  .panel-body { padding: var(--pad); border: 1px solid var(--line); border-radius: var(--r-lg); background: var(--dusk); display: flex; flex-direction: column; gap: 20px; }
   .panel-body > p { color: var(--muted); max-width: 72ch; font-size: var(--t-md); }
   fieldset { border: 0; padding: 0; margin: 0; }
   legend { font-weight: 600; margin-bottom: 10px; padding: 0; font-size: var(--t-md); }
@@ -295,12 +318,12 @@
 
   /* ---------- eras ---------- */
   .eras-section { margin-top: 40px; }
-  .section-title { font-size: var(--t-xl); }
+  .section-title { font: 400 28px/1.1 var(--display); transform: rotate(-1deg); transform-origin: left; }
   .section-lead { color: var(--muted); margin: 5px 0 16px; font-size: var(--t-md); }
   .era-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(215px, 1fr)); gap: 12px; }
   .era-card { display: flex; flex-direction: column; align-items: stretch; gap: 6px; text-align: left; background: var(--dusk); color: var(--mist); border: 1px solid var(--line); border-radius: var(--r-md); padding: 15px 16px 14px; font: 400 var(--t-sm)/1.45 var(--body); cursor: pointer; }
   .era-card:hover { background: var(--raise); border-color: var(--line-2); }
-  .era-card[aria-pressed="true"] { border-color: var(--lavender); background: var(--raise); }
+  .era-card[aria-pressed="true"] { border-color: var(--lavender); background: var(--raise); box-shadow: 0 0 0 1px var(--lavender); }
   .era-card .era-name { font-weight: 600; font-size: var(--t-md); line-height: 1.3; }
   .era-card .era-time { color: var(--muted); font-size: var(--t-xs); }
   .era-card .era-desc { color: var(--muted); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
@@ -419,6 +442,18 @@
   /* ---------- responsive ---------- */
   @media (max-width: 860px) {
     .fix-grid { grid-template-columns: 1fr; }
+    .shell { grid-template-columns: minmax(0, 1fr); }
+    .rail { position: static; height: auto; flex-direction: row; flex-wrap: wrap; align-items: center; gap: 12px 18px; padding: 14px 16px; border-right: 0; border-bottom: 1px solid var(--line); }
+    .brand .mark { width: 36px; height: 36px; }
+    .brand-name { font-size: 18px; }
+    .brand-name br { display: none; }
+    .rail nav { order: 3; width: 100%; min-width: 0; overflow-x: auto; }
+    .rail-nav { flex-direction: row; }
+    .rail-nav button { white-space: nowrap; padding: 7px 12px; }
+    .rail-nav button[aria-current="page"] { box-shadow: inset 0 -2px 0 var(--lavender); }
+    .rail-foot { margin: 0 0 0 auto; padding: 0; }
+    .rail-foot .intro { display: none; }
+    .scoreboard::before { width: 110px; height: 110px; }
   }
   @media (max-width: 620px) {
     .wrap { padding: 28px 16px 90px; }
@@ -458,12 +493,35 @@
 </style>
 </head>
 <body>
+<div class="shell">
+  <aside class="rail">
+    <a class="brand" href="#" onclick="showView('collection'); return false;">
+      <svg class="mark" viewBox="0 0 64 64" aria-hidden="true">
+        <g id="wing"><path d="M31 30C25 13 9 7 5.5 15.5 2 24 13.5 31.5 31 32z" fill="var(--lavender)"/><path d="M31 34c-12 .5-21 8-17.5 15.5C17 56 27 47.5 31 37z" fill="var(--new)"/></g>
+        <use href="#wing" transform="translate(64 0) scale(-1 1)"/>
+        <path d="M32 22v26M31 24c-2-6-5-9-8.5-10M33 24c2-6 5-9 8.5-10" stroke="var(--mist)" stroke-width="2" fill="none" stroke-linecap="round"/>
+        <path d="M14 17l5 4-3 3 5 4" stroke="var(--night)" stroke-width="1.6" fill="none" stroke-linejoin="round"/>
+      </svg>
+      <h1 class="brand-name">Juice<br> Tracker</h1>
+    </a>
+    <nav aria-label="Sections"><ul class="rail-nav" id="nav">
+      <li><button type="button" data-view="collection" aria-current="false"><svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="2.5"/></svg><span>Collection</span></button></li>
+      <li><button type="button" data-view="fixer" class="tool" aria-current="false"><svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12V4h8l10 10-8 8z"/><circle cx="7.5" cy="8" r="1.3"/></svg><span>Tag fixer</span></button></li>
+      <li><button type="button" data-view="dups" class="tool" aria-current="false"><svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V5a1 1 0 0 0-1-1H5a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h3"/></svg><span>Duplicates</span></button></li>
+      <li><button type="button" data-view="people" class="tool" aria-current="false"><svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3.2"/><path d="M3 20c.6-3.6 3-5.5 6-5.5s5.4 1.9 6 5.5"/><path d="M16 4.5a3 3 0 0 1 0 6M18 14.8c1.7.7 2.8 2.4 3 5.2"/></svg><span>Credits</span></button></li>
+      <li><button type="button" data-view="stats" class="tool" aria-current="false"><svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20V11M10 20V4M16 20v-6M21 20H3"/></svg><span>Stats</span></button></li>
+      <li><button type="button" data-view="trivia" class="tool" aria-current="false"><svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M9.2 9a3 3 0 1 1 4.3 2.7c-.9.4-1.5 1.2-1.5 2.2v.6"/><circle cx="12" cy="18.3" r=".6" fill="currentColor"/><circle cx="12" cy="12" r="9.5"/></svg><span>Trivia</span></button></li>
+      <li><button type="button" data-view="export" class="tool" aria-current="false"><svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16v13H4zM3 4h18v3H3zM10 11h4"/></svg><span>Export & backup</span></button></li>
+    </ul></nav>
+    <div class="rail-foot">
+      <a class="tip" id="tip-link" href="#" target="_blank" rel="noopener" hidden>
+        <svg viewBox="0 0 24 24" aria-hidden="true" fill="currentColor"><path d="M12 20.5S3.5 15.3 3.5 9.3A4.6 4.6 0 0 1 12 6.8a4.6 4.6 0 0 1 8.5 2.5c0 6-8.5 11.2-8.5 11.2z"/></svg>
+        Support this project
+      </a>
+      <p class="intro">Your files stay on this computer. Only song info comes from <a href="https://juicewrldapi.com" target="_blank" rel="noopener">juicewrldapi.com</a>.</p>
+    </div>
+  </aside>
 <main class="wrap">
-  <header class="masthead">
-    <h1>Juice WRLD collection tracker</h1>
-    <p class="intro">Your files stay on this computer. Only song info is requested from the API.</p>
-    <a class="source-link" href="https://juicewrldapi.com" target="_blank" rel="noopener">Open juicewrldapi.com</a>
-  </header>
 
   <details class="setup" id="setup" open>
     <summary id="setup-bar" hidden>
@@ -520,13 +578,14 @@
   <p class="await" id="await">Once both steps are done, your collection summary appears here.</p>
 
   <section id="results" hidden aria-label="Results">
+    <div class="collection-view">
     <div class="scoreboard">
       <h2 class="meter-title" id="meter-title"></h2>
       <div class="meter" role="progressbar" aria-valuemin="0" aria-valuemax="100" id="meter"><span id="meter-fill"></span></div>
       <div class="cats" id="cats"></div>
     </div>
     <div id="notices"></div>
-
+    </div>
 
     <div class="tools-stack">
     <details class="panel" id="fixer">
@@ -659,6 +718,7 @@
 
     </div>
 
+    <div class="collection-view">
     <section class="eras-section" aria-labelledby="eras-title">
       <h2 class="section-title" id="eras-title">Eras</h2>
       <p class="section-lead">Pick an era to see its songs below.</p>
@@ -697,11 +757,13 @@
     </div>
     <div class="table-wrap"><table id="table"></table></div>
     <button type="button" class="ghost more" id="more-btn" hidden>Show more</button>
+    </div>
   </section>
   <footer class="colophon">
-    Song information comes from <a href="https://juicewrldapi.com" target="_blank" rel="noopener">juicewrldapi.com</a>, a fan-run database. This page only reads that catalog and the files already on your computer.
+    Song information comes from <a href="https://juicewrldapi.com" target="_blank" rel="noopener">juicewrldapi.com</a>, a fan-run database. This is an unofficial fan project, not affiliated with Juice WRLD's estate or labels.
   </footer>
 </main>
+</div>
 
 <dialog id="song-dialog" aria-labelledby="song-title">
   <div class="dlg-body" id="song-body"></div>
@@ -1707,6 +1769,7 @@ function update() {
   state.limit = PAGE;
   $("results").hidden = false;
   $("await").hidden = true;
+  document.body.classList.add("ready");
 
   const total = state.catalog.length, have = owned.size;
   const pct = total ? Math.round((have / total) * 1000) / 10 : 0;
@@ -2279,7 +2342,7 @@ $("people-list").addEventListener("click", e => {
   const show = e.target.closest("button[data-show-songs]");
   if (show) {
     filterToPerson(PEOPLE_ROLES[P.role].filter, show.dataset.showSongs);
-    $("tabs").scrollIntoView({ behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: "center" });
+    showView("collection"); $("tabs").scrollIntoView({ behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: "center" });
     ($("active-filters").querySelector("button[data-clear]"))?.focus({ preventScroll: true });
   }
 });
@@ -2428,7 +2491,7 @@ $("stats-years").addEventListener("click", e => {
   state.filters.recYear = b.dataset.statsYear;
   state.tab = "all";
   applyFilters();
-  $("tabs").scrollIntoView({ behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: "center" });
+  showView("collection"); $("tabs").scrollIntoView({ behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: "center" });
 });
 
 /* ---------- shared download helpers */
@@ -2905,6 +2968,7 @@ function selectEra(name, { scroll = true } = {}) {
   renderTable();
   if (state.people.scoped) renderPeople();
   if (state.stats.scoped) renderStats();
+  if (scroll && name !== null) showView("collection");
   if (scroll && name !== null) $("era-banner").scrollIntoView({ behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: "start" });
 }
 $("era-grid").addEventListener("click", e => {
@@ -3213,7 +3277,7 @@ $("song-dialog").addEventListener("click", e => {
     state.focusAfterClose = "#active-filters button[data-clear]";
     dlg.close();
     filterToPerson(chip.dataset.role || "producer", chip.dataset.credit);
-    $("tabs").scrollIntoView({ behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: "center" });
+    showView("collection"); $("tabs").scrollIntoView({ behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: "center" });
   }
 });
 $("song-dialog").addEventListener("input", e => {
@@ -3462,6 +3526,37 @@ $("fix-write").addEventListener("click", async () => {
   const msg = `Updated ${plural(ok, "file", "files")}.${failed.length ? ` ${plural(failed.length, "file", "files")} were left unchanged: ${failed.slice(0, 5).join("; ")}${failed.length > 5 ? "; and more" : ""}.` : ""} In Plex, refresh the library's metadata to see the new tags.`;
   setStatus("fix-status", msg, failed.length > 0 && ok === 0);
 });
+
+/* ---------- views (sidebar) */
+// Your Ko-fi page, e.g. "https://ko-fi.com/yourname". The Support button stays hidden while this is empty.
+const TIP_URL = "";
+if (TIP_URL) { $("tip-link").href = TIP_URL; $("tip-link").hidden = false; }
+
+// Each tool is a <details class="panel">; opening it fires "toggle", which the tools already use to render lazily.
+function showView(name) {
+  if (!document.body.classList.contains("ready")) name = "collection";
+  if (document.body.dataset.view === name) return;
+  document.body.dataset.view = name;
+  document.querySelectorAll("#nav button").forEach(b => b.setAttribute("aria-current", b.dataset.view === name ? "page" : "false"));
+  document.querySelectorAll(".panel").forEach(p => { if (p.open !== (p.id === name)) p.open = p.id === name; });
+  window.scrollTo(0, 0);
+}
+$("nav").addEventListener("click", e => {
+  const b = e.target.closest("button[data-view]");
+  if (b) showView(b.dataset.view);
+});
+document.querySelectorAll(".panel > summary").forEach(s => {
+  s.tabIndex = -1;
+  s.addEventListener("click", e => e.preventDefault()); // panels open from the sidebar, not by clicking their heading
+});
+showView("collection");
+
+// Mac app only: rescan the music folder picked last time.
+if (window.jwRestoreFolder) {
+  window.jwRestoreFolder("plex-music")
+    .then(dir => dir && !state.rootHandle && loadFromHandle(dir))
+    .catch(err => setStatus("folder-status", `Couldn't reopen your music folder: ${err.message}. Choose it again.`, true));
+}
 
 </script>
 </body>
