@@ -134,12 +134,35 @@
   .ambient-text { display: flex; flex-direction: column; min-width: 0; line-height: 1.3; }
   .ambient-text b { font-weight: 600; }
   .ambient-text small { color: var(--muted); font-size: var(--t-xs); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .player { display: flex; align-items: center; gap: 6px; padding: 0 4px; }
+  .player-btn { width: 30px; height: 30px; padding: 0; justify-content: center; border-radius: 50%; border: 0; background: rgba(255, 255, 255, .06); color: var(--mist); }
+  .player-btn:hover:where(:not(:disabled)) { background: var(--raise); }
+  .player-btn svg { width: 14px; height: 14px; }
+  .player input[type="range"] { flex: 1; min-width: 0; accent-color: var(--lavender); }
+  .play-file { margin-left: 8px; padding: 2px 10px; font-size: var(--t-xs); }
   .eq { display: flex; align-items: flex-end; gap: 2px; width: 16px; height: 14px; flex: none; }
   .eq i { flex: 1; height: 100%; border-radius: 1px; background: var(--muted); transform: scaleY(.3); transform-origin: bottom; }
   .ambient-toggle[aria-pressed="true"] .eq i { background: var(--lavender); animation: eq 1.1s ease-in-out infinite alternate; }
   .ambient-toggle[aria-pressed="true"] .eq i:nth-child(2) { animation-duration: .8s; animation-delay: -.3s; }
   .ambient-toggle[aria-pressed="true"] .eq i:nth-child(3) { animation-duration: 1.3s; animation-delay: -.6s; }
   @keyframes eq { from { transform: scaleY(.25); } to { transform: scaleY(1); } }
+  .rail-search { width: 100%; justify-content: flex-start; gap: 10px; padding: 8px 12px; border-radius: 12px; border: 1px solid var(--line);
+    background: rgba(255, 255, 255, .04); color: var(--muted); font-size: var(--t-sm); }
+  .rail-search:hover:where(:not(:disabled)) { background: var(--raise); color: var(--mist); border-color: var(--line-2); }
+  .rail-search svg { width: 16px; height: 16px; flex: none; }
+  .rail-search kbd { margin-left: auto; font: 500 var(--t-xs) var(--body); color: var(--muted); border: 1px solid var(--line-2); border-radius: 6px; padding: 1px 6px; }
+  .cmdk { width: min(620px, calc(100vw - 28px)); margin: 12vh auto auto; padding: 0; border: 1px solid var(--line-2); border-radius: var(--r-lg);
+    background: var(--rainbow) top / 100% 3px no-repeat, #1a0d38; color: var(--mist); box-shadow: 0 30px 80px rgba(0, 0, 0, .55); }
+  .cmdk::backdrop { background: rgba(8, 6, 18, .6); }
+  .cmdk input[type="search"] { width: 100%; border: 0; border-bottom: 1px solid var(--line); background: transparent; color: var(--mist); font: 400 19px var(--body); padding: 18px 20px; border-radius: 0; }
+  .cmdk input[type="search"]:focus-visible { box-shadow: none; }
+  .cmdk ul { list-style: none; margin: 0; padding: 6px; max-height: min(52vh, 460px); overflow-y: auto; }
+  .cmdk li { display: flex; align-items: baseline; gap: 12px; padding: 9px 12px; border-radius: 10px; cursor: pointer; }
+  .cmdk li[aria-selected="true"] { background: var(--raise); box-shadow: inset 3px 0 0 var(--lavender); }
+  .cmdk .kind { flex: none; width: 78px; font-size: var(--t-xs); color: var(--muted); }
+  .cmdk .label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .cmdk .sub { margin-left: auto; flex: none; font-size: var(--t-xs); color: var(--muted); }
+  .cmdk-hint { margin: 0; padding: 8px 20px 12px; font-size: var(--t-xs); color: var(--muted); border-top: 1px solid var(--line); }
   .toast { position: fixed; left: 50%; bottom: 22px; transform: translateX(-50%); z-index: 60; max-width: min(560px, calc(100vw - 32px));
     padding: 11px 18px; border-radius: 14px; font-size: var(--t-sm); color: var(--mist); background: rgba(26, 13, 56, .92);
     border: 1px solid var(--line-2); box-shadow: 0 10px 30px rgba(0, 0, 0, .4); -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px); }
@@ -292,6 +315,7 @@
   .dup-files { list-style: none; margin: 0; padding: 0 0 0 16px; border-left: 1px solid var(--line); display: flex; flex-direction: column; gap: 14px; }
   .dup-name { display: block; font-size: var(--t-md); overflow-wrap: anywhere; }
   .dup-name .badge { margin-left: 4px; }
+  .dup-head .dup-clean { margin-left: auto; }
   .dup-meta { display: block; font-size: var(--t-sm); color: var(--muted); }
 
   /* people */
@@ -605,6 +629,10 @@
       </svg>
       <h1 class="brand-name">Juice<br> Tracker</h1>
     </a>
+    <button type="button" class="rail-search" id="cmdk-open" aria-keyshortcuts="Meta+K">
+      <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="6.5"/><path d="M20 20l-4.2-4.2"/></svg>
+      <span>Search</span><kbd>⌘K</kbd>
+    </button>
     <nav aria-label="Sections"><ul class="rail-nav" id="nav">
       <li><button type="button" data-view="collection" aria-current="false"><svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="2.5"/></svg><span>Collection</span></button></li>
       <li><button type="button" data-view="fixer" class="tool" aria-current="false"><svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12V4h8l10 10-8 8z"/><circle cx="7.5" cy="8" r="1.3"/></svg><span>Tag fixer</span></button></li>
@@ -619,6 +647,15 @@
         <span class="eq" aria-hidden="true"><i></i><i></i><i></i></span>
         <span class="ambient-text"><b>Ambient music</b><small id="ambient-now">Off</small></span>
       </button>
+      <div class="player" id="player" hidden>
+        <button type="button" class="player-btn" id="player-pause" aria-label="Pause">
+          <svg viewBox="0 0 24 24" aria-hidden="true" fill="currentColor"><rect x="6" y="5" width="4" height="14" rx="1.2"/><rect x="14" y="5" width="4" height="14" rx="1.2"/></svg>
+        </button>
+        <button type="button" class="player-btn" id="player-skip" aria-label="Next song">
+          <svg viewBox="0 0 24 24" aria-hidden="true" fill="currentColor"><path d="M5 5.5v13l9-6.5zM16 5h3v14h-3z"/></svg>
+        </button>
+        <input type="range" id="player-volume" min="0" max="100" step="1" aria-label="Volume">
+      </div>
       <a class="tip" id="tip-link" href="#" target="_blank" rel="noopener" hidden>
         <svg viewBox="0 0 24 24" aria-hidden="true" fill="currentColor"><path d="M12 20.5S3.5 15.3 3.5 9.3A4.6 4.6 0 0 1 12 6.8a4.6 4.6 0 0 1 8.5 2.5c0 6-8.5 11.2-8.5 11.2z"/></svg>
         Support this project
@@ -716,6 +753,7 @@
           <fieldset>
             <legend>Options</legend>
             <label class="check"><input type="checkbox" id="fix-blanks"> Keep existing tags and only fill in empty ones</label>
+            <label class="check" id="fix-auto-row" hidden style="margin-top:8px"><input type="checkbox" id="fix-auto"> Tag new downloads automatically, with the tags ticked here</label>
             <label class="field" style="margin-top:14px;max-width:280px">Genre to write<input id="fix-genre" type="text" placeholder="Hip-Hop/Rap" autocomplete="off"></label>
             <div class="row" style="margin-top:12px">
               <button type="button" class="ghost small" id="fix-backup">Choose backup folder</button>
@@ -745,7 +783,9 @@
       <summary><span><span class="title">Duplicates in your library</span><span class="sub" id="dup-sub"></span></span></summary>
       <div class="panel-body">
         <p>Songs that show up in your library more than once, including different versions matched through alternate titles, and files with the same title that aren't in the catalog. Nothing is deleted here. Compare the files, then remove any you don't want in Finder.</p>
-        <div class="row between"><span id="dup-summary"></span><button type="button" class="ghost small" id="dup-export">Export list</button></div>
+        <div class="row between"><span id="dup-summary"></span><span class="row">
+          <button type="button" class="ghost small" id="dup-clean-all" hidden></button>
+          <button type="button" class="ghost small" id="dup-export">Export list</button></span></div>
         <div id="dup-list"></div>
         <button type="button" class="ghost more" id="dup-more" hidden>Show more</button>
       </div>
@@ -816,6 +856,12 @@
               <label class="btn ghost">Restore a backup<input type="file" id="export-restore" accept=".json,application/json"></label>
             </div>
           </div>
+          <div class="export-item" id="plex-item" hidden>
+            <h3>Plex playlists</h3>
+            <p class="hint">Makes a playlist in Plex from songs you have. Making the same one again replaces it.</p>
+            <label class="field" style="width:100%">Songs<select id="plex-source"></select></label>
+            <button type="button" class="primary" id="plex-make">Make playlist</button>
+          </div>
         </div>
         <p class="status" id="export-status" role="status" aria-live="polite"></p>
       </div>
@@ -880,6 +926,13 @@
 </dialog>
 
 <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+
+<dialog id="cmdk" class="cmdk" aria-label="Quick search">
+  <input id="cmdk-input" type="search" placeholder="Jump to a song, era, person or page" autocomplete="off" spellcheck="false"
+    role="combobox" aria-expanded="true" aria-controls="cmdk-list" aria-autocomplete="list">
+  <ul id="cmdk-list" role="listbox" aria-label="Results"></ul>
+  <p class="cmdk-hint">↑ ↓ to move, Return to open, Esc to close</p>
+</dialog>
 
 <dialog id="links-dialog" aria-labelledby="links-title">
   <div class="dlg-body" id="links-body"></div>
@@ -2006,7 +2059,8 @@ function fileLink(song, text) {
   const href = fileUrl(song);
   if (!href) return "";
   const folder = saveFolder(song);
-  const direct = canDownloadToLibrary() && Boolean(folder); // Mac app: one click saves it into the music folder
+  // Mac app: one click saves it into the music folder. Not for songs you already have: that would add a second copy.
+  const direct = canDownloadToLibrary() && Boolean(folder) && !state.owned.has(state.catalog.indexOf(song));
   const label = direct ? (text ? "Download to library" : "Download") : (text || "File");
   const tip = direct ? `Downloads into ${folder}/ so the tracker finds it. ⌘-click opens it on juicewrldapi.com instead.`
     : `Opens the file on juicewrldapi.com. Save it from your browser${folder ? ` into ${folder}/` : ""}.`;
@@ -2657,9 +2711,10 @@ function readPersonal() {
     return {
       wish: d.wish || {}, notes: d.notes || {}, trivia: d.trivia || {}, linkTemplate: d.linkTemplate || "",
       matchOverrides: d.matchOverrides || {}, opened: d.opened || {}, fixGenre: d.fixGenre || "",
+      downloaded: d.downloaded || {}, autoTag: d.autoTag !== false,
     };
   } catch (e) {
-    return { wish: {}, notes: {}, trivia: {}, linkTemplate: "", matchOverrides: {}, opened: {}, fixGenre: "" };
+    return { wish: {}, notes: {}, trivia: {}, linkTemplate: "", matchOverrides: {}, opened: {}, fixGenre: "", downloaded: {}, autoTag: true };
   }
 }
 state.personal = readPersonal();
@@ -2733,19 +2788,26 @@ function renderDuplicates() {
     ? `${plural(groups.length, "song", "songs")} with ${plural(groups.reduce((n, g) => n + g.files.length, 0), "file", "files")} in total. Extra copies use about ${formatSize(extra)}.`
     : "Every song in your library has a single file.";
   $("dup-export").hidden = !groups.length;
+  const trashable = canTrash();
+  const exactFiles = trashable ? extraCopies(groups.filter(isExactDuplicate)) : [];
+  $("dup-clean-all").hidden = !exactFiles.length;
+  $("dup-clean-all").textContent = `Move ${plural(exactFiles.length, "extra copy", "extra copies")} to Trash`;
+  $("dup-clean-all").title = "Keeps the best copy of each song whose files all have the same title, and moves the rest to the Trash.";
   const shown = groups.slice(0, state.dupLimit);
-  $("dup-list").innerHTML = shown.map(g => {
-    const largest = g.files[0];
+  $("dup-list").innerHTML = shown.map((g, idx) => {
+    const largest = g.files[0], keep = bestCopy(g.files);
     return `<div class="dup-group">
       <div class="dup-head">
         ${g.i !== null ? `<button type="button" class="song-link dup-title" data-song="${g.i}">${esc(g.title)}</button>` : `<span class="dup-title">${esc(g.title)}</span> <span class="badge cat">Not in catalog</span>`}
         <span class="muted">${plural(g.files.length, "file", "files")}${g.extra ? `, extra copies ${formatSize(g.extra)}` : ""}</span>
+        ${trashable && isExactDuplicate(g) ? `<button type="button" class="ghost small dup-clean" data-dup-clean="${idx}">Keep ${esc(baseName(keep.path))}, move ${fmt(g.files.length - 1)} to Trash</button>` : ""}
       </div>
       <ul class="dup-files">${g.files.map(f => {
         const folder = f.path.split("/").slice(0, -1).join("/");
         const hints = [
           f === largest && g.files.length > 1 && (f.size || 0) > (g.files[1].size || 0) ? "Largest" : "",
           LOSSLESS.has(f.ext) ? "Lossless" : "",
+          trashable && isExactDuplicate(g) && f === keep ? "Kept" : "",
         ].filter(Boolean);
         return `<li>
           <span class="dup-name">${esc(baseName(f.path))}${hints.map(h => ` <span class="badge released">${h}</span>`).join("")}</span>
@@ -2764,7 +2826,45 @@ $("dup-more").addEventListener("click", () => { state.dupLimit += 50; renderDupl
 $("dup-list").addEventListener("click", e => {
   const b = e.target.closest("button[data-song]");
   if (b) openSong(Number(b.dataset.song));
+  const clean = e.target.closest("button[data-dup-clean]");
+  if (clean) trashExtraCopies([state.dupGroups[Number(clean.dataset.dupClean)]]);
 });
+$("dup-clean-all").addEventListener("click", () => trashExtraCopies(state.dupGroups.filter(isExactDuplicate)));
+
+/* Duplicate cleanup (Mac app): keep the best copy, move the rest to the Trash. Never deletes outright. */
+function canTrash() { return Boolean(window.jwTrash && state.rootHandle && state.rootHandle._path); }
+/** Lossless beats lossy; then the biggest file (higher bitrate, more complete). */
+function bestCopy(files) { return [...files].sort((a, b) => (LOSSLESS.has(b.ext) - LOSSLESS.has(a.ext)) || (b.size || 0) - (a.size || 0))[0]; }
+/** Only files that read as exactly the same title, brackets included, so a remix or "v2" is never treated as a copy. */
+function isExactDuplicate(g) { return new Set(g.files.map(f => cmdkKey(f.title))).size === 1; }
+/** The files to remove: each extra copy once (a file can be listed under several versions of a song), never a kept one. */
+function extraCopies(groups) {
+  const kept = new Set(groups.map(g => bestCopy(g.files).path));
+  const out = new Map();
+  for (const g of groups) for (const f of g.files) if (!kept.has(f.path) && f.handle && f.handle._path) out.set(f.path, f);
+  return [...out.values()];
+}
+async function trashExtraCopies(groups) {
+  const victims = extraCopies(groups.filter(g => g && isExactDuplicate(g)));
+  if (!victims.length) return;
+  const list = victims.slice(0, 12).map(f => `• ${f.path}`).join("\n") + (victims.length > 12 ? `\n…and ${fmt(victims.length - 12)} more` : "");
+  if (!window.confirm(`Move ${plural(victims.length, "file", "files")} to the Trash?\n\nThe best copy of each song is kept, and you can put files back from the Trash.\n\n${list}`)) return;
+  let moved = 0;
+  const failed = [];
+  for (const f of victims) {
+    try {
+      await window.jwTrash(f.handle._path);
+      moved++;
+      state.library = state.library.filter(x => x !== f);
+      if (state.lastItems) state.lastItems = state.lastItems.filter(it => it.path !== f.path);
+    } catch (err) {
+      failed.push(`${baseName(f.path)} (${err.message})`);
+    }
+  }
+  update();
+  renderDuplicates();
+  toast(`Moved ${plural(moved, "file", "files")} to the Trash.${failed.length ? ` Couldn't move ${failed.slice(0, 3).join("; ")}${failed.length > 3 ? "; and more" : ""}.` : ""}`, failed.length > 0);
+}
 $("dup-export").addEventListener("click", () => {
   const lines = [["song", "in_catalog", "file_count", "file", "format", "size_bytes", "read_as", "path"]];
   (state.dupGroups || []).forEach(g => g.files.forEach(f => lines.push([g.title, g.i !== null ? "yes" : "no", g.files.length, baseName(f.path), f.ext, f.size ?? "", f.title, f.path])));
@@ -2780,8 +2880,48 @@ const FULL_COLUMNS = [
   ["surfaced_type", s => s.leakType], ["session_titles", s => s.sessions], ["other_dates", s => s.dates], ["notes", s => s.notes],
   ["additional_information", s => s.info], ["site_file_url", s => fileUrl(s)],
 ];
+/* Plex playlists (Mac app, once Plex is set up in Settings): lists of song indexes you have. */
+function plexSources() {
+  const owned = i => state.owned.has(i);
+  const monthAgo = Date.now() - 30 * 864e5;
+  const out = [
+    { id: "wish", label: "Wishlist songs you have", title: "Juice WRLD: Wishlist", songs: state.catalog.map((s, i) => i).filter(i => owned(i) && isWished(state.catalog[i])) },
+    { id: "recent", label: "Downloaded in the last 30 days", title: "Juice WRLD: Recently downloaded",
+      songs: state.catalog.map((s, i) => i).filter(i => owned(i) && Date.parse(state.personal.downloaded[state.catalog[i].id] || "") > monthAgo) },
+  ];
+  eraStats().filter(e => e.have).forEach(e => out.push({ id: `era:${e.name}`, label: `Era: ${e.name}`, title: `Juice WRLD: ${e.name}`,
+    songs: state.catalog.map((s, i) => i).filter(i => owned(i) && eraName(state.catalog[i]) === e.name) }));
+  return out;
+}
+async function renderPlexItem() {
+  let configured = false;
+  try { configured = Boolean(window.jwPlex && (await window.jwPlex({ action: "status" })).configured); } catch (e) { /* not the app */ }
+  $("plex-item").hidden = !configured;
+  if (!configured) return;
+  const keep = $("plex-source").value;
+  $("plex-source").innerHTML = plexSources().map(s => `<option value="${esc(s.id)}">${esc(s.label)} (${fmt(s.songs.length)})</option>`).join("");
+  if (keep) $("plex-source").value = keep;
+}
+$("plex-make").addEventListener("click", async () => {
+  const src = plexSources().find(s => s.id === $("plex-source").value);
+  // One file can match several catalog versions of a song; send each file once.
+  const paths = src ? [...new Set(src.songs.flatMap(i => (state.owned.get(i) || []).map(f => f.handle && f.handle._path).filter(Boolean)))] : [];
+  if (!paths.length) { setStatus("export-status", "There are no songs you have in that list yet.", true); return; }
+  $("plex-make").disabled = true;
+  setStatus("export-status", `Making “${src.title}” in Plex…`);
+  try {
+    const r = await window.jwPlex({ action: "playlist", title: src.title, paths });
+    setStatus("export-status", `Made “${src.title}” in Plex with ${plural(r.matched, "song", "songs")}.${r.missing ? ` ${plural(r.missing, "file wasn't", "files weren't")} found in Plex yet; let Plex finish scanning and make it again.` : ""}`);
+  } catch (err) {
+    setStatus("export-status", `Couldn't make the playlist: ${err.message}`, true);
+  } finally {
+    $("plex-make").disabled = false;
+  }
+});
+
 function renderExportPanel() {
   if (!state.catalog || !state.library) return;
+  renderPlexItem();
   const missing = state.catalog.filter(s => !s.hasDetails).length;
   const wishes = Object.keys(state.personal.wish).length, notes = Object.keys(state.personal.notes).length;
   $("export-sub").textContent = ` ${plural(wishes, "wishlist song", "wishlist songs")}, ${plural(notes, "note", "notes")}`;
@@ -3200,6 +3340,9 @@ function renderLinksDialog() {
       <button type="button" class="small" id="links-copy" ${off}>Copy links</button>
       <button type="button" class="ghost small" id="links-page" ${off}>Save as a link page</button>
       <button type="button" class="ghost small" id="links-txt" ${off}>Save as .txt</button>
+      ${canDownloadToLibrary() && withFile.length ? (state.bulk
+        ? `<button type="button" class="small" id="links-stop">Stop downloading</button>`
+        : `<button type="button" class="small primary" id="links-download">Download all ${fmt(withFile.length)}</button>`) : ""}
       ${state.rootHandle ? `<button type="button" class="ghost small" id="links-rescan">Rescan your folder</button>` : ""}
       ${opened ? `<button type="button" class="ghost small" id="links-reset">Clear check marks</button>` : ""}
     </div>`}
@@ -3251,6 +3394,10 @@ $("links-dialog").addEventListener("click", async e => {
   } else if (e.target.closest("#links-txt")) {
     downloadText(`juice-wrld-files-${slug}-${today()}.txt`, urls.join("\r\n") + "\r\n", "text/plain");
     setStatus("links-status", `Saved ${plural(urls.length, "link", "links")}.`);
+  } else if (e.target.closest("#links-download")) {
+    if (window.confirm(`Download ${plural(withFile.length, "song", "songs")} into your music folder? They go into the folders shown, one at a time.`)) downloadAll(withFile.map(r => r.song));
+  } else if (e.target.closest("#links-stop")) {
+    if (state.bulk) { state.bulk.stop = true; setStatus("links-status", "Stopping after this song…"); }
   } else if (e.target.closest("#links-reset")) {
     withFile.forEach(r => delete state.personal.opened[r.song.id]);
     savePersonal();
@@ -3337,7 +3484,7 @@ function songCardHtml(song, i, detailState) {
     ${personalSectionHtml(song)}
     <h3 class="section-h">Your library</h3>
     ${files.length
-      ? `<ul class="paths">${files.map(f => `<li>${esc(f.path)}</li>`).join("")}</ul>`
+      ? `<ul class="paths">${files.map((f, n) => `<li>${esc(f.path)}${canPlay(f) ? `<button type="button" class="ghost small play-file" data-play-file="${n}" aria-label="Play ${esc(baseName(f.path))}">Play</button>` : ""}</li>`).join("")}</ul>`
       : `<p class="prose" style="color:var(--muted)">Not in your library.</p>${fileUrl(song) ? `<p class="hint" style="margin-top:6px">Open the file, then save it as <code>${esc(saveFileName(song))}</code> in <code>${esc(saveFolder(song))}/</code>. Keeping the site's file name lets the tracker match it even if its tags are different.</p>` : ""}${isReleased(song) ? findLinks(song) : ""}`}
   `;
 }
@@ -3471,6 +3618,21 @@ $("export-btn").addEventListener("click", () => {
 /* ---------- tag fixer */
 function selectedFields() { return [...document.querySelectorAll("#fix-fields input:checked")].map(i => i.value); }
 const fixGenre = () => $("fix-genre").value.trim() || DEFAULT_GENRE;
+/** The tag changes the fixer would make to one matched file, using the fixer's current options. */
+function fixFor(f, fields = selectedFields(), onlyBlanks = $("fix-blanks").checked, genre = fixGenre()) {
+  const song = state.catalog[f.songs[0]];
+  const want = plannedTags(song, genre);
+  const changes = [], desired = {};
+  for (const k of fields) {
+    const to = String(want[k] || "").trim();
+    if (!to) continue;
+    const from = String(f.tags[k] || "").trim();
+    if ((onlyBlanks && from) || from === to) continue;
+    changes.push({ k, from, to });
+    desired[k] = to;
+  }
+  return { f, song, changes, desired };
+}
 function buildPlan() {
   const fields = selectedFields(), onlyBlanks = $("fix-blanks").checked, genre = fixGenre();
   const plan = { changes: [], skipped: [], same: 0 };
@@ -3478,27 +3640,36 @@ function buildPlan() {
     if (!f.songs || !f.songs.length) continue;
     if (f.songs.length > 1) continue; // listed under "Pick the right song" instead
     if (!EDITABLE_EXTS.has(f.ext)) { plan.skipped.push({ f, reason: `.${f.ext} files can't be edited yet` }); continue; }
-    const song = state.catalog[f.songs[0]];
-    const want = plannedTags(song, genre);
-    const changes = [], desired = {};
-    for (const k of fields) {
-      const to = String(want[k] || "").trim();
-      if (!to) continue;
-      const from = String(f.tags[k] || "").trim();
-      if ((onlyBlanks && from) || from === to) continue;
-      changes.push({ k, from, to });
-      desired[k] = to;
-    }
-    if (!changes.length) { plan.same++; continue; }
-    plan.changes.push({ f, song, changes, desired });
+    const it = fixFor(f, fields, onlyBlanks, genre);
+    if (!it.changes.length) { plan.same++; continue; }
+    plan.changes.push(it);
   }
   return plan;
+}
+/** Rewrites one file's tags: build in memory, run the safety check, back up the original, save, read back. */
+async function writeTags(it) {
+  const orig = new Uint8Array(await (await it.f.handle.getFile()).arrayBuffer());
+  const [write, verify] = WRITERS[it.f.ext];
+  const res = write(orig, it.desired);
+  verify(orig, res, it.desired);
+  if (state.backupDir) await backupFile(state.backupDir, it.f.path, orig);
+  const w = await it.f.handle.createWritable();
+  await w.write(res.out);
+  await w.close();
+  const fresh = await it.f.handle.getFile();
+  it.f.tags = await readTags(fresh, it.f.ext);
+  it.f.title = it.f.tags.title || titleFromFilename(it.f.path);
+  it.f.key = normalize(it.f.title);
+  it.f.fromTags = Boolean(it.f.tags.title);
+  it.f.size = fresh.size;
 }
 const isSelected = item => state.fixSel.has(item.f.path) ? state.fixSel.get(item.f.path) : !item.f.fuzzy;
 
 function renderFixer() {
   if (!state.catalog || !state.library) return;
   const plan = state.plan = buildPlan();
+  $("fix-auto-row").hidden = !canDownloadToLibrary();
+  $("fix-auto").checked = autoTagOn();
   const selected = plan.changes.filter(isSelected).length;
 
   let support = "";
@@ -3636,20 +3807,7 @@ $("fix-write").addEventListener("click", async () => {
     const it = items[n];
     setStatus("fix-status", `Writing ${fmt(n + 1)} of ${fmt(items.length)}: ${baseName(it.f.path)}`);
     try {
-      const orig = new Uint8Array(await (await it.f.handle.getFile()).arrayBuffer());
-      const [write, verify] = WRITERS[it.f.ext];
-      const res = write(orig, it.desired);
-      verify(orig, res, it.desired);
-      if (state.backupDir) await backupFile(state.backupDir, it.f.path, orig);
-      const w = await it.f.handle.createWritable();
-      await w.write(res.out);
-      await w.close();
-      const fresh = await it.f.handle.getFile();
-      it.f.tags = await readTags(fresh, it.f.ext);
-      it.f.title = it.f.tags.title || titleFromFilename(it.f.path);
-      it.f.key = normalize(it.f.title);
-      it.f.fromTags = Boolean(it.f.tags.title);
-      it.f.size = fresh.size;
+      await writeTags(it);
       state.fixSel.delete(it.f.path);
       ok++;
     } catch (err) {
@@ -3658,6 +3816,7 @@ $("fix-write").addEventListener("click", async () => {
   }
   state.writing = false;
   update();
+  if (ok) plexRefresh();
   const msg = `Updated ${plural(ok, "file", "files")}.${failed.length ? ` ${plural(failed.length, "file", "files")} were left unchanged: ${failed.slice(0, 5).join("; ")}${failed.length > 5 ? "; and more" : ""}.` : ""} In Plex, refresh the library's metadata to see the new tags.`;
   setStatus("fix-status", msg, failed.length > 0 && ok === 0);
 });
@@ -3686,6 +3845,83 @@ document.querySelectorAll(".panel > summary").forEach(s => {
 });
 showView("collection");
 
+/* ---------- ⌘K quick search: pages, songs, eras and people */
+const cmdk = { index: null, indexFor: null, results: [], pos: 0 };
+const cmdkKey = text => String(text || "").toLowerCase().normalize("NFKD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, " ").trim();
+function cmdkIndex() {
+  const ready = document.body.classList.contains("ready");
+  if (cmdk.index && cmdk.indexFor === (ready ? state.catalog : null)) return cmdk.index;
+  const items = [...document.querySelectorAll("#nav button")]
+    .filter(b => ready || !b.classList.contains("tool"))
+    .map(b => ({ kind: "Page", label: b.textContent.trim(), run: () => showView(b.dataset.view) }));
+  if (ready) {
+    state.catalog.forEach((song, i) => items.push({
+      kind: "Song", label: song.name, alt: song.alt.join(" "),
+      sub: `${eraName(song)}${state.owned.has(i) ? ", in your library" : ""}`,
+      run: () => { showView("collection"); openSong(i); },
+    }));
+    eraStats().forEach(e => items.push({ kind: "Era", label: e.name, sub: plural(e.total, "song", "songs"),
+      run: () => { showView("collection"); selectEra(e.name); } }));
+    for (const [key, role] of Object.entries(PEOPLE_ROLES)) {
+      countNames(key).slice(0, 500).forEach(p => items.push({
+        kind: role.one.charAt(0).toUpperCase() + role.one.slice(1), label: p.name, sub: plural(p.n, "song", "songs"),
+        run: () => { filterToPerson(role.filter, p.name); showView("collection"); $("tabs").scrollIntoView({ block: "center" }); },
+      }));
+    }
+  }
+  items.forEach(it => { it.key = cmdkKey(it.label); it.altKey = cmdkKey(it.alt); });
+  cmdk.indexFor = ready ? state.catalog : null;
+  return (cmdk.index = items);
+}
+function cmdkSearch(query) {
+  const q = cmdkKey(query), items = cmdkIndex();
+  if (!q) return items.filter(it => it.kind === "Page");
+  const order = { Page: 0, Song: 1, Era: 2 };
+  const scored = [];
+  for (const it of items) {
+    const score = it.key.startsWith(q) ? 0 : it.key.includes(` ${q}`) ? 1 : it.key.includes(q) ? 2 : it.altKey && it.altKey.includes(q) ? 3 : -1;
+    if (score >= 0) scored.push([score, order[it.kind] ?? 3, it.label.length, it]);
+  }
+  return scored.sort((a, b) => a[0] - b[0] || a[1] - b[1] || a[2] - b[2]).slice(0, 14).map(x => x[3]);
+}
+function renderCmdk() {
+  $("cmdk-list").innerHTML = cmdk.results.map((it, n) => `<li role="option" id="cmdk-${n}" data-n="${n}" aria-selected="${n === cmdk.pos}">
+      <span class="kind">${esc(it.kind)}</span><span class="label">${esc(it.label)}</span>${it.sub ? `<span class="sub">${esc(it.sub)}</span>` : ""}</li>`).join("")
+    || `<li class="empty" aria-disabled="true">No matches</li>`;
+  $("cmdk-input").setAttribute("aria-activedescendant", cmdk.results.length ? `cmdk-${cmdk.pos}` : "");
+  $(`cmdk-${cmdk.pos}`)?.scrollIntoView({ block: "nearest" });
+}
+function openCmdk() {
+  const dlg = $("cmdk");
+  if (dlg.open) return;
+  $("cmdk-input").value = "";
+  cmdk.results = cmdkSearch(""); cmdk.pos = 0;
+  renderCmdk();
+  dlg.showModal();
+  $("cmdk-input").focus();
+}
+function runCmdk(n) {
+  const it = cmdk.results[n];
+  if (!it) return;
+  $("cmdk").close();
+  document.querySelectorAll("dialog[open]").forEach(d => d.close());
+  it.run();
+}
+$("cmdk-open").addEventListener("click", openCmdk);
+document.addEventListener("keydown", e => {
+  if ((e.metaKey || e.ctrlKey) && !e.altKey && e.key.toLowerCase() === "k") { e.preventDefault(); openCmdk(); }
+});
+$("cmdk-input").addEventListener("input", e => { cmdk.results = cmdkSearch(e.target.value); cmdk.pos = 0; renderCmdk(); });
+$("cmdk-input").addEventListener("keydown", e => {
+  if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+    e.preventDefault();
+    const n = cmdk.results.length;
+    if (n) { cmdk.pos = (cmdk.pos + (e.key === "ArrowDown" ? 1 : n - 1)) % n; renderCmdk(); }
+  } else if (e.key === "Enter") { e.preventDefault(); runCmdk(cmdk.pos); }
+});
+$("cmdk-list").addEventListener("click", e => { const li = e.target.closest("li[data-n]"); if (li) runCmdk(Number(li.dataset.n)); });
+$("cmdk").addEventListener("click", e => { if (e.target === $("cmdk")) $("cmdk").close(); });
+
 /* ---------- downloads straight into the music folder (Mac app only) */
 function canDownloadToLibrary() { return Boolean(window.jwDownload && state.rootHandle && state.rootHandle._path); }
 let toastTimer = null;
@@ -3697,25 +3933,22 @@ function toast(text, isError = false) {
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => { el.hidden = true; }, isError ? 9000 : 5000);
 }
-async function downloadToLibrary(song, link) {
+/** Downloads one song into its suggested folder and adds it to the library. Throws if the download itself fails. */
+async function downloadSong(song) {
   const root = state.rootHandle, folder = saveFolder(song);
   const rel = `${folder}/${saveFileName(song)}`;     // library-style path: starts with the music folder's own name
   const inner = rel.split("/").slice(1);              // the same path inside the music folder
-  const label = link.querySelector("span") || link, before = label.textContent;
-  label.textContent = "Downloading…";
-  link.setAttribute("aria-busy", "true");
   const where = inner.slice(0, -1).join("/") || root.name;
-  let r;
-  try {
-    r = await window.jwDownload(fileUrl(song), `${root._path.replace(/\/+$/, "")}/${inner.join("/")}`);
-  } catch (err) {
-    label.textContent = before;
-    link.removeAttribute("aria-busy");
-    toast(`Couldn't download “${song.name}”: ${err.message}`, true);
-    return;
-  }
+  const r = await window.jwDownload(fileUrl(song), `${root._path.replace(/\/+$/, "")}/${inner.join("/")}`);
   state.personal.opened[song.id] = new Date().toISOString();
+  if (!r.existed) {
+    state.personal.downloaded = { ...state.personal.downloaded, [song.id]: new Date().toISOString() };
+    // We know exactly which song this file is, even when its title also matches other versions or alternate
+    // titles. Record it as a manual match (like "Pick a song"), so it's counted once and can be auto-tagged.
+    state.personal.matchOverrides[rel] = song.id;
+  }
   savePersonal();
+  const out = { existed: Boolean(r.existed), where, counted: false, tagged: false, note: "" };
   try {
     // Add just this file to the library instead of rescanning the whole folder (slow on network drives).
     let dir = root;
@@ -3725,31 +3958,97 @@ async function downloadToLibrary(song, link) {
     if (!state.library.some(f => f.path === rel)) state.library.push(...found);
     if (state.lastItems && !state.lastItems.some(it => it.path === rel)) state.lastItems.push({ handle, path: rel });
     update();
-    if (state.links) renderLinksDialog();
-    toast(r.existed ? `“${song.name}” was already in ${where}.`
-      : found.length ? `Saved “${song.name}” to ${where}.`
-      : `Saved “${song.name}” to ${where}, but it doesn't look like a Juice WRLD file, so it isn't counted.`);
+    const f = state.library.find(x => x.path === rel);
+    out.counted = Boolean(f && f.songs && f.songs.length);
+    // Auto-tag: same tags and safety checks as the tag fixer.
+    if (!out.existed && autoTagOn() && f && f.songs && f.songs.length === 1 && EDITABLE_EXTS.has(f.ext)) {
+      const it = fixFor(f);
+      if (it.changes.length) {
+        try { await writeTags(it); out.tagged = true; update(); } catch (err) { out.note = `Its tags weren't updated: ${err.message}.`; }
+      }
+    }
   } catch (err) {
-    toast(`Saved “${song.name}” to ${where}, but couldn't add it to the list (${err.message}). Rescan your folder to see it.`, true);
+    out.note = `It couldn't be added to the list (${err.message}). Rescan your folder to see it.`;
+  }
+  return out;
+}
+function downloadMessage(song, r) {
+  if (r.existed) return `“${song.name}” was already in ${r.where}.`;
+  return `Saved “${song.name}” to ${r.where}${r.tagged ? " and tagged it" : ""}.${r.counted ? "" : " It doesn't look like a Juice WRLD file, so it isn't counted."}${r.note ? ` ${r.note}` : ""}`;
+}
+async function downloadToLibrary(song, link) {
+  const label = link.querySelector("span") || link, before = label.textContent;
+  label.textContent = "Downloading…";
+  link.setAttribute("aria-busy", "true");
+  try {
+    const r = await downloadSong(song);
+    if (state.links) renderLinksDialog();
+    toast(downloadMessage(song, r), Boolean(r.note));
+    if (!r.existed) plexRefresh();
+  } catch (err) {
+    label.textContent = before;
+    toast(`Couldn't download “${song.name}”: ${err.message}`, true);
   } finally {
     link.removeAttribute("aria-busy");
   }
 }
+/** Download all: one at a time (gentle on the site and the drive), stoppable from the dialog. */
+async function downloadAll(songs) {
+  if (state.bulk || !songs.length) return;
+  const job = state.bulk = { stop: false, done: 0, total: songs.length, saved: 0, failed: [] };
+  if (state.links) renderLinksDialog();
+  for (const song of songs) {
+    if (job.stop) break;
+    const progress = `Downloading ${fmt(job.done + 1)} of ${fmt(job.total)}: ${song.name}…`;
+    if ($("links-status")) setStatus("links-status", progress);
+    try {
+      const r = await downloadSong(song);
+      if (!r.existed) job.saved++;
+      if (r.note) job.failed.push(`${song.name} (${r.note})`);
+    } catch (err) {
+      job.failed.push(`${song.name} (${err.message})`);
+    }
+    job.done++;
+    if (state.links) renderLinksDialog();
+  }
+  state.bulk = null;
+  if (job.saved) plexRefresh();
+  if (state.links) renderLinksDialog();
+  const msg = `${job.stop ? "Stopped. " : ""}Downloaded ${plural(job.saved, "song", "songs")}.${job.failed.length ? ` ${plural(job.failed.length, "had a problem", "had problems")}: ${job.failed.slice(0, 3).join("; ")}${job.failed.length > 3 ? "; and more" : ""}.` : ""}`;
+  if ($("links-status")) setStatus("links-status", msg, job.failed.length > 0 && !job.saved);
+  toast(msg, job.failed.length > 0 && !job.saved);
+}
+function autoTagOn() { return state.personal.autoTag !== false; }
+$("fix-auto").addEventListener("change", e => { state.personal.autoTag = e.target.checked; savePersonal(); });
+/** Tells Plex (Settings, ⌘,) to rescan after files change. No-op outside the app or when Plex isn't set up. */
+function plexRefresh() { window.jwPlex?.({ action: "refresh" }).catch(() => {}); }
 // Capture phase, so it runs before the links dialog's own handler (which only marks the song as opened).
 document.addEventListener("click", e => {
   const link = e.target.closest("a[data-file-id]");
   if (!link || e.metaKey || e.ctrlKey || !canDownloadToLibrary()) return; // ⌘-click still opens the site
   const song = state.catalog && state.catalog.find(s => String(s.id) === link.dataset.fileId);
-  if (!song || !saveFolder(song) || !fileUrl(song)) return;
+  if (!song || !saveFolder(song) || !fileUrl(song) || state.owned.has(state.catalog.indexOf(song))) return; // owned: open the site
   e.preventDefault();
   if (link.getAttribute("aria-busy") !== "true") downloadToLibrary(song, link);
 }, true);
 
 /* ---------- ambient music (Mac app only): your matched songs, shuffled, very quietly */
 function ambientOn() { try { return localStorage.getItem("jw-ambient") !== "off"; } catch (e) { return true; } }
+function ambientVolume() { try { const v = Number(localStorage.getItem("jw-ambient-volume")); return Number.isFinite(v) && localStorage.getItem("jw-ambient-volume") !== null ? v : 6; } catch (e) { return 6; } }
+const PLAYABLE = new Set(["mp3", "m4a", "m4b", "aac", "alac", "flac", "wav", "aif", "aiff"]); // what AVAudioPlayer opens
+function canPlay(f) { return Boolean(window.jwAmbient && f.handle && f.handle._path && PLAYABLE.has(extOf(f.path))); }
+let playerPaused = false;
+function renderPlayer() {
+  const on = ambientOn();
+  $("player").hidden = $("ambient-btn").hidden || !on;
+  $("player-pause").setAttribute("aria-label", playerPaused ? "Play" : "Pause");
+  $("player-pause").innerHTML = playerPaused
+    ? `<svg viewBox="0 0 24 24" aria-hidden="true" fill="currentColor"><path d="M7 5v14l12-7z"/></svg>`
+    : `<svg viewBox="0 0 24 24" aria-hidden="true" fill="currentColor"><rect x="6" y="5" width="4" height="14" rx="1.2"/><rect x="14" y="5" width="4" height="14" rx="1.2"/></svg>`;
+  $("ambient-btn").classList.toggle("paused", playerPaused);
+}
 function ambientItems() {
-  const playable = new Set(["mp3", "m4a", "m4b", "aac", "alac", "flac", "wav", "aif", "aiff"]); // what AVAudioPlayer opens
-  return (state.library || []).filter(f => f.songs && f.songs.length && f.handle && f.handle._path && playable.has(extOf(f.path)))
+  return (state.library || []).filter(f => f.songs && f.songs.length && canPlay(f))
     .map(f => ({ path: f.handle._path, title: (state.catalog && state.catalog[f.songs[0]]?.name) || baseName(f.path) }));
 }
 function syncAmbient() {
@@ -3760,8 +4059,35 @@ function syncAmbient() {
   const label = $("ambient-now");
   if (!on) label.textContent = "Off";
   else if (label.textContent === "Off") label.textContent = "Starting…"; // runs on every library update; don't overwrite the song title
-  if (items.length) window.jwAmbient({ items, play: on }).catch(() => {});
+  if (!on) playerPaused = false;
+  renderPlayer();
+  if (items.length) window.jwAmbient({ items, play: on, volume: ambientVolume() / 100 }).catch(() => {});
 }
+$("player-volume").value = ambientVolume();
+$("player-volume").addEventListener("input", e => {
+  try { localStorage.setItem("jw-ambient-volume", e.target.value); } catch (err) {}
+  window.jwAmbient?.({ volume: Number(e.target.value) / 100 }).catch(() => {});
+});
+$("player-pause").addEventListener("click", () => {
+  playerPaused = !playerPaused;
+  window.jwAmbient?.({ cmd: playerPaused ? "pause" : "resume" }).catch(() => {});
+  renderPlayer();
+});
+$("player-skip").addEventListener("click", () => {
+  playerPaused = false;
+  window.jwAmbient?.({ cmd: "skip" }).catch(() => {});
+  renderPlayer();
+});
+$("song-body").addEventListener("click", e => {
+  const b = e.target.closest("button[data-play-file]");
+  if (!b || !state.dialog) return;
+  const i = state.dialog.list[state.dialog.pos], f = (state.owned.get(i) || [])[Number(b.dataset.playFile)];
+  if (!f || !canPlay(f)) return;
+  try { localStorage.setItem("jw-ambient", "on"); } catch (err) {}
+  playerPaused = false;
+  syncAmbient();
+  window.jwAmbient({ playPath: f.handle._path, title: state.catalog[i].name }).catch(err => toast(`Couldn't play it: ${err.message}`, true));
+});
 window.jwAmbientNow = title => { $("ambient-now").textContent = title || (ambientOn() ? "Not playing" : "Off"); };
 $("ambient-btn").addEventListener("click", () => {
   try { localStorage.setItem("jw-ambient", ambientOn() ? "off" : "on"); } catch (e) {}
