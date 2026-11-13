@@ -24,5 +24,4 @@ an editable Xcode project, a DMG, and this GitHub repo for history.
   CSV export via save panel, target=_blank links open in the default browser.
 
 ## Not done yet
-- Picked music folder isn't remembered between launches (pick it again each time).
 - Unsigned/un-notarized: Gatekeeper warns on first open of a downloaded DMG.

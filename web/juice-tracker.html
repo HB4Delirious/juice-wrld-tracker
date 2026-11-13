@@ -3463,6 +3463,13 @@ $("fix-write").addEventListener("click", async () => {
   setStatus("fix-status", msg, failed.length > 0 && ok === 0);
 });
 
+// Mac app only: rescan the music folder picked last time.
+if (window.jwRestoreFolder) {
+  window.jwRestoreFolder("plex-music")
+    .then(dir => dir && !state.rootHandle && loadFromHandle(dir))
+    .catch(err => setStatus("folder-status", `Couldn't reopen your music folder: ${err.message}. Choose it again.`, true));
+}
+
 </script>
 </body>
 </html>
