@@ -179,30 +179,34 @@ final class NativeBridge: NSObject, WKScriptMessageHandlerWithReply {
     private static func download(_ url: URL, to dest: URL, reply: @escaping (Any?, String?) -> Void) {
         let finish = { (result: Any?, failure: String?) in DispatchQueue.main.async { reply(result, failure) } }
         let fm = FileManager.default
-        if fm.fileExists(atPath: dest.path) { finish(["path": dest.path, "existed": true], nil); return }
-        URLSession.shared.downloadTask(with: url) { temp, response, error in
-            if let error { finish(nil, "NetworkError: \(error.localizedDescription)"); return }
-            let http = response as? HTTPURLResponse
-            guard let temp, let http, http.statusCode == 200 else {
-                finish(nil, "NetworkError: juicewrldapi.com answered \(http?.statusCode ?? 0)."); return
-            }
-            // An error page served as 200 must not land in the library as a song.
-            let type = (http.mimeType ?? "").lowercased()
-            guard type.hasPrefix("audio/") || type == "application/octet-stream" else {
-                finish(nil, "NetworkError: juicewrldapi.com didn't send an audio file."); return
-            }
-            do {
-                try fm.createDirectory(at: dest.deletingLastPathComponent(), withIntermediateDirectories: true)
-                if fm.fileExists(atPath: dest.path) { finish(["path": dest.path, "existed": true], nil); return }
-                try fm.moveItem(at: temp, to: dest) // the temp file is deleted when this handler returns
-                // Download temp files are private (600); make it readable like the rest of the library, so Plex can index it.
-                try? fm.setAttributes([.posixPermissions: 0o644], ofItemAtPath: dest.path)
-                let size = (try? fm.attributesOfItem(atPath: dest.path)[.size] as? NSNumber)?.intValue ?? 0
-                finish(["path": dest.path, "size": size], nil)
-            } catch {
-                finish(nil, "UnknownError: \(error.localizedDescription)")
-            }
-        }.resume()
+        // Off the main thread: on a struggling network drive even this existence check can take minutes,
+        // and on the main thread it froze the whole window for every download.
+        DispatchQueue.global(qos: .userInitiated).async {
+            if fm.fileExists(atPath: dest.path) { finish(["path": dest.path, "existed": true], nil); return }
+            URLSession.shared.downloadTask(with: url) { temp, response, error in
+                if let error { finish(nil, "NetworkError: \(error.localizedDescription)"); return }
+                let http = response as? HTTPURLResponse
+                guard let temp, let http, http.statusCode == 200 else {
+                    finish(nil, "NetworkError: juicewrldapi.com answered \(http?.statusCode ?? 0)."); return
+                }
+                // An error page served as 200 must not land in the library as a song.
+                let type = (http.mimeType ?? "").lowercased()
+                guard type.hasPrefix("audio/") || type == "application/octet-stream" else {
+                    finish(nil, "NetworkError: juicewrldapi.com didn't send an audio file."); return
+                }
+                do {
+                    try fm.createDirectory(at: dest.deletingLastPathComponent(), withIntermediateDirectories: true)
+                    if fm.fileExists(atPath: dest.path) { finish(["path": dest.path, "existed": true], nil); return }
+                    try fm.moveItem(at: temp, to: dest) // the temp file is deleted when this handler returns
+                    // Download temp files are private (600); make it readable like the rest of the library, so Plex can index it.
+                    try? fm.setAttributes([.posixPermissions: 0o644], ofItemAtPath: dest.path)
+                    let size = (try? fm.attributesOfItem(atPath: dest.path)[.size] as? NSNumber)?.intValue ?? 0
+                    finish(["path": dest.path, "size": size], nil)
+                } catch {
+                    finish(nil, "UnknownError: \(error.localizedDescription)")
+                }
+            }.resume()
+        }
     }
 
     // MARK: File operations (run off the main thread)
@@ -325,6 +329,7 @@ final class AmbientPlayer: NSObject, AVAudioPlayerDelegate {
         // Opening a file on a network drive can take seconds; keep it off the main thread.
         DispatchQueue.global(qos: .utility).async {
             let loaded = try? AVAudioPlayer(contentsOf: item.url)
+            loaded?.prepareToPlay() // reads the first buffers here, not on the main thread (slow network drives)
             DispatchQueue.main.async { [weak self] in
                 guard let self, gen == self.generation else { return }
                 guard let loaded else { self.next(failures: failures + 1); return }

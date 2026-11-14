@@ -4008,20 +4008,29 @@ async function downloadSong(song) {
     const { found } = await scanFiles([{ handle, path: rel }], $("only-juice").checked, () => {});
     if (!state.library.some(f => f.path === rel)) state.library.push(...found);
     if (state.lastItems && !state.lastItems.some(it => it.path === rel)) state.lastItems.push({ handle, path: rel });
-    update();
     const f = state.library.find(x => x.path === rel);
-    out.counted = Boolean(f && f.songs && f.songs.length);
+    // We know which song this file is (recorded as a manual match above), so no full re-match is needed before
+    // tagging; the screen catches up once, shortly after, instead of re-rendering everything twice per download.
+    if (f) f.songs = [state.catalog.indexOf(song)];
+    out.counted = Boolean(f);
     // Auto-tag: same tags and safety checks as the tag fixer.
-    if (!out.existed && autoTagOn() && f && f.songs && f.songs.length === 1 && EDITABLE_EXTS.has(f.ext)) {
+    if (!out.existed && autoTagOn() && f && EDITABLE_EXTS.has(f.ext)) {
       const it = fixFor(f);
       if (it.changes.length) {
-        try { await writeTags(it); out.tagged = true; update(); } catch (err) { out.note = `Its tags weren't updated: ${err.message}.`; }
+        try { await writeTags(it); out.tagged = true; } catch (err) { out.note = `Its tags weren't updated: ${err.message}.`; }
       }
     }
+    queueUpdate();
   } catch (err) {
     out.note = `It couldn't be added to the list (${err.message}). Rescan your folder to see it.`;
   }
   return out;
+}
+/** One re-render after a burst of changes (downloads, Download all) instead of one per step. */
+let updateTimer = null;
+function queueUpdate() {
+  clearTimeout(updateTimer);
+  updateTimer = setTimeout(() => { updateTimer = null; update(); if (state.links) renderLinksDialog(); }, 300);
 }
 function downloadMessage(song, r) {
   if (r.existed) return `“${song.name}” was already in ${r.where}.`;
