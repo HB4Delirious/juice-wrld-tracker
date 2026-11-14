@@ -154,3 +154,15 @@ test("recording months and song lengths are read from the catalog's text", () =>
   assert.equal(lengthSeconds("1:02:03"), 3723);
   assert.equal(lengthSeconds("N/A"), null);
 });
+
+test("dates, the site's bitrates, and snapshot CSV files are read correctly", () => {
+  const datesIn = g("datesIn"), siteKbps = g("siteKbps"), parseCsv = g("parseCsv"), csvLike = rows => [...rows].map(r => [...r]);
+  assert.deepEqual([...datesIn("Recorded\nJune 13, 2017.\nUzi's Vocals\nMay 16th, 2018.")].map(x => ({ ...x })),
+    [{ y: 2017, m: 5, d: 13 }, { y: 2018, m: 4, d: 16 }]);
+  assert.equal(datesIn("2018").length, 0);
+  assert.equal(siteKbps("Original Files\n2117kbps (.wav)\n320kpbs (.mp3)", "mp3"), 320, "typo 'kpbs' still counts");
+  assert.equal(siteKbps("Original File\n192kbps (.mp3)", "flac"), 0);
+  assert.equal(siteKbps("", "mp3"), 0);
+  const rows = parseCsv('﻿"path","song_ids"\r\n"a, b.mp3","1 2"\r\n"say ""hi""\nthere","3"');
+  assert.deepEqual(csvLike(rows), [["path", "song_ids"], ["a, b.mp3", "1 2"], ['say "hi"\nthere', "3"]]);
+});

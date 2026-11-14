@@ -42,6 +42,12 @@ In the Mac app, the sidebar's **Ambient music** toggle plays your matched songs,
 - **File health:** finds files that don't open, look cut off (much shorter than the catalog length) or very small, and files with missing or mismatched tags, with fixes: replace with the site's copy, Show in Finder, move to Trash, or open the tag fixer.
 - **Drive status:** the sidebar shows whether the music folder's drive is connected, slow or disconnected; click it to reconnect.
 - **Plex listening (Stats):** most-played songs, songs you've never played, and top eras by plays, from your Plex play counts.
+- **Download queue:** downloads (Download all, Complete this era, missing versions, wishlist alerts) are queued in the app. The queue carries on after you quit, waits and reconnects when the music drive drops, and retries failed songs up to 3 times. Progress and a Stop button are in the sidebar.
+- **Wishlist alerts:** when a wishlist song gets a file on the site or is released, it gets its own notification with a Download button.
+- **Library snapshot:** every week a CSV of your files, tags and matched songs is saved to iCloud Drive (or Documents), off the music drive. Export & backup can open a snapshot to download what's missing.
+- **Versions:** each song card lists all versions side by side, with a button to download the missing ones. **On this day** on the home page shows songs recorded, previewed, surfaced or released on today's date.
+- **Music:** pick an era to shuffle (or Play this era from its card); songs you've heard today are skipped until everything has played. **Smart playlists:** Plex "most played" and "never played" lists in Export & backup. **Trivia:** Name that song plays a clip from your own files.
+- **Upgrades:** File health also lists songs where the site has a lossless or higher-bitrate copy, with an Upgrade button.
 - **Timeline:** every song as a dot in the month it was recorded, with yours lit up. **Collection card** (Export & backup): an image of your progress to post or keep.
 - **Settings (⌘,):**
   - Daily new-song and release alerts (macOS notifications), "Keep running when the window is closed", and "Open at login".
