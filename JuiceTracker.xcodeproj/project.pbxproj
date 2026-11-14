@@ -11,6 +11,7 @@
 		7566C83FDE2D874A8C527794 /* NativeBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = E6A30A4561E530805D149EE4 /* NativeBridge.swift */; };
 		5E6A1C7F2B3D4E5F60718293 /* Services.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6F7B2D803C4E5F60718293A4 /* Services.swift */; };
 		7A8B9C0D1E2F304152637485 /* MenuBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8B9C0D1E2F30415263748596 /* MenuBar.swift */; };
+		9C0D1E2F3041526374859607 /* NativeUI.swift in Sources */ = {isa = PBXBuildFile; fileRef = AD1E2F304152637485960718 /* NativeUI.swift */; };
 		93AD2DE8F603B24719141ACE /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 2DA6296CA099F01CDF41D14C /* Assets.xcassets */; };
 		C169FD5F3E196738AE889C7D /* juice-tracker.html in Resources */ = {isa = PBXBuildFile; fileRef = ACB23FEBF9072389C24011D1 /* juice-tracker.html */; };
 		C8E648084E7309C1B01150E8 /* JuiceTrackerApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = B11B15543E9C61D2DE5F191E /* JuiceTrackerApp.swift */; };
@@ -27,6 +28,7 @@
 		E6A30A4561E530805D149EE4 /* NativeBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeBridge.swift; sourceTree = "<group>"; };
 		6F7B2D803C4E5F60718293A4 /* Services.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Services.swift; sourceTree = "<group>"; };
 		8B9C0D1E2F30415263748596 /* MenuBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuBar.swift; sourceTree = "<group>"; };
+		AD1E2F304152637485960718 /* NativeUI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeUI.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXGroup section */
@@ -48,6 +50,7 @@
 				E6A30A4561E530805D149EE4 /* NativeBridge.swift */,
 				6F7B2D803C4E5F60718293A4 /* Services.swift */,
 				8B9C0D1E2F30415263748596 /* MenuBar.swift */,
+				AD1E2F304152637485960718 /* NativeUI.swift */,
 				33923ED7623C961878FB8F8C /* WebViewStore.swift */,
 			);
 			path = JuiceTracker;
@@ -138,6 +141,7 @@
 				7566C83FDE2D874A8C527794 /* NativeBridge.swift in Sources */,
 				5E6A1C7F2B3D4E5F60718293 /* Services.swift in Sources */,
 				7A8B9C0D1E2F304152637485 /* MenuBar.swift in Sources */,
+				9C0D1E2F3041526374859607 /* NativeUI.swift in Sources */,
 				ED549C999B26D36BC005D7A2 /* WebViewStore.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
