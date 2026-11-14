@@ -413,7 +413,7 @@ struct PlayEraIntent: AppIntent {
     @MainActor func perform() async throws -> some IntentResult & ProvidesDialog {
         await NativeStore.shared.act("ambientSet", -1, ["on": true])
         await NativeStore.shared.act("ambientSet", -1, ["era": era ?? ""])
-        return .result(dialog: "Playing \(era.map { "songs from \($0)" } ?? "your songs").")
+        return .result(dialog: IntentDialog(stringLiteral: "Playing \(era.map { "songs from \($0)" } ?? "your songs")."))
     }
 }
 
@@ -422,7 +422,9 @@ struct WhatsPlayingIntent: AppIntent {
     static var title: LocalizedStringResource = "What's Playing in Juice Tracker"
     @MainActor func perform() async throws -> some IntentResult & ProvidesDialog & ReturnsValue<String> {
         let title = AmbientPlayer.shared.title
-        return .result(value: title ?? "", dialog: "\(title.map { "\($0) by Juice WRLD." } ?? "Nothing is playing.")")
+        // Built as plain text first: older Xcode versions don't accept a computed string as a dialog.
+        let text = title.map { "\($0) by Juice WRLD." } ?? "Nothing is playing."
+        return .result(value: title ?? "", dialog: IntentDialog(stringLiteral: text))
     }
 }
 
@@ -445,7 +447,8 @@ struct DownloadWishlistIntent: AppIntent {
     static var openAppWhenRun = true
     @MainActor func perform() async throws -> some IntentResult & ProvidesDialog {
         let n = Int(await NativeStore.shared.act("downloadWishlist")) ?? 0
-        return .result(dialog: n > 0 ? "Downloading \(n) wishlist \(n == 1 ? "song" : "songs")." : "Nothing on your wishlist to download right now.")
+        let text = n > 0 ? "Downloading \(n) wishlist \(n == 1 ? "song" : "songs")." : "Nothing on your wishlist to download right now."
+        return .result(dialog: IntentDialog(stringLiteral: text))
     }
 }
 
