@@ -701,6 +701,7 @@
     animation: fly-across var(--t) cubic-bezier(.4, 0, .6, 1) forwards, fly-flap .3s steps(4) infinite alternate; }
   @keyframes fly-flap { from { transform: scaleX(var(--flip, 1)); } to { transform: scaleX(calc(var(--flip, 1) * .45)); } }
   @keyframes fly-across { 0% { translate: 0 0; } 50% { translate: calc(var(--dx) / 2) calc(var(--dy) / 2 - 80px); } 100% { translate: var(--dx) var(--dy); } }
+  .engine *, .engine *::before, .engine *::after { animation: none !important; transition: none !important; }
   /* calm: the endless motion pauses while the window is in the background or untouched for a minute (set in the
      script), so the app costs almost nothing while music plays; it carries on from where it stopped. */
   .calm .sky > div, .calm .shell::before, .calm .shell::after, .calm .scoreboard::before, .calm .scoreboard::after,
@@ -3253,22 +3254,27 @@ async function renderPlexItem() {
   $("plex-source").innerHTML = plexSources().map(s => `<option value="${esc(s.id)}">${esc(s.label)} (${fmt(s.songs.length)})</option>`).join("");
   if (keep) $("plex-source").value = keep;
 }
-$("plex-make").addEventListener("click", async () => {
-  const src = plexSources().find(s => s.id === $("plex-source").value);
+$("plex-make").addEventListener("click", () => makePlexPlaylist($("plex-source").value).catch(() => {}));
+/** Makes (or replaces) a Plex playlist from one of plexSources(). Returns a summary; throws if it fails. */
+async function makePlexPlaylist(id) {
+  const src = plexSources().find(s => s.id === id);
   // One file can match several catalog versions of a song; send each file once.
   const paths = src ? [...new Set(src.songs.flatMap(i => (state.owned.get(i) || []).map(f => f.handle && f.handle._path).filter(Boolean)))] : [];
-  if (!paths.length) { setStatus("export-status", "There are no songs you have in that list yet.", true); return; }
+  if (!paths.length) { setStatus("export-status", "There are no songs you have in that list yet.", true); throw new Error("There are no songs you have in that list yet"); }
   $("plex-make").disabled = true;
   setStatus("export-status", `Making “${src.title}” in Plex…`);
   try {
     const r = await window.jwPlex({ action: "playlist", title: src.title, paths });
-    setStatus("export-status", `Made “${src.title}” in Plex with ${plural(r.matched, "song", "songs")}.${r.missing ? ` ${plural(r.missing, "file wasn't", "files weren't")} found in Plex yet; let Plex finish scanning and make it again.` : ""}`);
+    const msg = `Made “${src.title}” in Plex with ${plural(r.matched, "song", "songs")}.${r.missing ? ` ${plural(r.missing, "file wasn't", "files weren't")} found in Plex yet; let Plex finish scanning and make it again.` : ""}`;
+    setStatus("export-status", msg);
+    return msg;
   } catch (err) {
     setStatus("export-status", `Couldn't make the playlist: ${err.message}`, true);
+    throw err;
   } finally {
     $("plex-make").disabled = false;
   }
-});
+}
 
 function renderExportPanel() {
   if (!state.catalog || !state.library) return;
@@ -3282,16 +3288,24 @@ function renderExportPanel() {
 }
 $("export")?.addEventListener("toggle", () => { if ($("export").open) renderExportPanel(); });
 $("export-full").addEventListener("click", () => {
+  downloadText(`juice-wrld-full-catalog-${today()}.csv`, fullCatalogCsv(), "text/csv");
+  setStatus("export-status", `Exported ${plural(state.catalog.length, "song", "songs")}.`);
+});
+function fullCatalogCsv() {
   const lines = [[...FULL_COLUMNS.map(([h]) => h), "in_your_library", "your_files", "on_wishlist", "your_note", "new_since_last_check", "now_released"]];
   state.catalog.forEach((s, i) => lines.push([
     ...FULL_COLUMNS.map(([, get]) => get(s)),
     state.owned.has(i) ? "yes" : "no", (state.owned.get(i) || []).map(f => f.path).join(" | "),
     isWished(s) ? "yes" : "", noteOf(s), state.newIds.has(s.id) ? "yes" : "", state.releasedIds.has(s.id) ? "yes" : "",
   ]));
-  downloadText(`juice-wrld-full-catalog-${today()}.csv`, csvText(lines), "text/csv");
-  setStatus("export-status", `Exported ${plural(state.catalog.length, "song", "songs")}.`);
-});
+  return csvText(lines);
+}
 $("export-backup").addEventListener("click", () => {
+  const backup = backupData();
+  downloadText(`juice-wrld-tracker-backup-${today()}.json`, JSON.stringify(backup, null, 2), "application/json");
+  setStatus("export-status", `Backed up ${plural(backup.wishlist.length, "wishlist song", "wishlist songs")} and ${plural(backup.notes.length, "note", "notes")}.`);
+});
+function backupData() {
   const byId = new Map(state.catalog.map(s => [s.id, s.name]));
   const backup = {
     app: "juice-wrld-collection-tracker", version: 1, exportedAt: new Date().toISOString(),
@@ -3300,16 +3314,20 @@ $("export-backup").addEventListener("click", () => {
     trivia: state.personal.trivia, linkTemplate: state.personal.linkTemplate || "",
     matchOverrides: state.personal.matchOverrides, opened: state.personal.opened, fixGenre: state.personal.fixGenre || "",
   };
-  downloadText(`juice-wrld-tracker-backup-${today()}.json`, JSON.stringify(backup, null, 2), "application/json");
-  setStatus("export-status", `Backed up ${plural(backup.wishlist.length, "wishlist song", "wishlist songs")} and ${plural(backup.notes.length, "note", "notes")}.`);
-});
+  return backup;
+}
 $("export-restore").addEventListener("change", async e => {
   const file = e.target.files[0];
   e.target.value = "";
   if (!file) return;
-  try {
-    const data = JSON.parse(await file.text());
-    if (data.app !== "juice-wrld-collection-tracker") throw new Error();
+  try { setStatus("export-status", restoreBackup(await file.text())); }
+  catch (err) { setStatus("export-status", "That file isn't a backup from this tracker.", true); }
+});
+/** Merges a backup into what's here (nothing is overwritten). Returns a summary; throws if it isn't a backup. */
+function restoreBackup(text) {
+  {
+    const data = JSON.parse(text);
+    if (data.app !== "juice-wrld-collection-tracker") throw new Error("That file isn't a backup from this tracker.");
     let addedWish = 0, addedNotes = 0;
     for (const w of data.wishlist || []) if (w.id && !state.personal.wish[w.id]) { state.personal.wish[w.id] = w.added || new Date().toISOString(); addedWish++; }
     for (const n of data.notes || []) if (n.id && n.text && !state.personal.notes[n.id]) { state.personal.notes[n.id] = n.text; addedNotes++; }
@@ -3323,11 +3341,9 @@ $("export-restore").addEventListener("change", async e => {
     savePersonal();
     update();
     renderExportPanel();
-    setStatus("export-status", `Restored ${plural(addedWish, "wishlist song", "wishlist songs")} and ${plural(addedNotes, "note", "notes")}. Anything you already had was kept.`);
-  } catch (err) {
-    setStatus("export-status", "That file isn't a backup from this tracker.", true);
+    return `Restored ${plural(addedWish, "wishlist song", "wishlist songs")} and ${plural(addedNotes, "note", "notes")}. Anything you already had was kept.`;
   }
-});
+}
 
 /* ---------- trivia */
 const TRIVIA_TYPES = { mixed: "Mixed", era: "Eras", producer: "Producers", year: "Recording years", release: "Released or not" };
@@ -5213,6 +5229,60 @@ window.jwNativeAction = async a => {
   if (a.op === "healthStop") { health.stop = true; return ""; }
   if (a.op === "healthFix") { return await healthFix(a.fix, a.path); }
   if (a.op === "classic") { showView(a.view); return ""; }
+  // setup: catalog and music folder
+  if (a.op === "setup") return JSON.stringify({ catalog: Boolean(state.catalog), folder: state.rootHandle ? state.rootHandle.name : "",
+    catalogStatus: $("catalog-status").textContent, folderStatus: $("folder-status").textContent });
+  if (a.op === "loadCatalog") { $("fetch-btn").click(); return ""; }
+  if (a.op === "pickFolder") { $("folder-btn").click(); return ""; }
+  if (a.op === "rescan") { await rescanFolder(); return ""; }
+  // downloads and notes
+  if (a.op === "downloadMany") { const songs = (a.ids || []).map(n => state.catalog[n]).filter(x => x && fileUrl(x)); return String(downloadAll(songs) || 0); }
+  if (a.op === "stopQueue") { if (state.bulk) state.bulk.stop = true; return ""; }
+  if (a.op === "note") { const so = state.catalog[a.i]; if (so) { if (String(a.text || "").trim()) state.personal.notes[so.id] = a.text; else delete state.personal.notes[so.id]; savePersonal(); } return ""; }
+  // background music: on/off and which era
+  if (a.op === "ambientInfo") {
+    const eras = [...new Set((state.library || []).filter(f => f.songs && f.songs.length && canPlay(f)).map(f => eraName(state.catalog[f.songs[0]])))].sort();
+    return JSON.stringify({ on: ambientOn(), era: ambientEra(), eras, songs: ambientItems().length });
+  }
+  if (a.op === "ambientSet") {
+    if (a.on !== undefined) { try { localStorage.setItem("jw-ambient", a.on ? "on" : "off"); } catch (e) {} syncAmbient(); }
+    if (a.era !== undefined) setAmbientEra(a.era);
+    return "";
+  }
+  // trivia
+  if (a.op === "triviaInfo") return JSON.stringify({ types: Object.entries(TRIVIA_TYPES).map(([key, label]) => ({ key, label })), best: state.personal.trivia, length: ROUND_LENGTH });
+  if (a.op === "triviaRound") return JSON.stringify(buildRound(a.type, a.pool).map(q => ({ prompt: q.prompt, options: q.options.map(String), answer: String(q.answer), i: q.i, clip: q.clip || "" })));
+  if (a.op === "triviaBest") { state.personal.trivia[a.key] = Math.max(state.personal.trivia[a.key] || 0, Number(a.score) || 0); savePersonal(); return ""; }
+  if (a.op === "triviaClip") { playTriviaClip({ clip: a.path }); return ""; }
+  if (a.op === "triviaStop") { await window.jwAmbient?.({ stopClip: true }); return ""; }
+  // export and backup
+  if (a.op === "exportCatalog") return fullCatalogCsv();
+  if (a.op === "backupData") return JSON.stringify(backupData(), null, 2);
+  if (a.op === "restoreData") return restoreBackup(a.text);
+  if (a.op === "card") { const c = await drawCollectionCard(); return c.toDataURL("image/png"); }
+  if (a.op === "snapshotInfo") return JSON.stringify({ available: Boolean(window.jwSnapshot), last: lastSnapshot() });
+  if (a.op === "snapshotNow") { await saveSnapshot(false); return $("export-status").textContent; }
+  if (a.op === "snapshotFolder") { await window.jwSnapshotFolder?.(); return ""; }
+  if (a.op === "snapshotLost") { // songs in a snapshot (CSV text) that aren't in the library now: catalog indexes
+    const rows = parseCsv(a.text), col = rows[0] ? rows[0].indexOf("song_ids") : -1;
+    if (col < 0) throw new Error("That file isn't a Juice Tracker library snapshot.");
+    const [nameCol, titleCol, pathCol] = ["song_names", "title", "path"].map(k => rows[0].indexOf(k));
+    const ids = new Set(rows.slice(1).map(r => {
+      const list = String(r[col] || "").split(" ").filter(Boolean), names = String(r[nameCol] || "").split(" / ");
+      const title = r[titleCol] || titleFromFilename(r[pathCol] || "");
+      let k = names.findIndex(n => cmdkKey(n) === cmdkKey(title));
+      if (k < 0) k = names.findIndex(n => normalize(n) === normalize(title));
+      return list[k >= 0 && k < list.length ? k : 0];
+    }).filter(Boolean));
+    return JSON.stringify(state.catalog.map((so, i) => (ids.has(String(so.id)) && !state.owned.has(i) ? i : -1)).filter(i => i >= 0));
+  }
+  if (a.op === "plexSources") {
+    let configured = false;
+    try { configured = Boolean(window.jwPlex && (await window.jwPlex({ action: "status" })).configured); } catch (e) {}
+    if (configured && !state.listen) { try { await fetchListening(); } catch (e) { /* no play counts: those lists just don't show */ } }
+    return JSON.stringify(configured ? plexSources().map(x => ({ id: x.id, label: x.label, count: x.songs.length })) : []);
+  }
+  if (a.op === "plexMake") return await makePlexPlaylist(a.id);
   // Tag fixer: its settings stay in the page's own controls, so both windows always agree.
   if (a.op === "fixer") {
     renderFixer();
@@ -5271,10 +5341,14 @@ window.jwNativeAction = async a => {
     out.files = (state.owned.get(a.i) || []).map(f => f.path);
     out.playable = (state.owned.get(a.i) || []).some(canPlay);
     out.siteUrl = fileUrl(s) || "";
+    out.note = noteOf(s);
     return JSON.stringify(out);
   }
   return "";
 };
+
+/* ---------- engine mode: the native window is the interface; this page runs unseen, so nothing here animates */
+window.jwEngineMode = on => { document.documentElement.classList.toggle("engine", Boolean(on)); };
 
 /* ---------- the sky follows the time of day */
 function skyForClock() {

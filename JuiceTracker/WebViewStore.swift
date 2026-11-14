@@ -6,13 +6,22 @@ let titleBarInset: CGFloat = 28
 
 /// Fills the window with the web view, running it under the (hidden) title bar.
 final class WKWebViewContainer: NSView {
+    private let strip = TitleBarDragView()
+
     init(webView: WKWebView) {
         super.init(frame: .zero)
-        webView.translatesAutoresizingMaskIntoConstraints = false
-        addSubview(webView)
-        let strip = TitleBarDragView()
         strip.translatesAutoresizingMaskIntoConstraints = false
-        addSubview(strip) // above the web view, which would otherwise swallow the clicks
+        adopt(webView)
+    }
+
+    /// Puts the web view in this window (it moves between the classic window and the native one's engine host).
+    func adopt(_ webView: WKWebView) {
+        guard webView.superview !== self else { return }
+        webView.removeFromSuperview()
+        webView.alphaValue = 1
+        webView.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(webView, positioned: .below, relativeTo: nil)
+        if strip.superview == nil { addSubview(strip) } // above the web view, which would otherwise swallow the clicks
         NSLayoutConstraint.activate([
             webView.leadingAnchor.constraint(equalTo: leadingAnchor),
             webView.trailingAnchor.constraint(equalTo: trailingAnchor),
@@ -105,6 +114,11 @@ final class WebViewStore: NSObject {
 // MARK: - Navigation and downloads
 
 extension WebViewStore: WKNavigationDelegate {
+    /// After each load (including ⌘R), tell the page whether it's on screen or running unseen as the engine.
+    func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+        webView.evaluateJavaScript("window.jwEngineMode && window.jwEngineMode(\(AppDelegate.shared?.classicVisible == true ? "false" : "true"))")
+    }
+
     func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction,
                  decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
         if navigationAction.shouldPerformDownload {

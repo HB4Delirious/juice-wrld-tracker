@@ -51,6 +51,7 @@ struct SongDetails: Decodable {
     let artists, producers, engineers, locations, notes, info, alt, siteUrl: String
     let files: [String]
     let playable: Bool
+    let note: String
 }
 
 final class NativeStore: NSObject, ObservableObject, WKScriptMessageHandler {
@@ -106,9 +107,9 @@ final class NativeStore: NSObject, ObservableObject, WKScriptMessageHandler {
         return try? JSONDecoder().decode(SongDetails.self, from: Data(json.utf8))
     }
 
-    /// Opens a screen that hasn't moved over yet in the classic window.
+    /// Opens a screen in the classic window.
     @MainActor func openClassic(_ view: String) {
-        AppDelegate.shared?.showMainWindow()
+        AppDelegate.shared?.showClassicWindow()
         WebViewStore.shared.webView.evaluateJavaScript("showView('\(view)')")
     }
 }
@@ -323,7 +324,7 @@ enum NativePage: String, CaseIterable, Identifiable {
         ["collection": "smallcircle.filled.circle", "fixer": "tag", "dups": "square.on.square", "health": "waveform.path.ecg", "people": "person.2",
          "stats": "chart.bar", "timeline": "point.3.connected.trianglepath.dotted", "trivia": "questionmark.circle", "export": "archivebox"][rawValue] ?? "circle"
     }
-    var isNative: Bool { [.collection, .timeline, .stats, .people, .dups, .health, .fixer].contains(self) }
+    var isNative: Bool { true }
 }
 
 struct NativeRoot: View {
@@ -344,9 +345,11 @@ struct NativeRoot: View {
                         case .dups: DuplicatesScreen()
                         case .health: HealthScreen()
                         case .fixer: TagFixerScreen()
+                        case .trivia: TriviaScreen()
+                        case .export: ExportScreen()
                         default: CollectionScreen(state: s, songs: store.songs)
                         }
-                    } else { loading }
+                    } else { SetupView() }
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
@@ -354,14 +357,6 @@ struct NativeRoot: View {
         .preferredColorScheme(.dark)
         .sheet(item: $store.openSong) { s in SongCard(opened: s, close: { store.openSong = nil }) }
         .task { await store.act("refresh") }
-    }
-
-    private var loading: some View {
-        VStack(spacing: 10) {
-            ProgressView()
-            Text("Waiting for your catalog and music folder…").foregroundColor(JT.muted)
-            Button("Open the classic window") { store.openClassic("collection") }
-        }
     }
 
     private var sidebar: some View {
@@ -394,11 +389,14 @@ struct NativeRoot: View {
                     Text(q.waiting ? "Waiting for the music drive…" : "Downloading \(min(q.done + 1, q.total)) of \(q.total)").font(.caption)
                     if !q.current.isEmpty { Text(q.current).font(.caption2).foregroundColor(JT.muted).lineLimit(1) }
                     ProgressView(value: Double(q.done), total: Double(max(q.total, 1))).tint(JT.have)
+                    Button("Stop") { Task { await store.act("stopQueue") } }.buttonStyle(.borderless).font(.caption)
                 }
                 .padding(10).doodled(10)
             }
-            Text("Native preview (beta). Screens marked ↗ open in the classic window.")
-                .font(.caption2).foregroundColor(JT.muted.opacity(0.8)).padding(.horizontal, 6).padding(.bottom, 14)
+            PlayerPanel()
+            Button { store.openClassic(store.page.rawValue) } label: { Label("Classic window", systemImage: "macwindow") }
+                .buttonStyle(.borderless).font(.caption).foregroundColor(JT.muted).padding(.horizontal, 6).padding(.bottom, 14)
+                .help("The original HTML interface (⌘2)")
         }
         .padding(.horizontal, 10)
         .background(Color.black.opacity(0.25))
@@ -414,6 +412,7 @@ struct CollectionScreen: View {
     @State private var query = ""
     @State private var era: String?
     @State private var limit = 200
+    @State private var askAll: [Int] = []
     init(state: NState, songs: [Song]) { self.state = state; self.all = songs }
 
     private var songs: [Song] {
@@ -498,7 +497,20 @@ struct CollectionScreen: View {
                 TextField("Search songs or eras", text: $query).textFieldStyle(.roundedBorder).frame(maxWidth: 260)
                 if let era { Button { self.era = nil } label: { Label(era, systemImage: "xmark.circle.fill") }.buttonStyle(.borderless) }
             }
-            Text("\(list.count) songs").font(.caption).foregroundColor(JT.muted)
+            HStack {
+                Text("\(list.count) songs").font(.caption).foregroundColor(JT.muted)
+                Spacer()
+                let missing = list.filter { !$0.o && $0.f }
+                if !missing.isEmpty {
+                    Button { askAll = missing.map(\.i) } label: {
+                        Label(era != nil && tab == "all" && query.isEmpty ? "Complete this era (\(missing.count))" : "Download all \(missing.count) missing", systemImage: "arrow.down.circle")
+                    }
+                }
+            }
+            .alert("Download \(askAll.count) songs into your music folder?", isPresented: Binding(get: { !askAll.isEmpty }, set: { if !$0 { askAll = [] } })) {
+                Button("Download") { let ids = askAll; Task { await NativeStore.shared.act("downloadMany", -1, ["ids": ids]) } }
+                Button("Cancel", role: .cancel) {}
+            } message: { Text("They download one at a time into the folders the tracker picks for each era, and carry on after a restart or if the drive drops.") }
             LazyVStack(spacing: 0) {
                 ForEach(list.prefix(limit)) { s in SongRow(song: s, open: { NativeStore.shared.openSong = s }) }
             }
@@ -576,6 +588,7 @@ struct SongCard: View {
     let close: () -> Void
     @ObservedObject private var store = NativeStore.shared
     @State private var d: SongDetails?
+    @State private var note = ""
     /// The latest snapshot of this song (the wishlist star and library status change while the card is open).
     private var song: Song { store.songs.indices.contains(opened.i) && store.songs[opened.i].i == opened.i ? store.songs[opened.i] : opened }
 
@@ -600,6 +613,12 @@ struct SongCard: View {
                             Text("Notes").font(.headline).padding(.top, 6)
                             Text([d.notes, d.info].filter { !$0.isEmpty }.joined(separator: "\n\n")).foregroundColor(JT.muted).textSelection(.enabled)
                         }
+                        Text("Your note").font(.headline).padding(.top, 6)
+                        TextEditor(text: $note).frame(minHeight: 54).font(.callout)
+                            .overlay(RoundedRectangle(cornerRadius: 6).stroke(JT.line))
+                            .onChange(of: note) { text in
+                                Task { try? await Task.sleep(nanoseconds: 500_000_000); if text == note { await NativeStore.shared.act("note", song.i, ["text": text]) } }
+                            }
                         Text("Your library").font(.headline).padding(.top, 6)
                         if d.files.isEmpty { Text("Not in your library.").foregroundColor(JT.muted) }
                         ForEach(d.files, id: \.self) { Text($0).font(.caption.monospaced()).foregroundColor(JT.muted) }
@@ -621,7 +640,7 @@ struct SongCard: View {
         .frame(width: 640, height: 560)
         .background(Color(red: 20 / 255, green: 10 / 255, blue: 44 / 255))
         .preferredColorScheme(.dark)
-        .task { d = await NativeStore.shared.details(song.i) }
+        .task { d = await NativeStore.shared.details(song.i); note = d?.note ?? "" }
     }
 
     private func facts(_ d: SongDetails) -> [(String, String)] {
@@ -629,5 +648,19 @@ struct SongCard: View {
          ("Surfaced", [d.leakDate, d.leakType].filter { !$0.isEmpty }.joined(separator: ", ")), ("Sessions", d.sessions), ("Artists", d.artists),
          ("Producers", d.producers), ("Engineers", d.engineers), ("Studios", d.locations)]
             .map { ($0.0, $0.1.trimmingCharacters(in: .whitespacesAndNewlines)) }.filter { !$0.1.isEmpty }
+    }
+}
+
+/// Holds the page (the engine) inside the native window, tiny and covered by the interface. It stays in a visible
+/// window so WebKit keeps its timers and network at full speed; it draws nothing you can see.
+final class EngineHostView: NSView {
+    func adopt(_ webView: WKWebView) {
+        guard webView.superview !== self else { return }
+        webView.removeFromSuperview()
+        webView.translatesAutoresizingMaskIntoConstraints = true
+        webView.frame = bounds
+        webView.autoresizingMask = [.width, .height]
+        webView.alphaValue = 0.01
+        addSubview(webView)
     }
 }

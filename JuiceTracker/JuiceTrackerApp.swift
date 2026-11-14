@@ -30,7 +30,7 @@ struct JuiceTrackerApp: App {
                 CommandGroup(before: .windowList) {
                     Button("Juice Tracker") { AppDelegate.shared?.showMainWindow() }
                         .keyboardShortcut("1", modifiers: .command)
-                    Button("Native Preview (Beta)") { AppDelegate.shared?.showNativeWindow() }
+                    Button("Classic Window") { AppDelegate.shared?.showClassicWindow() }
                         .keyboardShortcut("2", modifiers: .command)
                 }
                 CommandGroup(replacing: .help) {
@@ -53,6 +53,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUs
         AppDelegate.shared = self
         // macOS would otherwise quietly quit the app once its window is closed, defeating "Keep running".
         ProcessInfo.processInfo.automaticTerminationSupportEnabled = false
+        _ = WebViewStore.shared // start the engine (the page) right away
         showMainWindow()
         UNUserNotificationCenter.current().delegate = self
         SongAlerts.registerActions()
@@ -61,12 +62,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUs
         menuBar.start()
     }
 
-    /// Shows the one main window, creating it the first time. Closing only hides it, so reopening keeps the page as it was.
-    func showMainWindow() {
+    /// The app's window: the SwiftUI interface.
+    func showMainWindow() { showNativeWindow() }
+
+    var classicVisible: Bool { window?.isVisible == true }
+
+    /// The classic (HTML) interface, kept for anything the native one doesn't do yet and for comparison. The page moves
+    /// in here from the native window's engine host while this window is open.
+    func showClassicWindow() {
         if window == nil {
             let w = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1180, height: 820),
                              styleMask: [.titled, .closable, .miniaturizable, .resizable], backing: .buffered, defer: false)
-            w.title = "Juice WRLD Collection Tracker"
+            w.title = "Juice Tracker (Classic)"
             w.minSize = NSSize(width: 820, height: 600)
             w.isReleasedWhenClosed = false
             w.delegate = self
@@ -75,25 +82,47 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUs
             w.setFrameAutosaveName("MainWindow") // remembers size and position
             window = w
         }
+        (window?.contentView as? WKWebViewContainer)?.adopt(WebViewStore.shared.webView)
+        WebViewStore.shared.webView.evaluateJavaScript("window.jwEngineMode && window.jwEngineMode(false)")
         window?.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
     }
 
-    /// The SwiftUI interface (stage 1 of moving off HTML). The classic page keeps running as its engine.
+    /// The page goes back to running unseen inside the native window.
+    private func parkEngine() {
+        engineHost.adopt(WebViewStore.shared.webView)
+        WebViewStore.shared.webView.evaluateJavaScript("window.jwEngineMode && window.jwEngineMode(true)")
+    }
+
+    private let engineHost = EngineHostView()
+
+    /// The SwiftUI interface. The page (catalog, scanning, matching, tag writing, downloads) runs unseen behind it.
     func showNativeWindow() {
         if nativeWindow == nil {
             let w = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1180, height: 820),
                              styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView], backing: .buffered, defer: false)
-            w.title = "Juice Tracker (Native Preview)"
+            w.title = "Juice Tracker"
             w.titlebarAppearsTransparent = true
             w.titleVisibility = .hidden
             w.minSize = NSSize(width: 900, height: 600)
             w.isReleasedWhenClosed = false
-            w.contentView = NSHostingView(rootView: NativeRoot())
+            w.delegate = self
+            let root = NSView()
+            let hosting = NSHostingView(rootView: NativeRoot())
+            engineHost.frame = NSRect(x: 0, y: 0, width: 4, height: 4)
+            root.addSubview(engineHost) // first, so the interface covers it
+            hosting.translatesAutoresizingMaskIntoConstraints = false
+            root.addSubview(hosting)
+            NSLayoutConstraint.activate([
+                hosting.leadingAnchor.constraint(equalTo: root.leadingAnchor), hosting.trailingAnchor.constraint(equalTo: root.trailingAnchor),
+                hosting.topAnchor.constraint(equalTo: root.topAnchor), hosting.bottomAnchor.constraint(equalTo: root.bottomAnchor),
+            ])
+            w.contentView = root
             if !w.setFrameUsingName("NativeWindow") { w.center() }
             w.setFrameAutosaveName("NativeWindow")
             nativeWindow = w
         }
+        if !classicVisible { parkEngine() }
         nativeWindow?.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
     }
@@ -101,8 +130,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUs
     /// With "Keep running" on, closing the window only hides it, so the app (and its daily checks) keeps running;
     /// the Dock icon or an alert brings it back. Off: the window closes and the app quits.
     func windowShouldClose(_ sender: NSWindow) -> Bool {
-        // The classic window is the native one's engine: while the native window is open, closing it only hides it.
-        if sender === window, nativeWindow?.isVisible == true { sender.orderOut(nil); return false }
+        // The classic window only shows the engine: closing it hides it and the page goes back behind the native window.
+        if sender === window {
+            sender.orderOut(nil)
+            parkEngine()
+            if nativeWindow?.isVisible != true, !Pref.bool(Pref.keepRunning, default: false) { NSApp.terminate(nil) }
+            return false
+        }
         guard Pref.bool(Pref.keepRunning, default: false) else { return true }
         WebViewStore.shared.stopAmbient() // music shouldn't keep playing from a hidden window
         sender.orderOut(nil)
