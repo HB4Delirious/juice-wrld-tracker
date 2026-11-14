@@ -17,16 +17,32 @@
       throw new DOMException(m ? m[2] : msg, m ? m[1] : "UnknownError");
     }
   };
-  const fromB64 = s => {
+  // Whole songs (10+ MB) pass through here when tags are written. The browser's own decoders do the work off the
+  // page's main thread; a JavaScript loop over every byte froze the window for a moment on each file.
+  const fromB64Loop = s => {
     const bin = atob(s || "");
     const out = new Uint8Array(bin.length);
     for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
     return out;
   };
-  const toB64 = bytes => {
+  const toB64Loop = bytes => {
     let s = "";
     for (let i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
     return btoa(s);
+  };
+  const fromB64 = async s => {
+    if (!s || s.length < 65536) return fromB64Loop(s); // small reads: the loop is quicker than a round trip
+    try { return new Uint8Array(await (await fetch(`data:application/octet-stream;base64,${s}`)).arrayBuffer()); }
+    catch (e) { return fromB64Loop(s); }
+  };
+  const toB64 = bytes => {
+    if (bytes.length < 49152) return Promise.resolve(toB64Loop(bytes));
+    return new Promise(resolve => {
+      const reader = new FileReader();
+      reader.onload = () => { const url = String(reader.result); resolve(url.slice(url.indexOf(",") + 1)); };
+      reader.onerror = () => resolve(toB64Loop(bytes));
+      reader.readAsDataURL(new Blob([bytes]));
+    });
   };
   const join = (dir, name) => (dir.endsWith("/") ? dir + name : `${dir}/${name}`);
 
@@ -43,7 +59,7 @@
     }
     async arrayBuffer() {
       if (!this.size) return new ArrayBuffer(0);
-      return fromB64(await call("read", { path: this._path, start: this._s, end: this._e })).buffer;
+      return (await fromB64(await call("read", { path: this._path, start: this._s, end: this._e }))).buffer;
     }
     async text() { return new TextDecoder().decode(await this.arrayBuffer()); }
   }
@@ -73,7 +89,7 @@
           const all = new Uint8Array(n);
           let o = 0;
           for (const c of chunks) { all.set(c, o); o += c.length; }
-          await call("write", { path, data: toB64(all) });
+          await call("write", { path, data: await toB64(all) });
         },
         async abort() { chunks.length = 0; },
       };
