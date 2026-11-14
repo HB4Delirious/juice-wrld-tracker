@@ -120,7 +120,7 @@
   .rail-nav { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
   .rail-nav button { width: 100%; justify-content: flex-start; gap: 12px; background: transparent; border: 0; border-radius: 12px; color: var(--muted); padding: 9px 12px; font-size: var(--t-md); }
   .rail-nav button:hover:where(:not(:disabled)) { background: var(--raise); color: var(--mist); }
-  .rail-nav button[aria-current="page"] { background: var(--raise); color: var(--mist); }
+  .rail-nav button[aria-current="page"] { background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 200 40' preserveAspectRatio='none'%3E%3Cpath d='M6 26c30-14 70-18 110-14s58 6 78 2M10 32c40-10 90-12 130-8s40 4 52 1M8 18c34-8 80-12 120-8' fill='none' stroke='%23ff6ad5' stroke-opacity='.28' stroke-width='9' stroke-linecap='round'/%3E%3C/svg%3E") center / 100% 100% no-repeat, var(--raise); color: var(--mist); }
   .rail-nav button[aria-current="page"]::before { content: ""; position: absolute; left: 0; top: 7px; bottom: 7px; width: 3px; border-radius: 3px;
     background: linear-gradient(180deg, #ff5d6c, #ffa04a, #ffe14a, #c9f24a, #4fd8ff, #b77bff); }
   .rail-nav button[aria-current="page"] svg { color: var(--lavender); }
@@ -167,6 +167,10 @@
     padding: 11px 18px; border-radius: 14px; font-size: var(--t-sm); color: var(--mist); background: rgba(26, 13, 56, .92);
     border: 1px solid var(--line-2); box-shadow: 0 10px 30px rgba(0, 0, 0, .4); -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px); }
   .toast.error { border-color: var(--missing); }
+  .toast:not([hidden]) { animation: toast-in .45s cubic-bezier(.3, 1.5, .5, 1); }
+  .toast::before { content: "✦ "; color: var(--lavender-hi); }
+  .toast.error::before { content: "✖ "; color: var(--missing); }
+  @keyframes toast-in { from { opacity: 0; transform: translate(-50%, 24px) scale(.9) rotate(-2deg); } }
   a[aria-busy="true"] { pointer-events: none; opacity: .7; }
   .tip { display: inline-flex; align-items: center; gap: 9px; align-self: flex-start; padding: 8px 14px; border-radius: 999px; font-weight: 600; font-size: var(--t-sm);
     color: var(--night); background: var(--new); text-decoration: none; }
@@ -445,7 +449,7 @@
   .era-card:nth-child(3n+1)::after, .rail-nav li:nth-child(3n+1) svg, button.ghost:nth-of-type(3n+1)::after { animation-delay: -.4s; }
   .era-card:nth-child(3n+2)::after, .rail-nav li:nth-child(3n+2) svg, button.ghost:nth-of-type(3n+2)::after { animation-delay: -.8s; }
   .era-card { transition: transform .18s, box-shadow .18s, border-color .18s; }
-  .era-card:hover { background: var(--raise); transform: translateY(-3px) rotate(-.4deg); box-shadow: 0 10px 28px rgba(255, 106, 213, .22); }
+  .era-card:hover { background: var(--raise); transform: perspective(700px) rotateX(var(--rx, 0deg)) rotateY(var(--ry, 0deg)) translateY(-3px); box-shadow: 0 10px 28px rgba(255, 106, 213, .22); }
   .era-card[aria-pressed="true"] { background: var(--raise); box-shadow: 0 0 26px rgba(255, 106, 213, .35); }
   .era-card[aria-pressed="true"]::after { border: 2.6px solid var(--lavender); }
   .era-card .era-name { font-weight: 600; font-size: var(--t-md); line-height: 1.3; }
@@ -652,6 +656,22 @@
   @keyframes spark { from { transform: translate(-50%, -50%) scale(1.2) rotate(0); opacity: 1; }
     to { transform: translate(calc(-50% + var(--dx)), calc(-50% + var(--dy))) scale(.2) rotate(200deg); opacity: 0; } }
   @media (max-width: 760px) { .scoreboard::after { display: none; } }
+  /* dialogs pop open; the wishlist star pops when you add a song */
+  #song-dialog[open], #links-dialog[open], .cmdk[open] { animation: dlg-pop .32s cubic-bezier(.3, 1.4, .5, 1); }
+  @keyframes dlg-pop { from { opacity: 0; transform: scale(.94) rotate(-.6deg); } }
+  .star.pop { animation: star-pop .5s cubic-bezier(.3, 1.8, .5, 1); }
+  @keyframes star-pop { 0% { transform: scale(.4) rotate(-30deg); } 60% { transform: scale(1.6) rotate(12deg); } }
+  /* confetti for milestones, and the cursor's sparkle trail (both made in the script) */
+  .confetti { position: fixed; top: -20px; z-index: 61; pointer-events: none; width: var(--w); height: var(--w); background: var(--c);
+    animation: confetti-fall var(--t) cubic-bezier(.25, .6, .4, 1) forwards; }
+  .confetti.star { clip-path: polygon(50% 0, 62% 38%, 100% 50%, 62% 62%, 50% 100%, 38% 62%, 0 50%, 38% 38%); }
+  .confetti.dot { border-radius: 50%; }
+  @keyframes confetti-fall { to { transform: translate(var(--dx), 105vh) rotate(var(--r)); } }
+  .trail { position: fixed; z-index: 59; pointer-events: none; width: 6px; height: 6px; background: var(--c); opacity: .8;
+    clip-path: polygon(50% 0, 62% 38%, 100% 50%, 62% 62%, 50% 100%, 38% 62%, 0 50%, 38% 38%); animation: trail .6s ease-out forwards; }
+  @keyframes trail { to { transform: translate(-50%, 14px) scale(.2) rotate(120deg); opacity: 0; } }
+  /* a rainbow scrollbar */
+  *::-webkit-scrollbar-thumb { background: linear-gradient(180deg, #ff6ad5, #b77bff, #4fd8ff); }
   /* calm: the endless motion pauses while the window is in the background or untouched for a minute (set in the
      script), so the app costs almost nothing while music plays; it carries on from where it stopped. */
   .calm .sky > div, .calm .shell::before, .calm .shell::after, .calm .scoreboard::before, .calm .scoreboard::after,
@@ -2274,6 +2294,7 @@ function update() {
   $("meter-title").innerHTML = `You have <span id="meter-num">${fmt(shownHave)}</span> <span class="of">of ${fmt(total)} songs</span>`;
   countUp($("meter-num"), shownHave, have);
   shownHave = have;
+  celebrate(owned);
   $("meter").setAttribute("aria-valuenow", pct);
   $("meter").setAttribute("aria-label", `${pct}% of the catalog`);
   $("meter-fill").style.setProperty("--pct", Math.max(pct, 1)); // keeps the rainbow spread across the whole track
@@ -3856,7 +3877,9 @@ $("table").addEventListener("click", e => {
     toggleWish(state.catalog[i]);
     renderTable();
     renderExportPanel();
-    (document.querySelector(`#table button[data-wish="${i}"]`) || $("tabs").querySelector('button[aria-pressed="true"]'))?.focus({ preventScroll: true });
+    const fresh = document.querySelector(`#table button[data-wish="${i}"]`);
+    if (fresh && isWished(state.catalog[i])) fresh.classList.add("pop");
+    (fresh || $("tabs").querySelector('button[aria-pressed="true"]'))?.focus({ preventScroll: true });
     return;
   }
   const b = e.target.closest("button[data-song]");
@@ -4261,6 +4284,7 @@ async function downloadSong(song) {
   const r = await window.jwDownload(fileUrl(song), `${root._path.replace(/\/+$/, "")}/${inner.join("/")}`);
   state.personal.opened[song.id] = new Date().toISOString();
   if (!r.existed) {
+    state.lastDownloadAt = Date.now();
     state.personal.downloaded = { ...state.personal.downloaded, [song.id]: new Date().toISOString() };
     // We know exactly which song this file is, even when its title also matches other versions or alternate
     // titles. Record it as a manual match (like "Pick a song"), so it's counted once and can be auto-tagged.
@@ -5048,10 +5072,61 @@ function wake() {
 window.addEventListener("blur", () => { clearTimeout(calmTimer); document.documentElement.classList.add("calm"); });
 wake();
 
+/* ---------- celebrations: confetti when downloads finish an era or pass another 10% of the catalog.
+   Only right after a download, so a rescan or the launch never sets it off. */
+var celebrated = null;
+function celebrate(owned) {
+  const done = new Set(eraStats().filter(e => e.name !== NO_ERA && e.total >= 3 && e.have === e.total).map(e => e.name));
+  const tenth = Math.floor((owned.size / Math.max(1, state.catalog.length)) * 10);
+  const recent = Date.now() - (state.lastDownloadAt || 0) < 15000;
+  if (celebrated && recent) {
+    const newly = [...done].filter(n => !celebrated.eras.has(n));
+    if (newly.length) { confetti(); toast(`You completed the ${newly[0]} era!`); }
+    else if (tenth > celebrated.tenth) { confetti(); toast(`${tenth * 10}% of the catalog collected!`); }
+  }
+  celebrated = { eras: done, tenth };
+}
+function confetti() {
+  if (matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+  for (let n = 0; n < 70; n++) {
+    const c = document.createElement("span"), w = 6 + Math.random() * 8;
+    c.className = `confetti ${["star", "dot", ""][n % 3]}`;
+    c.style.cssText = `left:${Math.random() * 100}vw;--w:${w.toFixed(1)}px;--c:${SPARK_COLORS[n % SPARK_COLORS.length]};--dx:${(Math.random() * 160 - 80).toFixed(0)}px;--r:${(Math.random() * 900 - 450).toFixed(0)}deg;--t:${(1.8 + Math.random() * 1.6).toFixed(2)}s;animation-delay:${(Math.random() * .5).toFixed(2)}s`;
+    document.body.appendChild(c);
+    setTimeout(() => c.remove(), 4200);
+  }
+}
+
+/* ---------- era cards tilt toward the mouse */
+$("era-grid").addEventListener("mousemove", e => {
+  const card = e.target.closest(".era-card");
+  if (!card) return;
+  const r = card.getBoundingClientRect();
+  card.style.setProperty("--ry", `${(((e.clientX - r.left) / r.width) - .5) * 10}deg`);
+  card.style.setProperty("--rx", `${(.5 - ((e.clientY - r.top) / r.height)) * 10}deg`);
+});
+$("era-grid").addEventListener("mouseout", e => {
+  const card = e.target.closest(".era-card");
+  if (card && !card.contains(e.relatedTarget)) { card.style.removeProperty("--rx"); card.style.removeProperty("--ry"); }
+});
+
+/* ---------- a faint sparkle trail behind the cursor (a few a second, not while calm or with Reduce Motion) */
+var lastTrail = 0, trailN = 0;
+window.addEventListener("mousemove", e => {
+  const now = performance.now();
+  if (now - lastTrail < 70 || document.documentElement.classList.contains("calm") || matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+  lastTrail = now;
+  const t = document.createElement("span");
+  t.className = "trail";
+  t.style.cssText = `left:${e.clientX + 6}px;top:${e.clientY + 6}px;--c:${SPARK_COLORS[trailN++ % SPARK_COLORS.length]}`;
+  document.body.appendChild(t);
+  setTimeout(() => t.remove(), 650);
+}, { passive: true });
+
 /* ---------- sparkle bursts on clicks: buttons, era cards and timeline dots */
 var SPARK_COLORS = ["#ff6ad5", "#ffe14a", "#4fd8ff", "#c9f24a", "#ffa04a", "#b77bff"];
 document.addEventListener("click", e => {
-  const b = e.target.closest("button.primary, .btn:not(.ghost), button.small:not(.ghost), .era-card, .tl-dot");
+  const b = e.target.closest("button.primary, .btn:not(.ghost), button.small:not(.ghost), .era-card, .tl-dot, button.star[aria-pressed=\"false\"]");
   if (!b || b.disabled || matchMedia("(prefers-reduced-motion: reduce)").matches) return;
   const r = b.getBoundingClientRect(), x = e.clientX || r.left + r.width / 2, y = e.clientY || r.top + r.height / 2;
   for (let n = 0; n < 9; n++) {
