@@ -6,16 +6,6 @@ private func monthLabel(_ m: Int) -> String {
     ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"][m % 12] + " \(m / 12)"
 }
 
-struct ScreenTitle: View {
-    let text: String
-    var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(text).font(JT.marker(40)).rotationEffect(.degrees(-1), anchor: .leading)
-            Capsule().fill(JT.rainbow).frame(width: 110, height: 4)
-        }
-    }
-}
-
 private struct Legend: View {
     let items: [(String, Color)]
     var body: some View {

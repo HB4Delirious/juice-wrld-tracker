@@ -51,6 +51,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUs
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         AppDelegate.shared = self
+        JTFonts.register()
         // macOS would otherwise quietly quit the app once its window is closed, defeating "Keep running".
         ProcessInfo.processInfo.automaticTerminationSupportEnabled = false
         _ = WebViewStore.shared // start the engine (the page) right away
@@ -173,3 +174,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUs
     }
 }
 
+
+/// The classic page's fonts (Permanent Marker and Figtree), bundled in the asset catalog for the SwiftUI interface.
+enum JTFonts {
+    static func register() {
+        for name in ["jt-font-marker", "jt-font-figtree"] {
+            guard let data = NSDataAsset(name: name)?.data, let provider = CGDataProvider(data: data as CFData),
+                  let font = CGFont(provider) else { continue }
+            CTFontManagerRegisterGraphicsFont(font, nil)
+        }
+    }
+}

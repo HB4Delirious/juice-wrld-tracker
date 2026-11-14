@@ -29,3 +29,22 @@ for points in [16, 32, 128, 256, 512] {
 }
 render("design/dmg-background.svg", width: 660, height: 420, to: "design/dmg-background.png")
 render("design/dmg-background.svg", width: 1320, height: 840, to: "design/dmg-background@2x.png")
+
+// The classic page's doodles for the SwiftUI interface (design/native, from scripts/extract-native-art.py),
+// as 1x and 2x images in the asset catalog: name -> size in points.
+let native: [(String, Int, Int)] = [
+    ("planet", 210, 210), ("heart", 46, 46), ("flash", 560, 560), ("sparkles", 520, 520), ("fly", 32, 32),
+    ("scribble", 200, 40), ("squiggle", 140, 12), ("check", 14, 14), ("logo", 64, 64),
+    ("sticker1", 30, 30), ("sticker2", 30, 30), ("sticker3", 30, 30), ("sticker4", 30, 30), ("sticker5", 30, 30), ("sticker6", 30, 30),
+]
+for (name, w, h) in native {
+    let dir = "JuiceTracker/Assets.xcassets/jt-\(name).imageset"
+    try! FileManager.default.createDirectory(at: root.appendingPathComponent(dir), withIntermediateDirectories: true)
+    render("design/native/\(name).svg", width: w, height: h, to: "\(dir)/\(name).png")
+    render("design/native/\(name).svg", width: w * 2, height: h * 2, to: "\(dir)/\(name)@2x.png")
+    let contents = """
+    {"images":[{"filename":"\(name).png","idiom":"universal","scale":"1x"},{"filename":"\(name)@2x.png","idiom":"universal","scale":"2x"}],\
+    "info":{"author":"xcode","version":1}}
+    """
+    try! contents.write(to: root.appendingPathComponent("\(dir)/Contents.json"), atomically: true, encoding: .utf8)
+}

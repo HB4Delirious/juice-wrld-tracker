@@ -5176,6 +5176,15 @@ function nativeState() {
     eras: eraStats().map(e => ({ name: e.name, have: e.have, total: e.total, time: hasValue(e.info.timeFrame) ? e.info.timeFrame : "", desc: hasValue(e.info.description) ? e.info.description : "" })),
     owned: [...state.owned.keys()],
     wished: state.catalog.map((s, i) => isWished(s) ? i : -1).filter(i => i >= 0),
+    fresh: state.catalog.map((s, i) => state.newIds.has(s.id) ? i : -1).filter(i => i >= 0),
+    released: state.catalog.map((s, i) => state.releasedIds.has(s.id) ? i : -1).filter(i => i >= 0),
+    files: (state.library || []).length,
+    drive: $("drive-status").hidden ? null : { kind: $("drive-status").className.replace("drive", "").trim(), text: $("drive-status").textContent.trim() },
+    // what the classic home page shows under the scoreboard, read from it so both always agree
+    notices: [...$("notices").children].map(p => ({ text: p.textContent.trim(), released: p.classList.contains("released") })),
+    today: $("today-card").hidden ? [] : [...$("today-card").querySelectorAll("p")].map(p => ({
+      head: (p.querySelector("strong") || {}).textContent || "", songs: [...p.querySelectorAll("button[data-open-song]")].map(b => Number(b.dataset.openSong)),
+      more: Number((/and (\d+) more\s*$/.exec(p.textContent) || [])[1] || 0) })),
     catalog: null,
   };
   if (key !== nativeCatalogKey) {
@@ -5183,7 +5192,7 @@ function nativeState() {
     const year = v => { const y = yearOf(v); return y ? Number(y) : null; };
     out.catalog = state.catalog.map((s, i) => {
       const d = state.derived[i] || deriveSong(s);
-      return { i, n: s.name, e: eraName(s), c: capital(s.category), l: s.length || "", f: Boolean(fileUrl(s)), m: recordMonth(s.recordDates),
+      return { i, n: s.name, a: s.alt, rel: isReleased(s), e: eraName(s), c: capital(s.category), l: s.length || "", f: Boolean(fileUrl(s)), m: recordMonth(s.recordDates),
         ry: [...d.recYears], py: year(s.previewDate), sy: year(s.leakDate), rl: isReleased(s) ? year(s.release) : null,
         pr: d.producers, ar: d.artists, en: d.engineers, st: d.studios };
     });
@@ -5233,6 +5242,7 @@ window.jwNativeAction = async a => {
   if (a.op === "setup") return JSON.stringify({ catalog: Boolean(state.catalog), folder: state.rootHandle ? state.rootHandle.name : "",
     catalogStatus: $("catalog-status").textContent, folderStatus: $("folder-status").textContent });
   if (a.op === "loadCatalog") { $("fetch-btn").click(); return ""; }
+  if (a.op === "driveCheck") { $("drive-status").click(); return ""; } // reconnects when the drive is down
   if (a.op === "pickFolder") { $("folder-btn").click(); return ""; }
   if (a.op === "rescan") { await rescanFolder(); return ""; }
   // downloads and notes
