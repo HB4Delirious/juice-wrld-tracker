@@ -609,6 +609,39 @@
     .shell::after { display: none; }
     .era-card:hover { transform: none; }
   }
+
+  /* listening stats, era completion, file health, drive status, collection card, timeline */
+  .listen-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 18px; }
+  .listen-grid h4 { margin: 0 0 8px; font: 600 var(--t-sm) var(--body); color: var(--muted); }
+  .song-links { margin: 0; padding-left: 22px; display: flex; flex-direction: column; gap: 4px; }
+  .song-links.inline { padding: 0; list-style: none; flex-direction: row; flex-wrap: wrap; gap: 6px; }
+  .song-link { background: none; border: 0; padding: 0; color: var(--mist); font: inherit; font-size: var(--t-sm); text-align: left; cursor: pointer; }
+  .song-link:hover { color: var(--lavender-hi); text-decoration: underline; }
+  .song-links.inline .song-link { border: 1px solid var(--line); border-radius: 999px; padding: 3px 10px; }
+  .song-link small { color: var(--muted); }
+  .era-missing { margin-top: 6px; }
+  .era-missing summary { cursor: pointer; color: var(--lavender); font-size: var(--t-sm); }
+  .era-missing h4 { margin: 12px 0 6px; font: 600 var(--t-sm) var(--body); color: var(--muted); }
+  .health-group { margin-top: 18px; }
+  .health-group h3 { margin: 0 0 8px; font-size: var(--t-lg); }
+  .health-row { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; justify-content: space-between; border-top: 1px solid var(--line); padding: 10px 2px; }
+  .health-row .what { display: flex; flex-direction: column; min-width: 0; flex: 1 1 320px; }
+  .health-row .what code { font-size: var(--t-xs); color: var(--muted); overflow-wrap: anywhere; }
+  .drive { display: inline-flex; align-items: center; gap: 8px; background: transparent; border: 1px solid var(--line); border-radius: 999px; padding: 5px 12px; color: var(--muted); font: 400 var(--t-xs) var(--body); cursor: pointer; text-align: left; }
+  .drive i { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); flex: none; }
+  .drive.ok i { background: var(--have); }
+  .drive.slow i { background: var(--new); }
+  .drive.off i { background: var(--missing); }
+  #card-preview { width: 100%; max-width: 420px; border-radius: var(--r-sm); border: 1px solid var(--line); }
+  .timeline { overflow-x: auto; padding: 8px 2px 14px; }
+  .tl-track { display: flex; align-items: flex-end; gap: 2px; min-height: 270px; }
+  .tl-month { display: flex; flex-direction: column-reverse; flex-wrap: wrap-reverse; align-content: flex-start; gap: 2px; max-height: 230px; min-width: 9px; position: relative; padding-bottom: 22px; }
+  .tl-month.empty { min-width: 3px; }
+  .tl-month.jan { margin-left: 10px; border-left: 1px dashed var(--line-2); padding-left: 4px; }
+  .tl-year { position: absolute; bottom: 0; left: 4px; font: 600 var(--t-xs) var(--body); color: var(--muted); white-space: nowrap; }
+  .tl-dot { width: 9px; height: 9px; padding: 0; border-radius: 50%; border: 0; background: rgba(195, 178, 227, .28); cursor: pointer; }
+  .tl-dot.owned { background: var(--have); box-shadow: 0 0 6px rgba(201, 242, 74, .6); }
+  .tl-dot:hover, .tl-dot:focus-visible { background: var(--lavender-hi); outline: none; transform: scale(1.5); }
 </style>
 </head>
 <body>
@@ -637,12 +670,15 @@
       <li><button type="button" data-view="collection" aria-current="false"><svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="2.5"/></svg><span>Collection</span></button></li>
       <li><button type="button" data-view="fixer" class="tool" aria-current="false"><svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12V4h8l10 10-8 8z"/><circle cx="7.5" cy="8" r="1.3"/></svg><span>Tag fixer</span></button></li>
       <li><button type="button" data-view="dups" class="tool" aria-current="false"><svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V5a1 1 0 0 0-1-1H5a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h3"/></svg><span>Duplicates</span></button></li>
+      <li><button type="button" data-view="health" class="tool" aria-current="false"><svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h4l2-5 4 10 2-5h6"/></svg><span>File health</span></button></li>
       <li><button type="button" data-view="people" class="tool" aria-current="false"><svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3.2"/><path d="M3 20c.6-3.6 3-5.5 6-5.5s5.4 1.9 6 5.5"/><path d="M16 4.5a3 3 0 0 1 0 6M18 14.8c1.7.7 2.8 2.4 3 5.2"/></svg><span>Credits</span></button></li>
       <li><button type="button" data-view="stats" class="tool" aria-current="false"><svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20V11M10 20V4M16 20v-6M21 20H3"/></svg><span>Stats</span></button></li>
+      <li><button type="button" data-view="timeline" class="tool" aria-current="false"><svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h18"/><circle cx="6" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="18" cy="12" r="2"/><path d="M6 6v2M12 16v2M18 6v2"/></svg><span>Timeline</span></button></li>
       <li><button type="button" data-view="trivia" class="tool" aria-current="false"><svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M9.2 9a3 3 0 1 1 4.3 2.7c-.9.4-1.5 1.2-1.5 2.2v.6"/><circle cx="12" cy="18.3" r=".6" fill="currentColor"/><circle cx="12" cy="12" r="9.5"/></svg><span>Trivia</span></button></li>
       <li><button type="button" data-view="export" class="tool" aria-current="false"><svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16v13H4zM3 4h18v3H3zM10 11h4"/></svg><span>Export & backup</span></button></li>
     </ul></nav>
     <div class="rail-foot">
+      <button type="button" class="drive" id="drive-status" hidden><i aria-hidden="true"></i><span></span></button>
       <button type="button" class="ambient-toggle" id="ambient-btn" aria-pressed="false" hidden>
         <span class="eq" aria-hidden="true"><i></i><i></i><i></i></span>
         <span class="ambient-text"><b>Ambient music</b><small id="ambient-now">Off</small></span>
@@ -791,6 +827,19 @@
       </div>
     </details>
 
+    <details class="panel" id="health">
+      <summary><span><span class="title">File health</span><span class="sub" id="health-sub"></span></span></summary>
+      <div class="panel-body">
+        <p>Finds files with no tags, files whose title doesn't match the catalog, and (in the Mac app) files that may be damaged or cut off. Nothing changes until you click a fix.</p>
+        <div class="row">
+          <button type="button" class="primary" id="health-run">Check my files</button>
+          <button type="button" class="ghost small" id="health-stop" hidden>Stop</button>
+          <span class="hint" id="health-status" role="status"></span>
+        </div>
+        <div id="health-list"></div>
+      </div>
+    </details>
+
     <details class="panel" id="people">
       <summary><span><span class="title">Producers and collaborators</span><span class="sub" id="people-sub"></span></span></summary>
       <div class="panel-body">
@@ -831,6 +880,20 @@
           <div class="chart-head"><h3>Previews, surfaced songs, and releases by year</h3></div>
           <div id="stats-surfaced"></div>
         </div>
+        <div class="chart" id="listen-box" hidden>
+          <div class="chart-head"><h3>Your listening in Plex</h3><button type="button" class="ghost small" id="listen-load">Load play counts</button></div>
+          <div id="listen-body"><p class="hint">Play counts for your songs from your Plex server (set up in Settings, ⌘,).</p></div>
+        </div>
+      </div>
+    </details>
+
+    <details class="panel" id="timeline">
+      <summary><span><span class="title">Timeline</span><span class="sub" id="timeline-sub"></span></span></summary>
+      <div class="panel-body">
+        <p class="stats-summary" id="timeline-summary"></p>
+        <div class="legend"><span><i style="background:var(--have)"></i>In your library</span><span><i style="background:rgba(195,178,227,.4)"></i>Not in your library</span></div>
+        <div class="timeline" id="timeline-scroll"><div class="tl-track" id="timeline-track"></div></div>
+        <p class="hint">Each dot is a song, placed in the month it was recorded. Scroll sideways; click a dot to open the song.</p>
       </div>
     </details>
 
@@ -843,6 +906,12 @@
       <summary><span><span class="title">Export and backup</span><span class="sub" id="export-sub"></span></span></summary>
       <div class="panel-body">
         <div class="export-grid">
+          <div class="export-item">
+            <h3>Collection card</h3>
+            <p class="hint">A picture of your collection to post or keep.</p>
+            <img id="card-preview" alt="Your collection card" hidden>
+            <button class="primary" type="button" id="card-save">Save collection card</button>
+          </div>
           <div class="export-item">
             <h3>Full catalog spreadsheet</h3>
             <p class="hint" id="export-details-note"></p>
@@ -1689,6 +1758,36 @@ async function backupFile(dir, path, data) {
   await w.write(data);
   await w.close();
 }
+
+/* ---------- the month a song was recorded ("Recorded\nAugust 2, 2015."), as year * 12 + month, or null */
+const MONTH_NUM = { jan: 0, feb: 1, mar: 2, apr: 3, may: 4, jun: 5, jul: 6, aug: 7, sep: 8, oct: 9, nov: 10, dec: 11 };
+function recordMonth(text) {
+  const t = String(text || "");
+  const m = /\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s+(?:\d{1,2}(?:st|nd|rd|th)?,?\s+)?((?:19|20)\d{2})\b/i.exec(t);
+  if (m) return Number(m[2]) * 12 + MONTH_NUM[m[1].toLowerCase()];
+  const iso = /\b((?:19|20)\d{2})-(\d{2})-\d{2}\b/.exec(t);
+  return iso && Number(iso[2]) >= 1 && Number(iso[2]) <= 12 ? Number(iso[1]) * 12 + Number(iso[2]) - 1 : null;
+}
+/** "4:26" or "1:02:03" to seconds, or null. */
+function lengthSeconds(text) {
+  const m = /^\s*(?:(\d+):)?(\d{1,2}):(\d{2})\s*$/.exec(String(text || ""));
+  return m ? Number(m[1] || 0) * 3600 + Number(m[2]) * 60 + Number(m[3]) : null;
+}
+
+/* ---------- duplicates: which copy to keep (also used by ⌘K search keys) */
+const LOSSLESS = new Set(["flac", "wav", "aiff", "aif", "alac"]);
+const cmdkKey = text => String(text || "").toLowerCase().normalize("NFKD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, " ").trim();
+/** Lossless beats lossy; then the biggest file (higher bitrate, more complete). */
+function bestCopy(files) { return [...files].sort((a, b) => (LOSSLESS.has(b.ext) - LOSSLESS.has(a.ext)) || (b.size || 0) - (a.size || 0))[0]; }
+/** Only files that read as exactly the same title, brackets included, so a remix or "v2" is never treated as a copy. */
+function isExactDuplicate(g) { return new Set(g.files.map(f => cmdkKey(f.title))).size === 1; }
+/** The files to remove: each extra copy once (a file can be listed under several versions of a song), never a kept one. */
+function extraCopies(groups) {
+  const kept = new Set(groups.map(g => bestCopy(g.files).path));
+  const out = new Map();
+  for (const g of groups) for (const f of g.files) if (!kept.has(f.path) && f.handle && f.handle._path) out.set(f.path, f);
+  return [...out.values()];
+}
 </script>
 
 <script>
@@ -2066,6 +2165,10 @@ function update() {
   renderTrivia();
   renderExportPanel();
   renderFixer();
+  renderTimeline();
+  renderHealth();
+  if (state.listen) renderListening();
+  checkDrive();
 }
 
 function renderNotices() {
@@ -2806,7 +2909,6 @@ function personalSectionHtml(song) {
 }
 
 /* ---------- duplicate finder */
-const LOSSLESS = new Set(["flac", "wav", "aiff", "aif", "alac"]);
 function duplicateGroups() {
   const groups = [];
   state.owned.forEach((files, i) => {
@@ -2883,17 +2985,6 @@ $("dup-clean-all").addEventListener("click", () => trashExtraCopies(state.dupGro
 
 /* Duplicate cleanup (Mac app): keep the best copy, move the rest to the Trash. Never deletes outright. */
 function canTrash() { return Boolean(window.jwTrash && state.rootHandle && state.rootHandle._path); }
-/** Lossless beats lossy; then the biggest file (higher bitrate, more complete). */
-function bestCopy(files) { return [...files].sort((a, b) => (LOSSLESS.has(b.ext) - LOSSLESS.has(a.ext)) || (b.size || 0) - (a.size || 0))[0]; }
-/** Only files that read as exactly the same title, brackets included, so a remix or "v2" is never treated as a copy. */
-function isExactDuplicate(g) { return new Set(g.files.map(f => cmdkKey(f.title))).size === 1; }
-/** The files to remove: each extra copy once (a file can be listed under several versions of a song), never a kept one. */
-function extraCopies(groups) {
-  const kept = new Set(groups.map(g => bestCopy(g.files).path));
-  const out = new Map();
-  for (const g of groups) for (const f of g.files) if (!kept.has(f.path) && f.handle && f.handle._path) out.set(f.path, f);
-  return [...out.values()];
-}
 async function trashExtraCopies(groups) {
   const victims = extraCopies(groups.filter(g => g && isExactDuplicate(g)));
   if (!victims.length) return;
@@ -2911,6 +3002,7 @@ async function trashExtraCopies(groups) {
       failed.push(`${baseName(f.path)} (${err.message})`);
     }
   }
+  if (moved && state.lastItems) tagCache.setItems(state.lastItems.map(it => it.path));
   update();
   renderDuplicates();
   toast(`Moved ${plural(moved, "file", "files")} to the Trash.${failed.length ? ` Couldn't move ${failed.slice(0, 3).join("; ")}${failed.length > 3 ? "; and more" : ""}.` : ""}`, failed.length > 0);
@@ -3285,10 +3377,12 @@ function renderEras() {
       ${hasValue(picked.info.timeFrame) ? `<p class="muted">${esc(picked.info.timeFrame)}</p>` : ""}
       ${hasValue(picked.info.description) ? `<p class="era-full">${esc(picked.info.description)}</p>` : ""}
       <p>You have ${fmt(picked.have)} of ${plural(picked.total, "song", "songs")} from this era. <span class="muted">${catText}.</span></p>
+      ${eraMissingHtml(picked.name)}
       <p class="hint">Songs you don't have show a File link in the table. That opens the file on the site so you can save it yourself. Get file links lists all of them, with the folder to save each one in.</p>
     </div>
     <div class="row" style="flex-direction:column;align-items:flex-end">
-      ${picked.have < picked.total ? `<button type="button" class="small" id="era-links">Get file links</button>` : ""}
+      ${eraCompleteButton(picked.name)}
+      ${picked.have < picked.total ? `<button type="button" class="small${canDownloadToLibrary() ? " ghost" : ""}" id="era-links">Get file links</button>` : ""}
       ${folder ? `<a class="site-link" href="${esc(folder)}" target="_blank" rel="noopener"><span>Open this era's folder</span></a>` : ""}
       <button type="button" class="ghost small" id="era-clear">Show all eras</button>
     </div>`;
@@ -3314,6 +3408,9 @@ $("era-grid").addEventListener("click", e => {
 $("era-toggle").addEventListener("click", () => { state.showAllEras = !state.showAllEras; renderEras(); });
 $("era-banner").addEventListener("click", e => {
   if (e.target.closest("#era-links") && state.era !== null) { openLinks(eraRows(), `${state.era} era${Object.values(state.filters).some(v => String(v).trim()) ? ", with your filters" : ""}`, "#era-links"); return; }
+  if (e.target.closest("#era-complete") && state.era !== null) { completeEra(state.era); return; }
+  const songBtn = e.target.closest("button[data-open-song]");
+  if (songBtn) { openSong(Number(songBtn.dataset.openSong)); return; }
   if (e.target.closest("#era-clear")) {
     selectEra(null);
     document.querySelector(`#era-grid button[data-era]`)?.focus({ preventScroll: true });
@@ -3427,6 +3524,7 @@ $("links-dialog").addEventListener("click", async e => {
   if (!state.links) return;
   const link = e.target.closest("a[data-open-id]");
   if (link) {
+    if (e.defaultPrevented) return; // the app is downloading it; a successful download adds the check mark
     state.personal.opened[link.dataset.openId] = new Date().toISOString();
     savePersonal();
     link.closest("li").classList.add("opened");
@@ -3563,9 +3661,9 @@ async function renderSongDialog() {
 }
 
 function openSong(i) {
-  const list = rowsForTab().map(r => r.i);
-  const pos = Math.max(0, list.indexOf(i));
-  state.dialog = { list: list.length ? list : [i], pos: list.length ? pos : 0 };
+  const list = rowsForTab().map(r => r.i), pos = list.indexOf(i);
+  // Opened from somewhere other than the table (timeline, stats, an era's missing list): just this song.
+  state.dialog = pos >= 0 ? { list, pos } : { list: [i], pos: 0 };
   renderSongDialog();
   const dlg = $("song-dialog");
   if (!dlg.open) dlg.showModal();
@@ -3898,7 +3996,6 @@ showView("collection");
 
 /* ---------- ⌘K quick search: pages, songs, eras and people */
 const cmdk = { index: null, indexFor: null, results: [], pos: 0 };
-const cmdkKey = text => String(text || "").toLowerCase().normalize("NFKD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, " ").trim();
 function cmdkIndex() {
   const ready = document.body.classList.contains("ready");
   if (cmdk.index && cmdk.indexFor === (ready ? state.catalog : null)) return cmdk.index;
@@ -4066,6 +4163,8 @@ async function downloadAll(songs) {
       if (!r.existed) job.saved++;
       if (r.note) job.failed.push(`${song.name} (${r.note})`);
     } catch (err) {
+      // The music folder is gone (a network drive dropped): every other song would fail the same way.
+      if (/isn't available/.test(err.message)) { job.offline = err.message; break; }
       job.failed.push(`${song.name} (${err.message})`);
     }
     job.done++;
@@ -4074,9 +4173,9 @@ async function downloadAll(songs) {
   state.bulk = null;
   if (job.saved) plexRefresh();
   if (state.links) renderLinksDialog();
-  const msg = `${job.stop ? "Stopped. " : ""}Downloaded ${plural(job.saved, "song", "songs")}.${job.failed.length ? ` ${plural(job.failed.length, "had a problem", "had problems")}: ${job.failed.slice(0, 3).join("; ")}${job.failed.length > 3 ? "; and more" : ""}.` : ""}`;
-  if ($("links-status")) setStatus("links-status", msg, job.failed.length > 0 && !job.saved);
-  toast(msg, job.failed.length > 0 && !job.saved);
+  const msg = job.offline ? `${job.saved ? `Downloaded ${plural(job.saved, "song", "songs")}, then stopped. ` : ""}${job.offline}` : `${job.stop ? "Stopped. " : ""}Downloaded ${plural(job.saved, "song", "songs")}.${job.failed.length ? ` ${plural(job.failed.length, "had a problem", "had problems")}: ${job.failed.slice(0, 3).join("; ")}${job.failed.length > 3 ? "; and more" : ""}.` : ""}`;
+  if ($("links-status")) setStatus("links-status", msg, Boolean(job.offline) || (job.failed.length > 0 && !job.saved));
+  toast(msg, Boolean(job.offline) || (job.failed.length > 0 && !job.saved));
 }
 function autoTagOn() { return state.personal.autoTag !== false; }
 $("fix-auto").addEventListener("change", e => { state.personal.autoTag = e.target.checked; savePersonal(); });
@@ -4148,11 +4247,371 @@ $("song-body").addEventListener("click", e => {
   syncAmbient();
   window.jwAmbient({ playPath: f.handle._path, title: state.catalog[i].name }).catch(err => toast(`Couldn't play it: ${err.message}`, true));
 });
-window.jwAmbientNow = title => { $("ambient-now").textContent = title || (ambientOn() ? "Not playing" : "Off"); };
+// The app reports every change, wherever it came from (these controls, media keys, Control Center, the menu bar).
+window.jwAmbientNow = (title, paused = false, volume = null) => {
+  if (title && !ambientOn()) { // started from the menu bar or a media key while off here
+    try { localStorage.setItem("jw-ambient", "on"); } catch (e) {}
+    $("ambient-btn").setAttribute("aria-pressed", "true");
+  }
+  $("ambient-now").textContent = title || (ambientOn() ? "Not playing" : "Off");
+  playerPaused = Boolean(title) && paused;
+  if (volume !== null && document.activeElement !== $("player-volume")) {
+    $("player-volume").value = volume;
+    try { localStorage.setItem("jw-ambient-volume", String(volume)); } catch (e) {}
+  }
+  renderPlayer();
+};
 $("ambient-btn").addEventListener("click", () => {
   try { localStorage.setItem("jw-ambient", ambientOn() ? "off" : "on"); } catch (e) {}
   syncAmbient();
 });
+
+/* ---------- song lists that open the song card */
+function songLinksHtml(list, inline = false) {
+  return `<ol class="song-links${inline ? " inline" : ""}">${list.map(({ i, note }) =>
+    `<li><button type="button" class="song-link" data-open-song="${i}">${esc(state.catalog[i].name)}${note ? ` <small>${esc(note)}</small>` : ""}</button></li>`).join("")}</ol>`;
+}
+document.addEventListener("click", e => {
+  const b = e.target.closest("button[data-open-song]");
+  if (b && !b.closest("#era-banner")) openSong(Number(b.dataset.openSong)); // the era banner handles its own
+});
+
+/* ---------- era completion: what's missing, by kind, and one button to download it all (Mac app) */
+function versionKind(song) {
+  const text = `${song.name} ${(song.alt || []).join(" ")}`;
+  if (/remix/i.test(text)) return "Remixes";
+  if (/\b(v\d+|version|alt|alternate|og|original|demo|snippet|edit|extended|reference|session)\b/i.test(text)) return "Other versions";
+  if (hasValue(song.sessions)) return "Session recordings";
+  return "Songs";
+}
+function eraSongRows(name) { return state.catalog.map((song, i) => ({ song, i })).filter(r => eraName(r.song) === name); }
+function eraMissingHtml(name) {
+  const { missing } = linkGroups(eraSongRows(name));
+  if (!missing.length) return `<p>You have every song from this era.</p>`;
+  const kinds = new Map();
+  for (const r of missing) {
+    const k = versionKind(r.song);
+    if (!kinds.has(k)) kinds.set(k, []);
+    kinds.get(k).push({ i: r.i, note: r.song.filePath ? "" : "(no file on the site)" });
+  }
+  const order = ["Songs", "Other versions", "Session recordings", "Remixes"];
+  const groups = [...kinds].sort((a, b) => order.indexOf(a[0]) - order.indexOf(b[0]));
+  return `<details class="era-missing"><summary>What you're missing: ${groups.map(([k, l]) => `${esc(k.toLowerCase())} ${fmt(l.length)}`).join(", ")}</summary>
+    ${groups.map(([k, l]) => `<h4>${esc(k)}</h4>${songLinksHtml(l.sort((a, b) => state.catalog[a.i].name.localeCompare(state.catalog[b.i].name)), true)}`).join("")}
+  </details>`;
+}
+function eraCompleteButton(name) {
+  if (!canDownloadToLibrary()) return "";
+  const { withFile } = linkGroups(eraSongRows(name));
+  return withFile.length ? `<button type="button" class="small" id="era-complete"${state.bulk ? " disabled" : ""}>Complete this era (${fmt(withFile.length)})</button>` : "";
+}
+function completeEra(name) {
+  const rows = eraSongRows(name), { withFile } = linkGroups(rows);
+  if (!withFile.length || state.bulk) return;
+  if (!window.confirm(`Download the ${plural(withFile.length, "song", "songs")} you're missing from ${name} into your music folder? They go into the folders shown, one at a time.`)) return;
+  openLinks(rows, `${name} era`, "#era-complete"); // shows progress and a Stop button
+  downloadAll(withFile.map(r => r.song));
+}
+
+/* ---------- Plex listening stats (Stats view, once Plex is set up in Settings) */
+async function showListenBox() {
+  if (!window.jwPlex) return;
+  try { $("listen-box").hidden = !(await window.jwPlex({ action: "status" })).configured; } catch (e) { $("listen-box").hidden = true; }
+}
+$("stats").addEventListener("toggle", () => { if ($("stats").open) showListenBox(); });
+$("listen-load").addEventListener("click", async () => {
+  const btn = $("listen-load");
+  const files = (state.library || []).filter(f => f.songs && f.songs.length);
+  if (!files.length) { $("listen-body").innerHTML = `<p class="hint">Open your music folder first.</p>`; return; }
+  btn.disabled = true;
+  btn.textContent = "Loading…";
+  try {
+    const r = await window.jwPlex({ action: "stats", paths: files.map(f => f.handle?._path || f.path) });
+    const byPath = new Map(r.items.map(it => [it.path, it]));
+    state.listen = { counts: new Map(files.map(f => [f.path, byPath.get(f.handle?._path || f.path) || null])), missing: r.missing };
+    renderListening();
+  } catch (err) {
+    $("listen-body").innerHTML = `<p class="hint error">${esc(err.message)}</p>`;
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "Refresh play counts";
+  }
+});
+function renderListening() {
+  const L = state.listen;
+  if (!L || !state.owned) return;
+  // Counted per file: one file can match several versions of a song, and its plays must count once.
+  const played = [];
+  for (const f of state.library || []) {
+    const c = L.counts.get(f.path);
+    if (c && f.songs && f.songs.length) played.push({ i: f.songs[0], plays: c.plays });
+  }
+  const songs = [];
+  state.owned.forEach((files, i) => { if (files.some(f => L.counts.get(f.path))) songs.push({ i, plays: files.reduce((a, f) => a + (L.counts.get(f.path)?.plays || 0), 0) }); });
+  const total = played.reduce((a, p) => a + p.plays, 0);
+  const top = played.filter(p => p.plays).sort((a, b) => b.plays - a.plays).slice(0, 10);
+  const never = songs.filter(s => !s.plays).sort((a, b) => state.catalog[a.i].name.localeCompare(state.catalog[b.i].name));
+  const eras = new Map();
+  for (const p of played) { const e = eraName(state.catalog[p.i]); eras.set(e, (eras.get(e) || 0) + p.plays); }
+  const eraList = [...eras].filter(([, n]) => n).sort((a, b) => b[1] - a[1]).slice(0, 8);
+  const maxEra = Math.max(1, ...eraList.map(([, n]) => n));
+  $("listen-body").innerHTML = `
+    <p>${plural(total, "play", "plays")} across ${plural(songs.length, "of your songs", "of your songs")} in Plex. ${never.length ? `${plural(never.length, "song you own has", "songs you own have")} never been played.` : "You've played every song you own."}${L.missing ? ` <span class="muted">${plural(L.missing, "file isn't", "files aren't")} in Plex yet.</span>` : ""}</p>
+    <div class="listen-grid">
+      <div><h4>Most played</h4>${top.length ? songLinksHtml(top.map(s => ({ i: s.i, note: plural(s.plays, "play", "plays") }))) : `<p class="hint">Nothing played yet.</p>`}</div>
+      <div><h4>Top eras by plays</h4>${eraList.length ? eraList.map(([name, n]) => `<div class="hbar-row" title="${esc(name)}: ${plural(n, "play", "plays")}">
+        <span class="hbar-label">${esc(name)}</span>
+        <span class="hbar-track"><span class="hbar-fill" style="width:${(n / maxEra) * 100}%"><span style="flex:1 0 0;background:var(--lavender)"></span></span></span>
+        <span class="hbar-val">${fmt(n)}</span></div>`).join("") : `<p class="hint">Nothing played yet.</p>`}</div>
+    </div>
+    ${never.length ? `<h4 style="margin:14px 0 6px">Never played</h4>${songLinksHtml(never.slice(0, 24).map(s => ({ i: s.i })), true)}${never.length > 24 ? `<p class="hint">And ${fmt(never.length - 24)} more.</p>` : ""}` : ""}`;
+}
+
+/* ---------- file health (var, not const: update() can call renderHealth before this part of the script runs) */
+var health = { running: false, stop: false, probed: new Map(), done: false };
+function healthIssues() {
+  const out = [];
+  for (const f of state.library || []) {
+    const song = f.songs && f.songs.length === 1 ? state.catalog[f.songs[0]] : null;
+    const p = health.probed.get(f.path), before = out.length;
+    if (p && !p.ok) out.push({ f, group: "damaged", text: "Doesn't open as audio. It may be damaged." });
+    else if (p && song) {
+      const want = lengthSeconds(song.length);
+      if ((want && want >= 45 && p.seconds < want * 0.6) || p.seconds < 5) {
+        out.push({ f, group: "damaged", text: `Plays for ${fmtTime(p.seconds)}${want ? `, but “${song.name}” is ${song.length}` : ""}. It may be cut off.` });
+      }
+    }
+    if (out.length === before && f.size !== undefined && f.size !== null && f.size < 300 * 1024) out.push({ f, group: "damaged", text: `Very small for a song (${formatSize(f.size)}).` });
+    if (!f.fromTags) out.push({ f, group: "tags", text: "No title tag, so it's matched by its file name." });
+    else if (!f.songs || !f.songs.length) out.push({ f, group: "tags", text: `Its title, “${f.title}”, isn't in the catalog.` });
+    else if (f.fuzzy) out.push({ f, group: "tags", text: `Its title, “${f.title}”, is close to “${state.catalog[f.songs[0]].name}” but not exact.` });
+  }
+  return out;
+}
+function fmtTime(s) { return `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, "0")}`; }
+function renderHealth() {
+  if (!state.library) return;
+  const issues = healthIssues();
+  $("health-sub").textContent = issues.length ? ` ${plural(issues.length, "thing", "things")} to look at` : health.done ? " Your files look healthy" : "";
+  if (!$("health").open) return;
+  $("health-run").textContent = window.jwProbe ? (health.done ? "Check again" : "Check my files") : "Check my files";
+  $("health-run").hidden = health.running;
+  $("health-stop").hidden = !health.running;
+  const onDisk = f => Boolean(f.handle && f.handle._path);
+  const groups = [
+    ["damaged", "May be damaged or cut off", "Replace it with the site's copy, or move it to the Trash."],
+    ["tags", "Tags to fix", "The Tag fixer writes the catalog's tags to matched files. Unmatched files can be matched by hand there."],
+  ];
+  $("health-list").innerHTML = groups.map(([g, title, help]) => {
+    const list = issues.filter(x => x.group === g);
+    if (!list.length) return "";
+    return `<div class="health-group"><h3>${esc(title)} (${fmt(list.length)})</h3><p class="hint">${esc(help)}</p>${list.slice(0, 300).map(x => {
+      const song = x.f.songs && x.f.songs.length === 1 ? state.catalog[x.f.songs[0]] : null;
+      const fixes = g === "tags"
+        ? `<button type="button" class="ghost small" data-health="fixer">Open Tag fixer</button>`
+        : [onDisk(x.f) && window.jwReveal ? `<button type="button" class="ghost small" data-health="reveal" data-path="${esc(x.f.path)}">Show in Finder</button>` : "",
+           onDisk(x.f) && song && fileUrl(song) && canDownloadToLibrary() ? `<button type="button" class="small" data-health="replace" data-path="${esc(x.f.path)}">Replace with the site's copy</button>` : "",
+           onDisk(x.f) && canTrash() ? `<button type="button" class="ghost small" data-health="trash" data-path="${esc(x.f.path)}">Move to Trash</button>` : ""].join("");
+      return `<div class="health-row"><span class="what"><span>${esc(x.text)}</span><code>${esc(x.f.path)}</code></span><span class="row">${fixes}</span></div>`;
+    }).join("")}${list.length > 300 ? `<p class="hint">And ${fmt(list.length - 300)} more.</p>` : ""}</div>`;
+  }).join("") || (health.done ? `<p>Every file opened and has the catalog's tags.</p>` : "");
+}
+$("health").addEventListener("toggle", () => { if ($("health").open) renderHealth(); });
+$("health-run").addEventListener("click", async () => {
+  if (!state.library) { setStatus("health-status", "Open your music folder first.", true); return; }
+  if (!window.jwProbe) { health.done = true; renderHealth(); setStatus("health-status", "Checked tags. Checking audio needs the Mac app."); return; }
+  const files = state.library.filter(f => f.handle && f.handle._path && PLAYABLE.has(f.ext));
+  Object.assign(health, { running: true, stop: false });
+  health.probed.clear();
+  renderHealth();
+  let next = 0, done = 0;
+  const worker = async () => { // two at a time: gentle on a network drive
+    while (next < files.length && !health.stop) {
+      const f = files[next++];
+      try { health.probed.set(f.path, await window.jwProbe(f.handle._path)); } catch (e) { /* gone since the scan: skip */ }
+      if (++done % 10 === 0) setStatus("health-status", `Checked ${fmt(done)} of ${plural(files.length, "file", "files")}…`);
+    }
+  };
+  await Promise.all([worker(), worker()]);
+  Object.assign(health, { running: false, done: !health.stop });
+  setStatus("health-status", health.stop ? `Stopped after ${plural(done, "file", "files")}.` : `Checked ${plural(files.length, "file", "files")}.`);
+  renderHealth();
+});
+$("health-stop").addEventListener("click", () => { health.stop = true; });
+$("health-list").addEventListener("click", async e => {
+  const b = e.target.closest("button[data-health]");
+  if (!b) return;
+  if (b.dataset.health === "fixer") { showView("fixer"); return; }
+  const f = (state.library || []).find(x => x.path === b.dataset.path);
+  if (!f) return;
+  const forget = () => {
+    state.library = state.library.filter(x => x !== f);
+    if (state.lastItems) { state.lastItems = state.lastItems.filter(it => it.path !== f.path); tagCache.setItems(state.lastItems.map(it => it.path)); }
+    health.probed.delete(f.path);
+  };
+  try {
+    if (b.dataset.health === "reveal") { await window.jwReveal(f.handle._path); return; }
+    if (b.dataset.health === "trash") {
+      if (!window.confirm(`Move “${baseName(f.path)}” to the Trash?`)) return;
+      await window.jwTrash(f.handle._path);
+      forget();
+      update();
+      toast(`Moved “${baseName(f.path)}” to the Trash.`);
+    }
+    if (b.dataset.health === "replace") {
+      const song = state.catalog[f.songs[0]];
+      if (!window.confirm(`Move “${baseName(f.path)}” to the Trash and download “${song.name}” from the site in its place?`)) return;
+      b.disabled = true;
+      await window.jwTrash(f.handle._path);
+      forget();
+      update(); // the song now counts as missing, so it can be downloaded
+      const r = await downloadSong(song);
+      toast(downloadMessage(song, r), Boolean(r.note));
+      if (!r.existed) plexRefresh();
+    }
+  } catch (err) {
+    toast(`That didn't work: ${err.message}`, true);
+    b.disabled = false;
+  }
+});
+
+/* ---------- music drive status (Mac app): is the folder answering, slowly, or not at all? */
+var driveBusy = false;
+async function checkDrive() {
+  const root = state.rootHandle && state.rootHandle._path;
+  if (!window.jwStat || !root || driveBusy) return;
+  driveBusy = true;
+  const started = performance.now();
+  const probe = window.jwStat(root).finally(() => { driveBusy = false; }); // a hung drive keeps it busy, so checks don't pile up
+  let cls, text;
+  try {
+    await Promise.race([probe, sleep(8000).then(() => { throw new Error("timeout"); })]);
+    const ms = performance.now() - started;
+    [cls, text] = ms < 800 ? ["ok", "Music drive connected"] : ["slow", `Music drive is slow (${(ms / 1000).toFixed(1)} s to answer)`];
+  } catch (err) {
+    [cls, text] = err.message === "timeout" ? ["slow", "Music drive isn't answering"] : ["off", "Music drive disconnected. Click to reconnect"];
+  }
+  const el = $("drive-status");
+  el.className = `drive ${cls}`;
+  el.querySelector("span").textContent = text;
+  el.title = root;
+  el.hidden = false;
+}
+$("drive-status").addEventListener("click", async () => {
+  const el = $("drive-status");
+  if (el.classList.contains("ok")) { checkDrive(); return; }
+  el.querySelector("span").textContent = "Reconnecting…";
+  try {
+    // The app's bookmark of the folder reconnects the share, and finds it if it came back under a new name.
+    const dir = await window.jwRestoreFolder("plex-music");
+    if (dir && state.rootHandle && dir._path !== state.rootHandle._path) await loadFromHandle(dir);
+  } catch (e) { /* the check below says how it went */ }
+  checkDrive();
+});
+setInterval(() => { if (!document.hidden) checkDrive(); }, 60000);
+document.addEventListener("visibilitychange", () => { if (!document.hidden) checkDrive(); });
+
+/* ---------- collection card: an image to post or keep */
+async function drawCollectionCard() {
+  const W = 1200, H = 630, c = document.createElement("canvas");
+  c.width = W; c.height = H;
+  const g = c.getContext("2d");
+  try { await Promise.all([document.fonts.load('64px "Permanent Marker"'), document.fonts.load('600 28px "Figtree"')]); } catch (e) {}
+  const sky = g.createLinearGradient(0, 0, W * 0.4, H);
+  sky.addColorStop(0, "#07040f"); sky.addColorStop(0.55, "#1d0b40"); sky.addColorStop(1, "#4a1250");
+  g.fillStyle = sky; g.fillRect(0, 0, W, H);
+  let seed = 999;
+  const rand = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+  for (let n = 0; n < 170; n++) {
+    g.globalAlpha = 0.25 + rand() * 0.7;
+    g.fillStyle = "#fff6fb";
+    g.beginPath(); g.arc(rand() * W, rand() * H, rand() * 1.6 + 0.3, 0, Math.PI * 2); g.fill();
+  }
+  g.globalAlpha = 1;
+  const sparkle = (x, y, r, color) => {
+    g.fillStyle = color; g.beginPath();
+    g.moveTo(x, y - r); g.quadraticCurveTo(x, y, x + r, y); g.quadraticCurveTo(x, y, x, y + r);
+    g.quadraticCurveTo(x, y, x - r, y); g.quadraticCurveTo(x, y, x, y - r); g.fill();
+  };
+  sparkle(1080, 110, 26, "#ff94e2"); sparkle(1010, 190, 12, "#ffe14a"); sparkle(140, 540, 16, "#4fd8ff");
+  const total = state.catalog.length, have = state.owned.size, pctDone = total ? (have / total) * 100 : 0;
+  const eras = eraStats().filter(e => e.name !== NO_ERA);
+  const topEra = [...eras].sort((a, b) => b.have - a.have)[0];
+  const best = eras.filter(e => e.total >= 10).sort((a, b) => b.have / b.total - a.have / a.total)[0];
+  g.fillStyle = "#ff94e2"; g.font = '600 26px "Figtree", system-ui, sans-serif';
+  g.fillText("MY JUICE WRLD COLLECTION", 80, 110);
+  g.fillStyle = "#fff6fb"; g.font = '120px "Permanent Marker", "Figtree", sans-serif';
+  const big = fmt(have);
+  g.fillText(big, 76, 255);
+  const bigW = g.measureText(big).width;
+  g.fillStyle = "#c3b2e3"; g.font = '600 38px "Figtree", system-ui, sans-serif';
+  g.fillText(`of ${fmt(total)} songs`, 76 + bigW + 22, 255);
+  // progress bar
+  const bx = 80, by = 300, bw = W - 160, bh = 26;
+  const pill = (x, y, w, h) => { g.beginPath(); if (g.roundRect) g.roundRect(x, y, w, h, h / 2); else g.rect(x, y, w, h); g.fill(); };
+  g.fillStyle = "rgba(190,150,255,.18)"; pill(bx, by, bw, bh);
+  const bar = g.createLinearGradient(bx, 0, bx + bw, 0);
+  ["#ff5d6c", "#ffa04a", "#ffe14a", "#c9f24a", "#4fd8ff", "#6aa8ff", "#b77bff", "#ff6ad5"].forEach((col, n, a) => bar.addColorStop(n / (a.length - 1), col));
+  g.fillStyle = bar; pill(bx, by, Math.max(bh, (bw * pctDone) / 100), bh);
+  g.fillStyle = "#c9f24a"; g.font = '600 34px "Figtree", system-ui, sans-serif';
+  g.fillText(`${Math.round(pctDone * 10) / 10}% complete`, 80, 380);
+  g.fillStyle = "#fff6fb"; g.font = '500 28px "Figtree", system-ui, sans-serif';
+  if (topEra && topEra.have) g.fillText(`Top era: ${topEra.name} (${plural(topEra.have, "song", "songs")})`, 80, 450);
+  if (best && best.have) g.fillText(`Most complete: ${best.name} (${Math.round((best.have / best.total) * 100)}%)`, 80, 495);
+  g.fillStyle = "#ff6ad5"; g.font = '96px "Permanent Marker", "Figtree", sans-serif';
+  g.textAlign = "right"; g.fillText("999", W - 80, H - 70);
+  g.fillStyle = "#c3b2e3"; g.font = '500 22px "Figtree", system-ui, sans-serif';
+  g.fillText(`Juice Tracker · ${new Date().toLocaleDateString(undefined, { month: "long", year: "numeric" })}`, W - 80, H - 34);
+  g.textAlign = "left";
+  return c;
+}
+async function renderCardPreview() {
+  if (!state.catalog || !state.owned || !$("export").open) return;
+  const c = await drawCollectionCard();
+  $("card-preview").src = c.toDataURL("image/png");
+  $("card-preview").hidden = false;
+}
+$("export").addEventListener("toggle", () => { if ($("export").open) renderCardPreview(); });
+$("card-save").addEventListener("click", async () => {
+  if (!state.catalog || !state.owned) { toast("Load the catalog and your music folder first.", true); return; }
+  const c = await drawCollectionCard();
+  c.toBlob(blob => {
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = `juice-wrld-collection-${today()}.png`;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  }, "image/png");
+});
+
+/* ---------- timeline of recording dates */
+var MONTH_ABBR = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+function renderTimeline() {
+  if (!state.catalog) return;
+  const dated = [];
+  state.catalog.forEach((song, i) => { const m = recordMonth(song.recordDates); if (m !== null) dated.push({ i, m }); });
+  $("timeline-sub").textContent = dated.length ? ` ${plural(dated.length, "song", "songs")} with a recording month` : "";
+  if (!$("timeline").open) return;
+  if (!dated.length) { $("timeline-summary").textContent = "No recording dates in the catalog yet."; $("timeline-track").innerHTML = ""; return; }
+  const owned = i => Boolean(state.owned && state.owned.has(i));
+  const byMonth = new Map();
+  for (const d of dated) { if (!byMonth.has(d.m)) byMonth.set(d.m, []); byMonth.get(d.m).push(d.i); }
+  const first = Math.min(...byMonth.keys()), last = Math.max(...byMonth.keys());
+  const label = m => `${MONTH_ABBR[m % 12]} ${Math.floor(m / 12)}`;
+  const haveDated = dated.filter(d => owned(d.i)).length;
+  $("timeline-summary").innerHTML = `Recorded ${esc(label(first))} to ${esc(label(last))}. You have <strong>${fmt(haveDated)}</strong> of the ${fmt(dated.length)} songs with a recording month. ${fmt(state.catalog.length - dated.length)} more have no exact month.`;
+  const cols = [];
+  for (let m = first; m <= last; m++) {
+    const list = (byMonth.get(m) || []).sort((a, b) => owned(b) - owned(a));
+    const yearMark = m % 12 === 0 || m === first ? `<span class="tl-year">${Math.floor(m / 12)}</span>` : "";
+    cols.push(`<div class="tl-month${list.length ? "" : " empty"}${m % 12 === 0 ? " jan" : ""}">${yearMark}${list.map(i => {
+      const t = `${state.catalog[i].name}, ${label(m)}${owned(i) ? " (in your library)" : ""}`;
+      return `<button type="button" class="tl-dot${owned(i) ? " owned" : ""}" data-open-song="${i}" title="${esc(t)}" aria-label="${esc(t)}"></button>`;
+    }).join("")}</div>`);
+  }
+  $("timeline-track").innerHTML = cols.join("");
+}
+$("timeline").addEventListener("toggle", () => { if ($("timeline").open) renderTimeline(); });
 
 // Mac app only: reopen the music folder picked last time. The last scan shows right away from the tag cache;
 // then the folder is listed in the background, since a network drive can take minutes to answer.

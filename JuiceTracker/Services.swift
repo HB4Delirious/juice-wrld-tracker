@@ -10,6 +10,7 @@ enum Pref {
     static let keepRunning = "keepRunning"   // stay open after the window closes, so checks keep running (default off)
     static let autoUpdate = "autoUpdate"     // check GitHub for app updates (default on)
     static let plexServer = "plexServer"     // e.g. http://192.168.1.20:32400
+    static let menuBar = "menuBar"           // butterfly mini player in the menu bar (default on)
     static func bool(_ key: String, default value: Bool) -> Bool { UserDefaults.standard.object(forKey: key) as? Bool ?? value }
 }
 
@@ -31,13 +32,12 @@ enum Keychain {
         let match: [String: Any] = [kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: service,
                                     kSecAttrAccount as String: account]
         SecItemDelete(match as CFDictionary)
-        // Lets the app know a token exists without touching the Keychain: an unsigned app gets a new identity with
-        // every update, so each Keychain read can bring up an "allow access" prompt.
-        UserDefaults.standard.set(!value.isEmpty, forKey: "keychain.\(account).saved")
-        guard !value.isEmpty else { return }
         var add = match
         add[kSecValueData as String] = Data(value.utf8)
-        SecItemAdd(add as CFDictionary, nil)
+        let saved = !value.isEmpty && SecItemAdd(add as CFDictionary, nil) == errSecSuccess
+        // Lets the app know a token exists without touching the Keychain: an unsigned app gets a new identity with
+        // every update, so each Keychain read can bring up an "allow access" prompt.
+        UserDefaults.standard.set(saved, forKey: "keychain.\(account).saved")
     }
 }
 
@@ -98,41 +98,62 @@ enum Plex {
         DispatchQueue.main.asyncAfter(deadline: .now() + 5, execute: work)
     }
 
-    /// Makes (or replaces) an audio playlist from local file paths. Plex sees the files under its own paths
+    private struct Track { let key: String; let plays: Int; let lastPlayed: Int }
+
+    /// Every music track Plex has, as a lookup from a local file path. Plex sees the files under its own paths
     /// (often a different mount), so tracks are matched by "folder/file name", then by a unique file name.
-    static func playlist(title: String, paths: [String]) async throws -> (matched: Int, missing: Int) {
-        let machine = try await call("/identity")["machineIdentifier"] as? String ?? ""
-        var byTail: [String: String] = [:], byName: [String: String] = [:], ambiguous: Set<String> = []
+    private static func trackFinder() async throws -> (String) -> Track? {
+        var byTail: [String: Track] = [:], byName: [String: Track] = [:], ambiguous: Set<String> = []
         for section in try await musicSections() {
             let tracks = try await call("/library/sections/\(section.key)/all", query: [URLQueryItem(name: "type", value: "10")])
-            for track in tracks["Metadata"] as? [[String: Any]] ?? [] {
-                guard let key = track["ratingKey"] as? String else { continue }
-                for media in track["Media"] as? [[String: Any]] ?? [] {
+            for t in tracks["Metadata"] as? [[String: Any]] ?? [] {
+                guard let key = t["ratingKey"] as? String else { continue }
+                let track = Track(key: key, plays: (t["viewCount"] as? NSNumber)?.intValue ?? 0,
+                                  lastPlayed: (t["lastViewedAt"] as? NSNumber)?.intValue ?? 0)
+                for media in t["Media"] as? [[String: Any]] ?? [] {
                     for part in media["Part"] as? [[String: Any]] ?? [] {
                         guard let file = part["file"] as? String else { continue }
-                        byTail[tail(file, 2)] = key
+                        byTail[tail(file, 2)] = track
                         let name = tail(file, 1)
-                        if byName[name] != nil, byName[name] != key { ambiguous.insert(name) } else { byName[name] = key }
+                        if let other = byName[name], other.key != key { ambiguous.insert(name) } else { byName[name] = track }
                     }
                 }
             }
         }
+        return { path in byTail[tail(path, 2)] ?? (ambiguous.contains(tail(path, 1)) ? nil : byName[tail(path, 1)]) }
+    }
+
+    /// Play counts for local files: [{ path, plays, last }] for the files Plex has, plus how many it doesn't.
+    static func playCounts(paths: [String]) async throws -> (items: [[String: Any]], missing: Int) {
+        let find = try await trackFinder()
+        var items: [[String: Any]] = [], missing = 0
+        for path in paths {
+            guard let t = find(path) else { missing += 1; continue }
+            items.append(["path": path, "plays": t.plays, "last": t.lastPlayed])
+        }
+        return (items, missing)
+    }
+
+    /// Makes (or replaces) an audio playlist from local file paths.
+    static func playlist(title: String, paths: [String]) async throws -> (matched: Int, missing: Int) {
+        let machine = try await call("/identity")["machineIdentifier"] as? String ?? ""
+        let find = try await trackFinder()
         var keys: [String] = [], missing = 0
         for path in paths {
-            let name = tail(path, 1)
-            guard let key = byTail[tail(path, 2)] ?? (ambiguous.contains(name) ? nil : byName[name]) else { missing += 1; continue }
+            guard let key = find(path)?.key else { missing += 1; continue }
             if !keys.contains(key) { keys.append(key) }
         }
         guard !keys.isEmpty else { throw Failure(errorDescription: "None of these songs are in Plex yet. Let Plex finish scanning, then try again.") }
         let existing = try await call("/playlists", query: [URLQueryItem(name: "playlistType", value: "audio")])["Metadata"] as? [[String: Any]] ?? []
-        for old in existing where old["title"] as? String == title {
-            if let key = old["ratingKey"] as? String { _ = try await call("/playlists/\(key)", method: "DELETE") }
-        }
         let uri = "server://\(machine)/com.plexapp.plugins.library/library/metadata/\(keys.joined(separator: ","))"
         _ = try await call("/playlists", method: "POST", query: [
             URLQueryItem(name: "type", value: "audio"), URLQueryItem(name: "title", value: title),
             URLQueryItem(name: "smart", value: "0"), URLQueryItem(name: "uri", value: uri),
         ])
+        // Only once the new one exists: if making it fails (Plex restarting, say), the old playlist is still there.
+        for old in existing where old["title"] as? String == title {
+            if let key = old["ratingKey"] as? String { _ = try await call("/playlists/\(key)", method: "DELETE") }
+        }
         return (keys.count, missing)
     }
 
@@ -190,6 +211,9 @@ enum SongAlerts {
         defaults.set(Date(), forKey: "alertsLastCheck")
         defaults.set("\(songs.count) songs, \(known.isEmpty ? 0 : added.count) new, \(nowReleased.count) newly released", forKey: "alertsLastResult")
         guard !known.isEmpty, !added.isEmpty || !nowReleased.isEmpty else { return } // first run only takes a snapshot
+        // For the menu bar's "New songs" line.
+        defaults.set(added.map(\.name) + nowReleased.map { "\($0.name) (released)" }, forKey: "alertsLastNew")
+        defaults.set(Date(), forKey: "alertsLastNewDate")
         if defaults.bool(forKey: "alertsDryRun") { return } // set only when testing, so no notification prompt appears
         notify(added: added.map(\.name), released: nowReleased.map(\.name))
     }
@@ -234,11 +258,10 @@ enum Updater {
     }
 
     static func startDailyChecks() {
-        guard Pref.bool(Pref.autoUpdate, default: true) else { return }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 10) { Task { await check(userInitiated: false) } }
-        Timer.scheduledTimer(withTimeInterval: 24 * 3600, repeats: true) { _ in
-            if Pref.bool(Pref.autoUpdate, default: true) { Task { await check(userInitiated: false) } }
-        }
+        // Always scheduled, so turning the setting on later works without a relaunch.
+        let checkIfOn = { if Pref.bool(Pref.autoUpdate, default: true) { Task { await check(userInitiated: false) } } }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 10, execute: checkIfOn)
+        Timer.scheduledTimer(withTimeInterval: 24 * 3600, repeats: true) { _ in checkIfOn() }
     }
 
     @MainActor static func check(userInitiated: Bool) async {
@@ -297,10 +320,12 @@ enum Updater {
         try run("/usr/bin/ditto", [newApp.path, staged.path])
         _ = try? run("/usr/bin/hdiutil", ["detach", mount.path, "-force"])
         mounted = false
-        // Waits for this process to exit, moves the old copy to the Trash, puts the new one in its place, opens it.
+        // Waits for this process to exit, moves the old copy to the Trash, puts the new one in its place (or the old
+        // one back, if that fails), and opens it.
         let swap = """
         while kill -0 "$1" 2>/dev/null; do sleep 0.2; done
-        mv "$2" "$HOME/.Trash/JuiceTracker $(date +%Y-%m-%d-%H%M%S).app" && mv "$3" "$2" && open "$2"
+        old="$HOME/.Trash/JuiceTracker $(date +%Y-%m-%d-%H%M%S).app"
+        mv "$2" "$old" && { mv "$3" "$2" || mv "$old" "$2"; }; open "$2"
         """
         let helper = Process()
         helper.executableURL = URL(fileURLWithPath: "/bin/sh")
@@ -339,6 +364,7 @@ struct SettingsView: View {
     @AppStorage(Pref.dailyCheck) private var dailyCheck = true
     @AppStorage(Pref.keepRunning) private var keepRunning = false
     @AppStorage(Pref.autoUpdate) private var autoUpdate = true
+    @AppStorage(Pref.menuBar) private var menuBar = true
     @AppStorage(Pref.plexServer) private var plexServer = ""
     @State private var plexToken = "" // read when the window opens, never at app launch (see Keychain.write)
     @State private var plexStatus = ""
@@ -356,6 +382,7 @@ struct SettingsView: View {
                             try? on ? SMAppService.mainApp.register() : SMAppService.mainApp.unregister()
                         }
                 }
+                Toggle("Show the mini player in the menu bar", isOn: $menuBar)
                 Text("Daily checks run while Juice Tracker is open. Keep it running, or open it at login, to get alerts without the window.")
                     .font(.caption).foregroundColor(.secondary).fixedSize(horizontal: false, vertical: true)
             } header: { Text("New songs").bold() }

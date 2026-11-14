@@ -155,6 +155,12 @@
   // Ambient background music: { items: [{ path, title }], play: true | false }.
   window.jwAmbient = cmd => call("ambient", cmd);
 
+  // File health check: { ok, seconds } for an audio file; and showing a file in Finder.
+  window.jwProbe = path => call("probe", { path });
+  window.jwReveal = path => call("reveal", { path });
+  // { kind, size, mtime } for a path; the drive status times it.
+  window.jwStat = path => call("stat", { path });
+
   // A handle for a file path from an earlier scan, with no disk access (the native side still checks every use).
   window.jwFileHandle = (path, name) => new NativeFileHandle(path, name);
 

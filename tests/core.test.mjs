@@ -128,3 +128,29 @@ test("ID3 tags are found whether the title comes before or after big cover art",
   const titleFirst = await readTags(new Blob([mp3(id3Text("TIT2", "Before The Art", 3), art)]), "mp3");
   assert.equal(titleFirst.title, "Before The Art");
 });
+
+test("duplicate cleanup keeps the best copy and never treats a different version as a copy", () => {
+  const extraCopies = g("extraCopies"), isExactDuplicate = g("isExactDuplicate");
+  const file = (path, ext, size, title = "Lucid Dreams") => ({ path, ext, size, title, handle: { _path: `/m/${path}` } });
+  const flac = file("a/Lucid Dreams.flac", "flac", 30e6), bigMp3 = file("b/Lucid Dreams.mp3", "mp3", 9e6), smallMp3 = file("c/lucid dreams.mp3", "mp3", 4e6);
+  const group = { files: [smallMp3, flac, bigMp3] };
+  assert.ok(isExactDuplicate(group));
+  assert.deepEqual([...extraCopies([group])].map(f => f.path).sort(), [bigMp3.path, smallMp3.path], "the FLAC is kept");
+  // A file listed under two songs is removed once, and a file kept in any group is never removed.
+  assert.deepEqual([...extraCopies([group, { files: [bigMp3, file("d/x.mp3", "mp3", 1e6)] }])].map(f => f.path).sort(),
+    ["c/lucid dreams.mp3", "d/x.mp3"]);
+  assert.ok(!isExactDuplicate({ files: [flac, file("e/Lucid Dreams (v2).mp3", "mp3", 5e6, "Lucid Dreams (v2)")] }), "a v2 is not a copy");
+});
+
+test("recording months and song lengths are read from the catalog's text", () => {
+  const recordMonth = g("recordMonth"), lengthSeconds = g("lengthSeconds");
+  assert.equal(recordMonth("Recorded\nAugust 2, 2015."), 2015 * 12 + 7);
+  assert.equal(recordMonth("Recorded\r\nOctober 25, 2015.\nFile Exported\nNovember 12, 2015."), 2015 * 12 + 9, "the first date wins");
+  assert.equal(recordMonth("Sept. 2018"), 2018 * 12 + 8);
+  assert.equal(recordMonth("2019-03-14"), 2019 * 12 + 2);
+  assert.equal(recordMonth("2018"), null, "a year alone has no month");
+  assert.equal(recordMonth(""), null);
+  assert.equal(lengthSeconds("4:26"), 266);
+  assert.equal(lengthSeconds("1:02:03"), 3723);
+  assert.equal(lengthSeconds("N/A"), null);
+});

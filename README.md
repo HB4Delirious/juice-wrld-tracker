@@ -36,7 +36,13 @@ In the Mac app, the sidebar's **Ambient music** toggle plays your matched songs,
 - **Search:** ⌘K jumps to any song, era, producer/artist/engineer/studio, or page.
 - **Download all:** the File links list downloads every missing song in view, one at a time (stoppable). New downloads are auto-tagged with the tag fixer's settings (option in the tag fixer).
 - **Duplicates:** keep the best copy (lossless, then largest) and move the rest to the Trash. Only for files with exactly the same title, so remixes and versions are never touched.
-- **Player:** pause, next and volume for the ambient music, and Play buttons on your files in each song's card.
+- **Player:** pause, next and volume for the ambient music, and Play buttons on your files in each song's card. It shows in Now Playing (Control Center) with the cover art, and the keyboard's media keys and AirPods controls work.
+- **Menu bar:** a butterfly mini player with play/pause, next, volume and the latest new songs (can be turned off in Settings).
+- **Eras:** each era lists what you're missing (songs, other versions, sessions, remixes); "Complete this era" downloads all of them.
+- **File health:** finds files that don't open, look cut off (much shorter than the catalog length) or very small, and files with missing or mismatched tags, with fixes: replace with the site's copy, Show in Finder, move to Trash, or open the tag fixer.
+- **Drive status:** the sidebar shows whether the music folder's drive is connected, slow or disconnected; click it to reconnect.
+- **Plex listening (Stats):** most-played songs, songs you've never played, and top eras by plays, from your Plex play counts.
+- **Timeline:** every song as a dot in the month it was recorded, with yours lit up. **Collection card** (Export & backup): an image of your progress to post or keep.
 - **Settings (⌘,):**
   - Daily new-song and release alerts (macOS notifications), "Keep running when the window is closed", and "Open at login".
   - Automatic app updates from GitHub releases (also Juice Tracker > Check for Updates…).
