@@ -1,5 +1,6 @@
 import AppKit
 import AVFoundation
+import MediaPlayer
 import WebKit
 
 /// Gives the page the file access Chrome's File System Access API would: bridge.js builds
@@ -8,15 +9,18 @@ import WebKit
 final class NativeBridge: NSObject, WKScriptMessageHandlerWithReply {
     private struct BridgeError: Error { let message: String }
     private var roots: [String] = [] // touched on the main thread only
-    private let ambient = AmbientPlayer()
+    private let ambient = AmbientPlayer.shared
     weak var webView: WKWebView?
 
     override init() {
         super.init()
-        // Tell the page which song is playing (nil when stopped) so the sidebar can show it.
-        ambient.onTrack = { [weak self] title in
-            let json = (try? JSONSerialization.data(withJSONObject: [title.map { $0 as Any } ?? NSNull()])).flatMap { String(data: $0, encoding: .utf8) } ?? "[null]"
-            self?.webView?.evaluateJavaScript("window.jwAmbientNow && window.jwAmbientNow(\(json)[0])")
+        // Tell the page what's playing, whether it's paused, and the volume, however it changed
+        // (the page's own controls, media keys, Control Center, or the menu bar).
+        NotificationCenter.default.addObserver(forName: AmbientPlayer.changed, object: nil, queue: .main) { [weak self] _ in
+            let p = AmbientPlayer.shared
+            let args: [Any] = [p.title ?? NSNull(), p.isPaused, Int((p.volume * 100).rounded())]
+            guard let data = try? JSONSerialization.data(withJSONObject: args), let json = String(data: data, encoding: .utf8) else { return }
+            self?.webView?.evaluateJavaScript("window.jwAmbientNow && window.jwAmbientNow(...\(json))")
         }
     }
 
@@ -83,6 +87,17 @@ final class NativeBridge: NSObject, WKScriptMessageHandlerWithReply {
                 replyHandler(true, nil)
             case "status":
                 replyHandler(["configured": Plex.configured], nil)
+            case "stats":
+                // Play counts for the library's files (the Plex account of the token in Settings).
+                let paths = body["paths"] as? [String] ?? []
+                Task {
+                    do {
+                        let r = try await Plex.playCounts(paths: paths)
+                        await MainActor.run { replyHandler(["items": r.items, "missing": r.missing], nil) }
+                    } catch {
+                        await MainActor.run { replyHandler(nil, "PlexError: \(error.localizedDescription)") }
+                    }
+                }
             case "playlist":
                 let title = (body["title"] as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
                 let paths = body["paths"] as? [String] ?? []
@@ -298,6 +313,17 @@ final class NativeBridge: NSObject, WKScriptMessageHandlerWithReply {
         case "mkdir":
             try fm.createDirectory(at: url, withIntermediateDirectories: true)
             return true
+        case "probe":
+            // File health check: does the audio open, and how long is it? AVFoundation estimates the length from the
+            // header and file size, so a cut-off file reads as short without reading the whole song over the network.
+            guard kind(of: url) == "file" else { throw BridgeError(message: "NotFoundError: File not found.") }
+            let asset = AVURLAsset(url: url)
+            let seconds = CMTimeGetSeconds(asset.duration)
+            return ["ok": asset.isPlayable && !asset.tracks(withMediaType: .audio).isEmpty, "seconds": seconds.isFinite ? seconds : 0]
+        case "reveal":
+            guard kind(of: url) != nil else { throw BridgeError(message: "NotFoundError: File not found.") }
+            DispatchQueue.main.async { NSWorkspace.shared.activateFileViewerSelecting([url]) }
+            return true
         case "trash":
             // Duplicate cleanup: always the Trash, never a permanent delete. Some network drives have no Trash;
             // then this fails and the file stays.
@@ -311,15 +337,32 @@ final class NativeBridge: NSObject, WKScriptMessageHandlerWithReply {
 }
 
 /// Plays the user's own matched songs, shuffled (quietly by default, as ambient music), with pause, skip,
-/// volume, and "play this song now" for the sidebar player and the song card.
+/// volume, and "play this song now" for the sidebar player and the song card. Shows in Now Playing (Control Center)
+/// and answers the keyboard's media keys and AirPods controls; the menu bar player uses it too.
 final class AmbientPlayer: NSObject, AVAudioPlayerDelegate {
-    var volume: Float = 0.06 { didSet { player?.volume = volume } }
-    var onTrack: ((String?) -> Void)?
+    static let shared = AmbientPlayer()
+    static let changed = Notification.Name("AmbientPlayerChanged")
+
+    var volume: Float = 0.06 { didSet { player?.volume = volume; publish() } }
+    private(set) var title: String?
+    private(set) var isPaused = false
+    var hasSongs: Bool { !items.isEmpty }
+    var isPlaying: Bool { player != nil && !isPaused }
     private var items: [(url: URL, title: String)] = []
     private var order: [Int] = []
     private var player: AVAudioPlayer?
-    private var paused = false
+    private var artwork: MPMediaItemArtwork?
     private var generation = 0 // bumps on every start/stop so a slow load can't start after the user turned it off
+
+    private override init() {
+        super.init()
+        let c = MPRemoteCommandCenter.shared()
+        c.playCommand.addTarget { [weak self] _ in self?.resume(); return .success }
+        c.pauseCommand.addTarget { [weak self] _ in self?.pause(); return .success }
+        c.togglePlayPauseCommand.addTarget { [weak self] _ in self?.togglePause(); return .success }
+        c.nextTrackCommand.addTarget { [weak self] _ in self?.skip(); return .success }
+        c.previousTrackCommand.isEnabled = false
+    }
 
     func set(_ newItems: [(URL, String)]) {
         items = newItems.map { (url: $0.0, title: $0.1) }
@@ -329,22 +372,24 @@ final class AmbientPlayer: NSObject, AVAudioPlayerDelegate {
 
     /// Starts shuffling unless something is already playing, loading, or the user paused.
     func play() {
-        if player?.isPlaying == true || paused || items.isEmpty { return }
+        if player?.isPlaying == true || isPaused || items.isEmpty { return }
         next()
     }
 
     func stop() {
         generation += 1
-        paused = false
+        isPaused = false
         player?.stop()
         player = nil
-        onTrack?(nil)
+        title = nil
+        publish()
     }
 
-    func pause() { paused = true; player?.pause() }
-    func resume() { paused = false; if let player { player.play() } else { next() } }
-    func skip() { paused = false; next() }
-    func playNow(_ url: URL, title: String) { paused = false; start((url: url, title: title)) }
+    func pause() { guard player != nil else { return }; isPaused = true; player?.pause(); publish() }
+    func resume() { isPaused = false; if let player { player.play(); publish() } else { next() } }
+    func togglePause() { isPlaying ? pause() : resume() }
+    func skip() { isPaused = false; next() }
+    func playNow(_ url: URL, title: String) { isPaused = false; start((url: url, title: title)) }
 
     private func next(failures: Int = 0) {
         guard !items.isEmpty, failures < min(items.count, 5) else { stop(); return }
@@ -360,6 +405,7 @@ final class AmbientPlayer: NSObject, AVAudioPlayerDelegate {
         DispatchQueue.global(qos: .utility).async {
             let loaded = try? AVAudioPlayer(contentsOf: item.url)
             loaded?.prepareToPlay() // reads the first buffers here, not on the main thread (slow network drives)
+            let cover = loaded == nil ? nil : Self.cover(of: item.url)
             DispatchQueue.main.async { [weak self] in
                 guard let self, gen == self.generation else { return }
                 guard let loaded else { self.next(failures: failures + 1); return }
@@ -368,13 +414,45 @@ final class AmbientPlayer: NSObject, AVAudioPlayerDelegate {
                 loaded.play()
                 loaded.setVolume(self.volume, fadeDuration: 3)
                 self.player = loaded
-                self.onTrack?(item.title)
+                self.title = item.title
+                let image = cover ?? NSApp.applicationIconImage ?? NSImage()
+                self.artwork = MPMediaItemArtwork(boundsSize: image.size) { _ in image }
+                self.publish()
             }
         }
     }
 
+    /// The song's embedded cover art, if it has any.
+    private static func cover(of url: URL) -> NSImage? {
+        let asset = AVURLAsset(url: url)
+        let art = AVMetadataItem.metadataItems(from: asset.commonMetadata, filteredByIdentifier: .commonIdentifierArtwork).first
+        return art?.dataValue.flatMap(NSImage.init(data:))
+    }
+
+    /// Updates Now Playing (Control Center, the menu bar's Now Playing) and tells the page and menu bar.
+    private func publish() {
+        let center = MPNowPlayingInfoCenter.default()
+        if let player, let title {
+            var info: [String: Any] = [
+                MPMediaItemPropertyTitle: title, MPMediaItemPropertyArtist: "Juice WRLD",
+                MPMediaItemPropertyPlaybackDuration: player.duration,
+                MPNowPlayingInfoPropertyElapsedPlaybackTime: player.currentTime,
+                MPNowPlayingInfoPropertyPlaybackRate: isPaused ? 0.0 : 1.0,
+            ]
+            if let artwork { info[MPMediaItemPropertyArtwork] = artwork }
+            center.nowPlayingInfo = info
+            center.playbackState = isPaused ? .paused : .playing
+        } else {
+            center.nowPlayingInfo = nil
+            center.playbackState = .stopped
+        }
+        NotificationCenter.default.post(name: Self.changed, object: self)
+    }
+
     func audioPlayerDidFinishPlaying(_ finished: AVAudioPlayer, successfully flag: Bool) {
-        if finished === player { player = nil; if !items.isEmpty { next() } else { onTrack?(nil) } }
+        guard finished === player else { return }
+        player = nil
+        if !items.isEmpty { next() } else { title = nil; publish() }
     }
 
     // A damaged file stops partway with this instead of "finished"; move on rather than go quiet.

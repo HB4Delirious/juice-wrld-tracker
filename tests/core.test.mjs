@@ -141,3 +141,16 @@ test("duplicate cleanup keeps the best copy and never treats a different version
     ["c/lucid dreams.mp3", "d/x.mp3"]);
   assert.ok(!isExactDuplicate({ files: [flac, file("e/Lucid Dreams (v2).mp3", "mp3", 5e6, "Lucid Dreams (v2)")] }), "a v2 is not a copy");
 });
+
+test("recording months and song lengths are read from the catalog's text", () => {
+  const recordMonth = g("recordMonth"), lengthSeconds = g("lengthSeconds");
+  assert.equal(recordMonth("Recorded\nAugust 2, 2015."), 2015 * 12 + 7);
+  assert.equal(recordMonth("Recorded\r\nOctober 25, 2015.\nFile Exported\nNovember 12, 2015."), 2015 * 12 + 9, "the first date wins");
+  assert.equal(recordMonth("Sept. 2018"), 2018 * 12 + 8);
+  assert.equal(recordMonth("2019-03-14"), 2019 * 12 + 2);
+  assert.equal(recordMonth("2018"), null, "a year alone has no month");
+  assert.equal(recordMonth(""), null);
+  assert.equal(lengthSeconds("4:26"), 266);
+  assert.equal(lengthSeconds("1:02:03"), 3723);
+  assert.equal(lengthSeconds("N/A"), null);
+});

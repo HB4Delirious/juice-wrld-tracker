@@ -42,6 +42,7 @@ struct JuiceTrackerApp: App {
 
 final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUserNotificationCenterDelegate {
     private var window: NSWindow?
+    private let menuBar = MenuBar()
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         // macOS would otherwise quietly quit the app once its window is closed, defeating "Keep running".
@@ -50,6 +51,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUs
         UNUserNotificationCenter.current().delegate = self
         SongAlerts.start()
         Updater.startDailyChecks()
+        menuBar.start()
     }
 
     /// Shows the one main window, creating it the first time. Closing only hides it, so reopening keeps the page as it was.
