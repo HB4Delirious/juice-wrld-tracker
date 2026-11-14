@@ -44,6 +44,7 @@ Stages:
 3. Done: File health and Duplicates, in `JuiceTracker/NativeTools.swift`. Fixes that touch files stay in the page's tested
    code (`trashExtraCopies(groups, confirmed)`, `runHealthCheck()`, `healthFix(op, path)`); the native screens ask for
    confirmation in their own dialogs and show the page's result (or its error message).
-4. Tag fixer (review list in SwiftUI; writing stays in the page's core code, or JavaScriptCore without the page).
+4. Done: Tag fixer, in `JuiceTracker/NativeFixer.swift`. Its settings stay in the page's own controls (`fixSet`,
+   `fixGenre`), so both windows agree; writing runs the page's `writeSelectedTags(confirmed)` with its safety checks.
 5. Trivia, Export & backup, Settings polish; then Download all, File links and the player in SwiftUI.
 6. Make the native window the main window; the classic page runs hidden as the engine, then its UI code is deleted.

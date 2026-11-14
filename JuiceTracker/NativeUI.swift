@@ -57,6 +57,7 @@ final class NativeStore: NSObject, ObservableObject, WKScriptMessageHandler {
     static let shared = NativeStore()
     @Published var state: NState?
     @Published var songs: [Song] = []
+    @Published var page: NativePage = .collection // the screen showing in the native window
     @Published var version = 0 // bumps with every snapshot, so screens that ask the page for more can refresh
     private var catalog: [NState.CatSong] = []
 
@@ -322,12 +323,12 @@ enum NativePage: String, CaseIterable, Identifiable {
         ["collection": "smallcircle.filled.circle", "fixer": "tag", "dups": "square.on.square", "health": "waveform.path.ecg", "people": "person.2",
          "stats": "chart.bar", "timeline": "point.3.connected.trianglepath.dotted", "trivia": "questionmark.circle", "export": "archivebox"][rawValue] ?? "circle"
     }
-    var isNative: Bool { [.collection, .timeline, .stats, .people, .dups, .health].contains(self) }
+    var isNative: Bool { [.collection, .timeline, .stats, .people, .dups, .health, .fixer].contains(self) }
 }
 
 struct NativeRoot: View {
     @ObservedObject private var store = NativeStore.shared
-    @State private var page: NativePage = .collection
+    private var page: NativePage { store.page }
 
     var body: some View {
         ZStack {
@@ -342,6 +343,7 @@ struct NativeRoot: View {
                         case .people: CreditsScreen(songs: store.songs)
                         case .dups: DuplicatesScreen()
                         case .health: HealthScreen()
+                        case .fixer: TagFixerScreen()
                         default: CollectionScreen(state: s, songs: store.songs)
                         }
                     } else { loading }
@@ -371,7 +373,7 @@ struct NativeRoot: View {
             .padding(.top, 34).padding(.bottom, 18).padding(.horizontal, 10)
             ForEach(NativePage.allCases) { p in
                 Button {
-                    if p.isNative { page = p } else { store.openClassic(p.rawValue) }
+                    if p.isNative { store.page = p } else { store.openClassic(p.rawValue) }
                 } label: {
                     HStack(spacing: 10) {
                         Image(systemName: p.icon).frame(width: 18)

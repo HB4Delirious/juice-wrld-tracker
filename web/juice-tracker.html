@@ -4167,13 +4167,16 @@ $("fix-backup").addEventListener("click", async () => {
 
 
 const WRITERS = { mp3: [writeMp3, verifyMp3], flac: [writeFlac, verifyFlac], m4a: [writeM4a, verifyM4a] };
-$("fix-write").addEventListener("click", async () => {
+$("fix-write").addEventListener("click", () => writeSelectedTags(false));
+/** Writes the ticked changes. The native window asks for confirmation itself (confirmed = true). */
+async function writeSelectedTags(confirmed) {
+  if (state.writing) return;
   const items = state.plan.changes.filter(isSelected);
   if (!items.length || !state.rootHandle) return;
   let perm = await state.rootHandle.queryPermission({ mode: "readwrite" });
   if (perm !== "granted") perm = await state.rootHandle.requestPermission({ mode: "readwrite" });
   if (perm !== "granted") { setStatus("fix-status", "Editing wasn't allowed. Click Write tags again and allow the browser to save changes to the folder.", true); return; }
-  if (!window.confirm(`Write new tags to ${plural(items.length, "file", "files")}?${state.backupDir ? "" : "\n\nNo backup folder is set, so the originals won't be saved."}`)) return;
+  if (!confirmed && !window.confirm(`Write new tags to ${plural(items.length, "file", "files")}?${state.backupDir ? "" : "\n\nNo backup folder is set, so the originals won't be saved."}`)) return;
 
   state.writing = true;
   renderFixer();
@@ -4195,7 +4198,7 @@ $("fix-write").addEventListener("click", async () => {
   if (ok) plexRefresh();
   const msg = `Updated ${plural(ok, "file", "files")}.${failed.length ? ` ${plural(failed.length, "file", "files")} were left unchanged: ${failed.slice(0, 5).join("; ")}${failed.length > 5 ? "; and more" : ""}.` : ""} In Plex, refresh the library's metadata to see the new tags.`;
   setStatus("fix-status", msg, failed.length > 0 && ok === 0);
-});
+}
 
 /* ---------- views (sidebar) */
 // Ko-fi page for the "Support this project" button. Empty hides the button.
@@ -5210,6 +5213,48 @@ window.jwNativeAction = async a => {
   if (a.op === "healthStop") { health.stop = true; return ""; }
   if (a.op === "healthFix") { return await healthFix(a.fix, a.path); }
   if (a.op === "classic") { showView(a.view); return ""; }
+  // Tag fixer: its settings stay in the page's own controls, so both windows always agree.
+  if (a.op === "fixer") {
+    renderFixer();
+    const plan = state.plan || { changes: [], skipped: [], same: 0 };
+    return JSON.stringify({
+      support: $("fix-support").hidden ? "" : $("fix-support").textContent,
+      fields: [...document.querySelectorAll("#fix-fields input")].map(i => ({ key: i.value, label: i.parentElement.textContent.trim(), on: i.checked })),
+      blanks: $("fix-blanks").checked, autoTag: autoTagOn(), autoTagShown: canDownloadToLibrary(), genre: $("fix-genre").value, genrePlaceholder: DEFAULT_GENRE,
+      backup: $("fix-backup-status").textContent, backupSet: Boolean(state.backupDir), canPickBackup: canEditFolders,
+      writing: Boolean(state.writing), status: $("fix-status").textContent, same: plan.same, total: plan.changes.length,
+      selected: plan.changes.filter(isSelected).length,
+      changes: plan.changes.slice(0, 400).map(it => ({ path: it.f.path, file: baseName(it.f.path), song: it.song.name, fuzzy: Boolean(it.f.fuzzy), selected: isSelected(it),
+        how: it.f.matchedBy === "file" ? "matched by file name" : it.f.manual ? "matched by you" : "",
+        changes: it.changes.map(c => ({ label: FIELD_LABELS[c.k], from: c.from, to: c.to })) })),
+      skipped: plan.skipped.slice(0, 200).map(x => ({ file: baseName(x.f.path), reason: x.reason })),
+      choose: (state.chooseFiles || []).slice(0, 200).map(f => ({ path: f.path, file: baseName(f.path), folder: parentOf(f.path),
+        options: f.songs.map(i => { const so = state.catalog[i]; return { id: String(so.id), label: `${so.name} (${eraName(so)}, ${capital(so.category)})` }; }) })),
+      manual: Object.keys(state.personal.matchOverrides).length,
+    });
+  }
+  if (a.op === "fixSet") { // a tag checkbox ("field:title"), "blanks" or "autoTag"
+    const box = a.key === "blanks" ? $("fix-blanks") : a.key === "autoTag" ? $("fix-auto") : document.querySelector(`#fix-fields input[value="${a.key.slice(6)}"]`);
+    if (box && box.checked !== Boolean(a.on)) { box.checked = Boolean(a.on); box.dispatchEvent(new Event("change", { bubbles: true })); }
+    return "";
+  }
+  if (a.op === "fixGenre") { $("fix-genre").value = a.value || ""; $("fix-genre").dispatchEvent(new Event("input", { bubbles: true })); return ""; }
+  if (a.op === "fixSel") { state.fixSel.set(a.path, Boolean(a.on)); return ""; }
+  if (a.op === "fixAll" || a.op === "fixNone") { renderFixer(); state.plan.changes.forEach(it => state.fixSel.set(it.f.path, a.op === "fixAll")); return ""; }
+  if (a.op === "fixMatch") { // "Right song" (the catalog id), "Wrong song" ("none"), or a pick for a file that fits several songs
+    let value = a.value;
+    if (value === "confirm") { const it = (state.plan ? state.plan.changes : []).find(x => x.f.path === a.path); if (!it) return ""; value = it.song.id; }
+    if (value && value !== "none") state.fixSel.set(a.path, true);
+    setOverride(a.path, value);
+    return "";
+  }
+  if (a.op === "fixUndoMatches") { state.personal.matchOverrides = {}; savePersonal(); update(); return ""; }
+  if (a.op === "fixBackup") {
+    try { await setBackupDir(await window.showDirectoryPicker({ id: "tag-backups", mode: "readwrite" })); }
+    catch (err) { if (err.name !== "AbortError") setStatus("fix-backup-status", `Couldn't use that folder: ${err.message}`, true); }
+    return "";
+  }
+  if (a.op === "fixWrite") { writeSelectedTags(true); return ""; }
   if (!s) return "";
   if (a.op === "wish") { toggleWish(s); renderTable(); renderExportPanel(); pushNativeState(); return ""; }
   if (a.op === "download") { downloadAll([s]); pushNativeState(); return ""; }

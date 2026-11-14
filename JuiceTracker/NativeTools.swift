@@ -213,7 +213,7 @@ struct HealthScreen: View {
                         }
                         Spacer()
                         if g.key == "tags" {
-                            Button("Open Tag fixer") { store.openClassic("fixer") }
+                            Button("Open Tag fixer") { store.page = .fixer }
                         } else {
                             if x.reveal { Button { fix("reveal", x) } label: { Image(systemName: "magnifyingglass") }.help("Show in Finder").accessibilityLabel("Show in Finder") }
                             if x.replace { Button(g.key == "upgrade" ? "Upgrade" : "Replace with the site's copy") { fix("replace", x) } }
