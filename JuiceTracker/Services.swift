@@ -31,13 +31,12 @@ enum Keychain {
         let match: [String: Any] = [kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: service,
                                     kSecAttrAccount as String: account]
         SecItemDelete(match as CFDictionary)
-        // Lets the app know a token exists without touching the Keychain: an unsigned app gets a new identity with
-        // every update, so each Keychain read can bring up an "allow access" prompt.
-        UserDefaults.standard.set(!value.isEmpty, forKey: "keychain.\(account).saved")
-        guard !value.isEmpty else { return }
         var add = match
         add[kSecValueData as String] = Data(value.utf8)
-        SecItemAdd(add as CFDictionary, nil)
+        let saved = !value.isEmpty && SecItemAdd(add as CFDictionary, nil) == errSecSuccess
+        // Lets the app know a token exists without touching the Keychain: an unsigned app gets a new identity with
+        // every update, so each Keychain read can bring up an "allow access" prompt.
+        UserDefaults.standard.set(saved, forKey: "keychain.\(account).saved")
     }
 }
 
@@ -125,14 +124,15 @@ enum Plex {
         }
         guard !keys.isEmpty else { throw Failure(errorDescription: "None of these songs are in Plex yet. Let Plex finish scanning, then try again.") }
         let existing = try await call("/playlists", query: [URLQueryItem(name: "playlistType", value: "audio")])["Metadata"] as? [[String: Any]] ?? []
-        for old in existing where old["title"] as? String == title {
-            if let key = old["ratingKey"] as? String { _ = try await call("/playlists/\(key)", method: "DELETE") }
-        }
         let uri = "server://\(machine)/com.plexapp.plugins.library/library/metadata/\(keys.joined(separator: ","))"
         _ = try await call("/playlists", method: "POST", query: [
             URLQueryItem(name: "type", value: "audio"), URLQueryItem(name: "title", value: title),
             URLQueryItem(name: "smart", value: "0"), URLQueryItem(name: "uri", value: uri),
         ])
+        // Only once the new one exists: if making it fails (Plex restarting, say), the old playlist is still there.
+        for old in existing where old["title"] as? String == title {
+            if let key = old["ratingKey"] as? String { _ = try await call("/playlists/\(key)", method: "DELETE") }
+        }
         return (keys.count, missing)
     }
 
@@ -234,11 +234,10 @@ enum Updater {
     }
 
     static func startDailyChecks() {
-        guard Pref.bool(Pref.autoUpdate, default: true) else { return }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 10) { Task { await check(userInitiated: false) } }
-        Timer.scheduledTimer(withTimeInterval: 24 * 3600, repeats: true) { _ in
-            if Pref.bool(Pref.autoUpdate, default: true) { Task { await check(userInitiated: false) } }
-        }
+        // Always scheduled, so turning the setting on later works without a relaunch.
+        let checkIfOn = { if Pref.bool(Pref.autoUpdate, default: true) { Task { await check(userInitiated: false) } } }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 10, execute: checkIfOn)
+        Timer.scheduledTimer(withTimeInterval: 24 * 3600, repeats: true) { _ in checkIfOn() }
     }
 
     @MainActor static func check(userInitiated: Bool) async {
@@ -297,10 +296,12 @@ enum Updater {
         try run("/usr/bin/ditto", [newApp.path, staged.path])
         _ = try? run("/usr/bin/hdiutil", ["detach", mount.path, "-force"])
         mounted = false
-        // Waits for this process to exit, moves the old copy to the Trash, puts the new one in its place, opens it.
+        // Waits for this process to exit, moves the old copy to the Trash, puts the new one in its place (or the old
+        // one back, if that fails), and opens it.
         let swap = """
         while kill -0 "$1" 2>/dev/null; do sleep 0.2; done
-        mv "$2" "$HOME/.Trash/JuiceTracker $(date +%Y-%m-%d-%H%M%S).app" && mv "$3" "$2" && open "$2"
+        old="$HOME/.Trash/JuiceTracker $(date +%Y-%m-%d-%H%M%S).app"
+        mv "$2" "$old" && { mv "$3" "$2" || mv "$old" "$2"; }; open "$2"
         """
         let helper = Process()
         helper.executableURL = URL(fileURLWithPath: "/bin/sh")

@@ -1689,6 +1689,21 @@ async function backupFile(dir, path, data) {
   await w.write(data);
   await w.close();
 }
+
+/* ---------- duplicates: which copy to keep (also used by ⌘K search keys) */
+const LOSSLESS = new Set(["flac", "wav", "aiff", "aif", "alac"]);
+const cmdkKey = text => String(text || "").toLowerCase().normalize("NFKD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, " ").trim();
+/** Lossless beats lossy; then the biggest file (higher bitrate, more complete). */
+function bestCopy(files) { return [...files].sort((a, b) => (LOSSLESS.has(b.ext) - LOSSLESS.has(a.ext)) || (b.size || 0) - (a.size || 0))[0]; }
+/** Only files that read as exactly the same title, brackets included, so a remix or "v2" is never treated as a copy. */
+function isExactDuplicate(g) { return new Set(g.files.map(f => cmdkKey(f.title))).size === 1; }
+/** The files to remove: each extra copy once (a file can be listed under several versions of a song), never a kept one. */
+function extraCopies(groups) {
+  const kept = new Set(groups.map(g => bestCopy(g.files).path));
+  const out = new Map();
+  for (const g of groups) for (const f of g.files) if (!kept.has(f.path) && f.handle && f.handle._path) out.set(f.path, f);
+  return [...out.values()];
+}
 </script>
 
 <script>
@@ -2806,7 +2821,6 @@ function personalSectionHtml(song) {
 }
 
 /* ---------- duplicate finder */
-const LOSSLESS = new Set(["flac", "wav", "aiff", "aif", "alac"]);
 function duplicateGroups() {
   const groups = [];
   state.owned.forEach((files, i) => {
@@ -2883,17 +2897,6 @@ $("dup-clean-all").addEventListener("click", () => trashExtraCopies(state.dupGro
 
 /* Duplicate cleanup (Mac app): keep the best copy, move the rest to the Trash. Never deletes outright. */
 function canTrash() { return Boolean(window.jwTrash && state.rootHandle && state.rootHandle._path); }
-/** Lossless beats lossy; then the biggest file (higher bitrate, more complete). */
-function bestCopy(files) { return [...files].sort((a, b) => (LOSSLESS.has(b.ext) - LOSSLESS.has(a.ext)) || (b.size || 0) - (a.size || 0))[0]; }
-/** Only files that read as exactly the same title, brackets included, so a remix or "v2" is never treated as a copy. */
-function isExactDuplicate(g) { return new Set(g.files.map(f => cmdkKey(f.title))).size === 1; }
-/** The files to remove: each extra copy once (a file can be listed under several versions of a song), never a kept one. */
-function extraCopies(groups) {
-  const kept = new Set(groups.map(g => bestCopy(g.files).path));
-  const out = new Map();
-  for (const g of groups) for (const f of g.files) if (!kept.has(f.path) && f.handle && f.handle._path) out.set(f.path, f);
-  return [...out.values()];
-}
 async function trashExtraCopies(groups) {
   const victims = extraCopies(groups.filter(g => g && isExactDuplicate(g)));
   if (!victims.length) return;
@@ -2911,6 +2914,7 @@ async function trashExtraCopies(groups) {
       failed.push(`${baseName(f.path)} (${err.message})`);
     }
   }
+  if (moved && state.lastItems) tagCache.setItems(state.lastItems.map(it => it.path));
   update();
   renderDuplicates();
   toast(`Moved ${plural(moved, "file", "files")} to the Trash.${failed.length ? ` Couldn't move ${failed.slice(0, 3).join("; ")}${failed.length > 3 ? "; and more" : ""}.` : ""}`, failed.length > 0);
@@ -3427,6 +3431,7 @@ $("links-dialog").addEventListener("click", async e => {
   if (!state.links) return;
   const link = e.target.closest("a[data-open-id]");
   if (link) {
+    if (e.defaultPrevented) return; // the app is downloading it; a successful download adds the check mark
     state.personal.opened[link.dataset.openId] = new Date().toISOString();
     savePersonal();
     link.closest("li").classList.add("opened");
@@ -3898,7 +3903,6 @@ showView("collection");
 
 /* ---------- ⌘K quick search: pages, songs, eras and people */
 const cmdk = { index: null, indexFor: null, results: [], pos: 0 };
-const cmdkKey = text => String(text || "").toLowerCase().normalize("NFKD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, " ").trim();
 function cmdkIndex() {
   const ready = document.body.classList.contains("ready");
   if (cmdk.index && cmdk.indexFor === (ready ? state.catalog : null)) return cmdk.index;

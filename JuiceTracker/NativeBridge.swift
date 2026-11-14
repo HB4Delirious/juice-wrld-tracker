@@ -100,7 +100,7 @@ final class NativeBridge: NSObject, WKScriptMessageHandlerWithReply {
             }
             return
         case "restoreFolder":
-            replyHandler(restoreFolder(id: body["id"] as? String ?? ""), nil)
+            restoreFolder(id: body["id"] as? String ?? "", reply: replyHandler)
             return
         case "copy":
             NSPasteboard.general.clearContents()
@@ -150,17 +150,41 @@ final class NativeBridge: NSObject, WKScriptMessageHandlerWithReply {
             let path = url.standardizedFileURL.path
             if !(self?.roots.contains(path) ?? true) { self?.roots.append(path) }
             UserDefaults.standard.set(path, forKey: key)
+            UserDefaults.standard.set(try? url.bookmarkData(), forKey: "lastFolderBookmark.\(id)")
             reply(["path": path, "name": url.lastPathComponent], nil)
         }
     }
 
     /// Re-grants the folder last picked for this id, so the music folder survives relaunches. Only ever a folder
-    /// the user chose in an open panel before. No disk access here: this runs on the main thread, and a slow network
-    /// drive can take minutes to answer (the whole app would freeze). The page finds out when it lists the folder.
-    private func restoreFolder(id: String) -> [String: String]? {
-        guard let path = UserDefaults.standard.string(forKey: "lastFolder.\(id)") else { return nil }
-        if !roots.contains(path) { roots.append(path) }
-        return ["path": path, "name": URL(fileURLWithPath: path).lastPathComponent]
+    /// the user chose in an open panel before. Its bookmark reconnects a network share that dropped, and finds it
+    /// when it comes back under another name (/Volumes/PlexMedia-1). That can be slow, so it runs off the main thread,
+    /// and after 3 seconds the page gets the saved path anyway (a later answer is still saved for next time).
+    private func restoreFolder(id: String, reply: @escaping (Any?, String?) -> Void) {
+        let defaults = UserDefaults.standard, pathKey = "lastFolder.\(id)", markKey = "lastFolderBookmark.\(id)"
+        guard let saved = defaults.string(forKey: pathKey) else { reply(nil, nil); return }
+        var replied = false
+        let answer = { [weak self] (path: String) in
+            if let self, !self.roots.contains(path) { self.roots.append(path) }
+            if path != saved { defaults.set(path, forKey: pathKey) }
+            guard !replied else { return }
+            replied = true
+            reply(["path": path, "name": URL(fileURLWithPath: path).lastPathComponent], nil)
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3) { answer(saved) }
+        let mark = defaults.data(forKey: markKey)
+        DispatchQueue.global(qos: .userInitiated).async {
+            var path = saved
+            if let mark {
+                var stale = false
+                if let url = try? URL(resolvingBookmarkData: mark, options: .withoutUI, bookmarkDataIsStale: &stale) {
+                    path = url.standardizedFileURL.path
+                    if stale, let fresh = try? url.bookmarkData() { defaults.set(fresh, forKey: markKey) }
+                }
+            } else if let fresh = try? URL(fileURLWithPath: saved).bookmarkData() {
+                defaults.set(fresh, forKey: markKey) // folders picked before bookmarks were saved
+            }
+            DispatchQueue.main.async { answer(path) }
+        }
     }
 
     private func allowedURL(_ path: String) -> URL? {
@@ -351,5 +375,10 @@ final class AmbientPlayer: NSObject, AVAudioPlayerDelegate {
 
     func audioPlayerDidFinishPlaying(_ finished: AVAudioPlayer, successfully flag: Bool) {
         if finished === player { player = nil; if !items.isEmpty { next() } else { onTrack?(nil) } }
+    }
+
+    // A damaged file stops partway with this instead of "finished"; move on rather than go quiet.
+    func audioPlayerDecodeErrorDidOccur(_ failed: AVAudioPlayer, error: Error?) {
+        audioPlayerDidFinishPlaying(failed, successfully: false)
     }
 }
