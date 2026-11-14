@@ -78,7 +78,7 @@ struct DuplicatesScreen: View {
                     ForEach(d.groups.prefix(limit), id: \.self) { g in group(g, canTrash: d.canTrash) }
                     if d.groups.count > limit { Button("Show more") { limit += 60 }.buttonStyle(.borderless) }
                 } else {
-                    ProgressView().frame(maxWidth: .infinity, minHeight: 200)
+                    Spinner999().frame(maxWidth: .infinity, minHeight: 200)
                 }
             }
             .padding(.horizontal, 34).padding(.top, 40).padding(.bottom, 60)

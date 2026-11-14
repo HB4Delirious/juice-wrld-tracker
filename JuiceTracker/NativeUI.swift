@@ -151,6 +151,7 @@ final class SkyNSView: NSView {
         // Paused while the app is in the background: nothing to see, nothing to spend.
         nc.addObserver(self, selector: #selector(pause), name: NSApplication.didResignActiveNotification, object: nil)
         nc.addObserver(self, selector: #selector(resume), name: NSApplication.didBecomeActiveNotification, object: nil)
+        nc.addObserver(self, selector: #selector(rebuildForTheme), name: EraTheme.changed, object: nil)
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) is not used") }
 
@@ -160,6 +161,8 @@ final class SkyNSView: NSView {
         builtFor = bounds.size
         build()
     }
+
+    @objc private func rebuildForTheme() { builtFor = .zero; needsLayout = true }
 
     @objc private func pause() {
         guard let l = layer, l.speed != 0 else { return }
@@ -190,11 +193,9 @@ final class SkyNSView: NSView {
         root.addSublayer(night)
 
         // nebula glows that breathe slowly
+        let theme = EraTheme.current.glows // the nebula takes the era theme's colors
         let glows: [(CGFloat, CGFloat, CGFloat, NSColor)] = [
-            (0.52, 0.66, 0.42, NSColor(srgbRed: 232 / 255, green: 110 / 255, blue: 70 / 255, alpha: 0.30)),
-            (0.06, 0.30, 0.50, NSColor(srgbRed: 214 / 255, green: 48 / 255, blue: 140 / 255, alpha: 0.42)),
-            (0.88, 0.86, 0.45, NSColor(srgbRed: 80 / 255, green: 130 / 255, blue: 255 / 255, alpha: 0.32)),
-            (0.70, 0.10, 0.60, NSColor(srgbRed: 140 / 255, green: 40 / 255, blue: 190 / 255, alpha: 0.36)),
+            (0.52, 0.66, 0.42, theme[0]), (0.06, 0.30, 0.50, theme[1]), (0.88, 0.86, 0.45, theme[2]), (0.70, 0.10, 0.60, theme[3]),
         ]
         for (n, g) in glows.enumerated() {
             let size = max(b.width, b.height) * g.2
@@ -248,9 +249,24 @@ final class SkyNSView: NSView {
         sparkles.add(twinkle, forKey: "twinkle")
         root.addSublayer(sparkles)
 
+        // Juice tattoo flash (race car, halo, 999, roses, chains, a UFO), slower and the other way
+        if let juice = NSImage(named: "jt-juiceflash") {
+            let tile: CGFloat = 640
+            let layer = Self.tiled(juice, tile: tile, covering: CGSize(width: bounds.width + tile, height: bounds.height + tile))
+            layer.frame.origin = CGPoint(x: 0, y: -tile)
+            root.addSublayer(layer)
+            let drift = CABasicAnimation(keyPath: "position")
+            drift.fromValue = layer.position
+            drift.toValue = CGPoint(x: layer.position.x - tile, y: layer.position.y + tile)
+            drift.duration = 220
+            drift.repeatCount = .infinity
+            drift.timingFunction = CAMediaTimingFunction(name: .linear)
+            layer.add(drift, forKey: "drift")
+        }
+
         // the glow that pulses with the music
         glow.type = .radial
-        glow.colors = [NSColor(srgbRed: 1, green: 106 / 255, blue: 213 / 255, alpha: 0.35).cgColor, NSColor(srgbRed: 1, green: 106 / 255, blue: 213 / 255, alpha: 0).cgColor]
+        glow.colors = [EraTheme.current.accentNS.withAlphaComponent(0.35).cgColor, EraTheme.current.accentNS.withAlphaComponent(0).cgColor]
         glow.startPoint = CGPoint(x: 0.5, y: 0.5)
         glow.endPoint = CGPoint(x: 1, y: 1)
         glow.frame = CGRect(x: b.width * 0.2, y: -b.height * 0.2, width: b.width * 0.9, height: b.height * 0.9)
@@ -366,8 +382,9 @@ enum JT {
     static let line2 = Color(red: 210 / 255, green: 170 / 255, blue: 1).opacity(0.38)
     static let mist = Color(red: 1, green: 246 / 255, blue: 251 / 255)
     static let muted = Color(red: 195 / 255, green: 178 / 255, blue: 227 / 255)
-    static let lavender = Color(red: 1, green: 106 / 255, blue: 213 / 255)
-    static let lavenderHi = Color(red: 1, green: 148 / 255, blue: 226 / 255)
+    /// The accent follows the era theme picked in Settings (pink in the original Cosmic theme).
+    static var lavender: Color { EraTheme.current.accent }
+    static var lavenderHi: Color { EraTheme.current.accentHi }
     static let have = Color(red: 201 / 255, green: 242 / 255, blue: 74 / 255)
     static let new = Color(red: 1, green: 160 / 255, blue: 74 / 255)
     static let missing = Color(red: 1, green: 93 / 255, blue: 108 / 255)
@@ -441,20 +458,21 @@ struct ScreenTitle: View {
 // MARK: - Window
 
 enum NativePage: String, CaseIterable, Identifiable {
-    case collection, fixer, dups, health, people, stats, timeline, trivia, export
+    case collection, fixer, dups, health, people, stats, timeline, badges, trivia, export
     var id: String { rawValue }
     var title: String {
         ["collection": "Collection", "fixer": "Tag fixer", "dups": "Duplicates", "health": "File health", "people": "Credits",
-         "stats": "Stats", "timeline": "Timeline", "trivia": "Trivia", "export": "Export & backup"][rawValue] ?? rawValue
+         "stats": "Stats", "timeline": "Timeline", "badges": "Badges", "trivia": "Trivia", "export": "Export & backup"][rawValue] ?? rawValue
     }
     var icon: String {
         ["collection": "smallcircle.filled.circle", "fixer": "tag", "dups": "square.on.square", "health": "waveform.path.ecg", "people": "person.2",
-         "stats": "chart.bar", "timeline": "point.3.connected.trianglepath.dotted", "trivia": "questionmark.circle", "export": "archivebox"][rawValue] ?? "circle"
+         "stats": "chart.bar", "timeline": "point.3.connected.trianglepath.dotted", "badges": "rosette", "trivia": "questionmark.circle", "export": "archivebox"][rawValue] ?? "circle"
     }
 }
 
 struct NativeRoot: View {
     @ObservedObject private var store = NativeStore.shared
+    @ObservedObject private var theme = ThemeWatcher.shared
     @State private var searching = false
     private var page: NativePage { store.page }
 
@@ -474,6 +492,7 @@ struct NativeRoot: View {
                         case .fixer: TagFixerScreen()
                         case .trivia: TriviaScreen()
                         case .export: ExportScreen()
+                        case .badges: BadgesScreen(state: s, songs: store.songs)
                         default: CollectionScreen(state: s, songs: store.songs)
                         }
                     } else { SetupView() }
@@ -484,6 +503,7 @@ struct NativeRoot: View {
         .font(JT.body(15))
         .foregroundColor(JT.mist)
         .preferredColorScheme(.dark)
+        .id(theme.id) // a new era theme redraws everything in its colors
         .sheet(item: $store.openSong) { s in SongCard(opened: s, close: { store.openSong = nil }) }
         .sheet(isPresented: $searching) { QuickSearch(close: { searching = false }) }
         .task { await store.act("refresh") }
@@ -830,7 +850,7 @@ struct CollectionScreen: View {
             ScreenTitle(text: "Eras", size: 34)
             Text("Pick an era to see its songs below.").font(JT.body(16)).foregroundColor(JT.muted).padding(.bottom, 10)
             LazyVGrid(columns: [GridItem(.adaptive(minimum: 230), spacing: 16)], spacing: 16) {
-                ForEach(Array(state.eras.enumerated()), id: \.element) { n, e in EraCard(era: e, sticker: n % 6 + 1, seed: n, picked: era == e.name) }
+                ForEach(Array(state.eras.enumerated()), id: \.element) { n, e in EraCard(era: e, sticker: eraSticker(e.name, fallback: n), seed: n, picked: era == e.name) }
             }
         }
     }
@@ -905,7 +925,7 @@ private struct FloatingDoodles: NSViewRepresentable {
 
 struct EraCard: View {
     let era: NState.Era
-    let sticker: Int
+    let sticker: String
     let seed: Int
     let picked: Bool
     @State private var hover = false
@@ -931,7 +951,7 @@ struct EraCard: View {
             .background(DoodleRect(seed: seed).fill(hover || picked ? JT.raise : JT.dusk))
             .overlay(DoodleRect(seed: seed).stroke(picked ? JT.lavender : hover ? JT.lavender.opacity(0.8) : JT.line2, lineWidth: picked ? 2.6 : 1.6))
             .overlay(alignment: .topTrailing) {
-                Image("jt-sticker\(sticker)").resizable().frame(width: 30, height: 30)
+                Image(sticker).resizable().frame(width: 30, height: 30)
                     .shadow(color: .black.opacity(0.45), radius: 4, y: 3)
                     .rotationEffect(.degrees(hover ? -10 : 14)).scaleEffect(hover ? 1.3 : 1)
                     .offset(x: 9, y: -12)
@@ -1042,7 +1062,7 @@ struct SongCard: View {
                     if let url = URL(string: d.siteUrl), !d.siteUrl.isEmpty { Link("Open the file on the site", destination: url) }
                 }
             } else {
-                ProgressView().frame(maxWidth: .infinity, minHeight: 120)
+                Spinner999().frame(maxWidth: .infinity, minHeight: 120)
             }
         }
         .padding(24)
