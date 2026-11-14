@@ -2324,6 +2324,7 @@ function update() {
   countUp($("meter-num"), shownHave, have);
   shownHave = have;
   celebrate(owned);
+  pushNativeState();
   $("meter").setAttribute("aria-valuenow", pct);
   $("meter").setAttribute("aria-label", `${pct}% of the catalog`);
   $("meter-fill").style.setProperty("--pct", Math.max(pct, 1)); // keeps the rainbow spread across the whole track
@@ -4925,6 +4926,7 @@ async function waitForDrive(job, message) {
   renderQueuePanel();
 }
 function renderQueuePanel() {
+  pushNativeState();
   const el = $("dlq"), job = state.bulk;
   if (!el) return;
   el.hidden = !job;
@@ -5126,6 +5128,50 @@ function confetti() {
     setTimeout(() => c.remove(), 4200);
   }
 }
+
+/* ---------- the native (SwiftUI) window: this page stays the engine and sends it a snapshot after each change.
+   The native window draws it and calls jwNativeAction for anything that changes data. */
+function nativeState() {
+  const cats = new Map();
+  state.catalog.forEach((s, i) => { const c = cats.get(s.category) || { name: capital(s.category), have: 0, total: 0 }; c.total++; if (state.owned.has(i)) c.have++; cats.set(s.category, c); });
+  return {
+    total: state.catalog.length, have: state.owned.size, folder: state.rootHandle ? state.rootHandle.name : "",
+    queue: state.bulk ? { done: state.bulk.done, total: state.bulk.total, current: state.bulk.current || "", waiting: Boolean(state.bulk.waiting) } : null,
+    cats: [...cats.values()].sort((a, b) => b.total - a.total),
+    eras: eraStats().map(e => ({ name: e.name, have: e.have, total: e.total, time: hasValue(e.info.timeFrame) ? e.info.timeFrame : "", desc: hasValue(e.info.description) ? e.info.description : "" })),
+    songs: state.catalog.map((s, i) => ({ i, n: s.name, e: eraName(s), c: capital(s.category), l: s.length || "", o: state.owned.has(i), w: isWished(s), f: Boolean(fileUrl(s)) })),
+  };
+}
+var nativeTimer = null;
+function pushNativeState() {
+  const h = window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.jwState;
+  if (!h || !state.catalog || !state.owned) return;
+  clearTimeout(nativeTimer);
+  nativeTimer = setTimeout(() => h.postMessage(JSON.stringify(nativeState())), 150); // one snapshot per burst of changes
+}
+window.jwNativeAction = async a => {
+  const s = state.catalog && state.catalog[a.i];
+  if (a.op === "refresh") { pushNativeState(); return ""; }
+  if (!s) return "";
+  if (a.op === "wish") { toggleWish(s); renderTable(); renderExportPanel(); pushNativeState(); return ""; }
+  if (a.op === "download") { downloadAll([s]); pushNativeState(); return ""; }
+  if (a.op === "play") {
+    const f = (state.owned.get(a.i) || []).find(canPlay);
+    if (f) { try { localStorage.setItem("jw-ambient", "on"); } catch (e) {} playerPaused = false; syncAmbient(); await window.jwAmbient({ playPath: f.handle._path, title: s.name }); }
+    return "";
+  }
+  if (a.op === "details") {
+    try { await ensureDetails(s); } catch (e) { /* show what's saved */ }
+    const keep = ["name", "era", "category", "length", "key", "recordDates", "previewDate", "release", "leakDate", "leakType", "sessions", "artists", "producers", "engineers", "locations", "notes", "info"];
+    const out = Object.fromEntries(keep.map(k => [k, hasValue(s[k]) ? String(s[k]) : ""]));
+    out.alt = s.alt.join(", ");
+    out.files = (state.owned.get(a.i) || []).map(f => f.path);
+    out.playable = (state.owned.get(a.i) || []).some(canPlay);
+    out.siteUrl = fileUrl(s) || "";
+    return JSON.stringify(out);
+  }
+  return "";
+};
 
 /* ---------- the sky follows the time of day */
 function skyForClock() {

@@ -25,3 +25,22 @@ an editable Xcode project, a DMG, and this GitHub repo for history.
 
 ## Not done yet
 - Unsigned/un-notarized: Gatekeeper warns on first open of a downloaded DMG.
+
+## Moving to SwiftUI (in progress)
+
+Goal: a native SwiftUI interface, which costs far less CPU than the web page (measured: about 4.6% with the native
+window in front, against about 30.5% for the classic window). The classic page stays the engine while screens move over:
+it loads the catalog, scans and matches the library, writes tags (with its tested safety checks) and downloads.
+
+- `JuiceTracker/NativeUI.swift`: the native window (Window > Native Preview (Beta), ⌘2). The sky is drawn by Core
+  Animation. `NativeStore` receives the page's snapshot (`jwState` message, sent by `pushNativeState()` after each change)
+  and calls `window.jwNativeAction({ op, i })` for actions (wish, download, play, details, refresh).
+- Screens not moved yet open in the classic window (`showView(...)`).
+
+Stages:
+1. Done: window, native sky, sidebar, Collection (scoreboard, eras, song list with search, filters and wishlist, song card).
+2. Timeline, Stats and Credits (read-only screens: the snapshot grows, the views move).
+3. File health and Duplicates (actions that change files: they stay in the page's tested code, called from Swift).
+4. Tag fixer (review list in SwiftUI; writing stays in the page's core code, or JavaScriptCore without the page).
+5. Trivia, Export & backup, Settings polish; then Download all, File links and the player in SwiftUI.
+6. Make the native window the main window; the classic page runs hidden as the engine, then its UI code is deleted.

@@ -86,7 +86,7 @@ final class MenuBar: NSObject, NSMenuDelegate {
     @objc private func togglePause() { AmbientPlayer.shared.togglePause() }
     @objc private func skip() { AmbientPlayer.shared.skip() }
     @objc private func setVolume() { AmbientPlayer.shared.volume = volume.floatValue / 100 }
-    @objc private func open() { (NSApp.delegate as? AppDelegate)?.showMainWindow() }
+    @objc private func open() { AppDelegate.shared?.showMainWindow() }
     @objc private func settings() {
         NSApp.activate(ignoringOtherApps: true)
         // Press the app menu's own "Settings…" (⌘,): SwiftUI's Settings window has no public way to open it.

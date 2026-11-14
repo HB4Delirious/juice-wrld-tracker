@@ -74,6 +74,7 @@ final class WebViewStore: NSObject {
         super.init()
 
         content.addScriptMessageHandler(bridge, contentWorld: .page, name: "jwNative")
+        content.add(NativeStore.shared, contentWorld: .page, name: "jwState") // snapshots for the native window
         bridge.webView = webView
         webView.navigationDelegate = self
         webView.uiDelegate = self
