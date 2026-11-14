@@ -812,76 +812,41 @@ struct CollectionScreen: View {
         }
     }
 
-    private var tabs: [(String, String, Int)] {
-        let base = all.filter { era == nil || $0.e == era }
-        return [("all", "All songs", base.count), ("have", "In your library", base.filter(\.o).count), ("missing", "Not in your library", base.filter { !$0.o }.count),
-                ("wish", "Wishlist", base.filter(\.w).count), ("new", "New", base.filter { fresh.contains($0.i) }.count),
-                ("released", "Now released", base.filter { releasedNow.contains($0.i) }.count)]
-    }
-
+    /// The song list keeps the earlier native design (segmented tabs, one-line rows), which you preferred to the
+    /// classic page's table.
     private var songList: some View {
         let list = songs
-        return VStack(alignment: .leading, spacing: 14) {
-            HStack(spacing: 6) {
-                ForEach(tabs, id: \.0) { key, label, count in
-                    Button { tab = key; limit = 200 } label: {
-                        HStack(spacing: 6) { Text(label); Text("\(count.formatted())").foregroundColor(tab == key ? JT.night.opacity(0.6) : JT.muted) }
-                            .font(JT.body(14, .medium))
-                            .padding(.horizontal, 14).padding(.vertical, 7)
-                            .background(Capsule().fill(tab == key ? JT.mist : Color.clear))
-                            .foregroundColor(tab == key ? JT.night : JT.mist)
-                    }
-                    .buttonStyle(.plain)
+        return VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 12) {
+                Picker("", selection: $tab) {
+                    Text("All").tag("all"); Text("In your library").tag("have"); Text("Not in your library").tag("missing"); Text("Wishlist").tag("wish")
                 }
+                .pickerStyle(.segmented).labelsHidden().frame(maxWidth: 460)
+                TextField("Search songs or eras", text: $query).textFieldStyle(.roundedBorder).frame(maxWidth: 260)
+                if let era { Button { store.eraFilter = nil } label: { Label(era, systemImage: "xmark.circle.fill") }.buttonStyle(.borderless) }
             }
-            HStack(spacing: 10) {
-                HStack {
-                    Image(systemName: "magnifyingglass").foregroundColor(JT.muted)
-                    TextField("Search songs or eras", text: $query).textFieldStyle(.plain)
-                }
-                .padding(.horizontal, 14).padding(.vertical, 8)
-                .background(Capsule().fill(JT.raise)).frame(maxWidth: 300)
-                if let era {
-                    Button { store.eraFilter = nil } label: { HStack(spacing: 6) { Text("Era: \(era)"); Image(systemName: "xmark") } }
-                        .buttonStyle(.plain).font(JT.body(13)).padding(.horizontal, 12).padding(.vertical, 6)
-                        .background(Capsule().fill(JT.lavender.opacity(0.2))).overlay(Capsule().stroke(JT.lavender))
-                }
+            HStack {
+                Text("\(list.count) songs").font(.caption).foregroundColor(JT.muted)
                 Spacer()
                 let missing = list.filter { !$0.o && $0.f }
                 if !missing.isEmpty {
                     Button { askAll = missing.map(\.i) } label: {
                         Label(era != nil && tab == "all" && query.isEmpty ? "Complete this era (\(missing.count))" : "Download all \(missing.count) missing", systemImage: "arrow.down.circle")
-                            .font(JT.body(14, .semibold)).padding(.horizontal, 14).padding(.vertical, 7)
-                            .background(Capsule().fill(LinearGradient(colors: [JT.lavender, Color(red: 0.75, green: 0.48, blue: 1)], startPoint: .leading, endPoint: .trailing)))
                     }
-                    .buttonStyle(.plain)
                 }
             }
             .alert("Download \(askAll.count) songs into your music folder?", isPresented: Binding(get: { !askAll.isEmpty }, set: { if !$0 { askAll = [] } })) {
                 Button("Download") { let ids = askAll; Task { await NativeStore.shared.act("downloadMany", -1, ["ids": ids]) } }
                 Button("Cancel", role: .cancel) {}
             } message: { Text("They download one at a time into the folders the tracker picks for each era, and carry on after a restart or if the drive drops.") }
-
-            VStack(spacing: 0) {
-                HStack(spacing: 12) {
-                    Text("Song").frame(maxWidth: .infinity, alignment: .leading).padding(.leading, 30)
-                    Text("Era").frame(width: 110, alignment: .leading)
-                    Text("Category").frame(width: 140, alignment: .leading)
-                    Text("Length").frame(width: 60, alignment: .trailing)
-                    Text("Status").frame(width: 170, alignment: .leading)
-                }
-                .font(JT.body(13, .semibold)).foregroundColor(JT.muted)
-                .padding(.horizontal, 16).padding(.vertical, 12)
-                .overlay(Rectangle().fill(JT.line).frame(height: 1), alignment: .bottom)
-                LazyVStack(spacing: 0) {
-                    ForEach(list.prefix(limit)) { s in SongRow(song: s, open: { store.openSong = s }) }
-                }
-                if list.isEmpty { Text(query.isEmpty ? "No songs here." : "No songs match your search.").foregroundColor(JT.muted).padding(30) }
+            LazyVStack(spacing: 0) {
+                ForEach(list.prefix(limit)) { s in SongRow(song: s, open: { NativeStore.shared.openSong = s }) }
             }
-            .doodled(16, seed: 3)
-            if list.count > limit { Button("Show more") { limit += 300 }.buttonStyle(.borderless).foregroundColor(JT.lavender) }
+            .doodled(14)
+            if list.count > limit { Button("Show more") { limit += 300 }.buttonStyle(.borderless) }
         }
         .onChange(of: query) { _ in limit = 200 }
+        .onChange(of: tab) { _ in limit = 200 }
     }
 }
 
@@ -966,59 +931,39 @@ struct SongRow: View {
     @State private var hover = false
 
     var body: some View {
-        HStack(alignment: .top, spacing: 12) {
+        HStack(spacing: 12) {
             Button { Task { await NativeStore.shared.act("wish", song.i) } } label: {
-                Image(systemName: song.w ? "star.fill" : "star").foregroundColor(song.w ? JT.yellow : JT.muted.opacity(0.7))
+                Image(systemName: song.w ? "star.fill" : "star").foregroundColor(song.w ? Color(red: 1, green: 0.88, blue: 0.29) : JT.muted)
             }
             .buttonStyle(.plain)
             .help(song.w ? "On your wishlist" : "Add to wishlist")
-            .padding(.top, 2)
             Button(action: open) {
-                HStack(alignment: .top, spacing: 12) {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(song.n).font(JT.body(15)).lineLimit(1)
-                        if !song.s.a.isEmpty && !compact {
-                            Text("Also known as \(song.s.a.joined(separator: ", "))").font(JT.body(12.5)).foregroundColor(JT.muted).lineLimit(1)
-                        }
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                HStack(spacing: 12) {
+                    Text(song.n).lineLimit(1).frame(maxWidth: .infinity, alignment: .leading)
                     Text(song.e).foregroundColor(JT.muted).lineLimit(1).frame(width: compact ? 80 : 110, alignment: .leading)
-                    if !compact { Text(song.c).foregroundColor(JT.muted).lineLimit(1).frame(width: 140, alignment: .leading) }
-                    Text(song.l).foregroundColor(JT.muted).frame(width: compact ? 44 : 60, alignment: .trailing)
+                    if !compact { Text(song.c).foregroundColor(JT.muted).lineLimit(1).frame(width: 130, alignment: .leading) }
+                    Text(song.l).foregroundColor(JT.muted).frame(width: 44, alignment: .trailing)
                 }
-                .font(JT.body(14.5))
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            status.frame(width: compact ? 110 : 170, alignment: .leading)
+            status.frame(width: compact ? 100 : 120, alignment: .leading)
         }
-        .padding(.vertical, 11).padding(.horizontal, 16)
-        .background(hover ? Color.white.opacity(0.045) : .clear)
+        .font(.callout)
+        .padding(.vertical, 8).padding(.horizontal, 14)
+        .background(hover ? Color.white.opacity(0.05) : .clear)
         .onHover { hover = $0 }
         .overlay(Rectangle().fill(JT.line).frame(height: 0.5), alignment: .bottom)
     }
 
     @ViewBuilder private var status: some View {
         if song.o {
-            HStack(spacing: 6) { Image("jt-check").resizable().frame(width: 14, height: 14); Text("In library") }.font(JT.body(14)).foregroundColor(JT.have)
+            Label("In library", systemImage: "checkmark").foregroundColor(JT.have)
+        } else if song.f {
+            Button { Task { await NativeStore.shared.act("download", song.i) } } label: { Label("Download", systemImage: "arrow.down.circle") }
+                .buttonStyle(.borderless).foregroundColor(JT.lavender)
         } else {
-            VStack(alignment: .leading, spacing: 3) {
-                HStack(spacing: 7) { Circle().fill(JT.missing).frame(width: 7, height: 7); Text("Not in library") }.font(JT.body(14))
-                if song.f {
-                    Button { Task { await NativeStore.shared.act("download", song.i) } } label: { Text("Download").underline() }
-                        .buttonStyle(.plain).font(JT.body(12.5)).foregroundColor(JT.lavender)
-                }
-                if song.s.rel && !compact {
-                    let q = song.n.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
-                    HStack(spacing: 3) {
-                        Text("Find on").foregroundColor(JT.muted)
-                        Link("Apple Music", destination: URL(string: "https://music.apple.com/us/search?term=\(q)%20Juice%20WRLD")!)
-                        Text("or").foregroundColor(JT.muted)
-                        Link("Spotify", destination: URL(string: "https://open.spotify.com/search/\(q)%20Juice%20WRLD")!)
-                    }
-                    .font(JT.body(12)).tint(JT.lavender)
-                }
-            }
+            Text("No file").foregroundColor(JT.muted.opacity(0.7))
         }
     }
 }
