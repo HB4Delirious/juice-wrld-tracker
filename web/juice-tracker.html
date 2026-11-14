@@ -3181,11 +3181,11 @@ $("dup-clean-all").addEventListener("click", () => trashExtraCopies(state.dupGro
 
 /* Duplicate cleanup (Mac app): keep the best copy, move the rest to the Trash. Never deletes outright. */
 function canTrash() { return Boolean(window.jwTrash && state.rootHandle && state.rootHandle._path); }
-async function trashExtraCopies(groups) {
+async function trashExtraCopies(groups, confirmed = false) {
   const victims = extraCopies(groups.filter(g => g && isExactDuplicate(g)));
-  if (!victims.length) return;
+  if (!victims.length) return "";
   const list = victims.slice(0, 12).map(f => `• ${f.path}`).join("\n") + (victims.length > 12 ? `\n…and ${fmt(victims.length - 12)} more` : "");
-  if (!window.confirm(`Move ${plural(victims.length, "file", "files")} to the Trash?\n\nThe best copy of each song is kept, and you can put files back from the Trash.\n\n${list}`)) return;
+  if (!confirmed && !window.confirm(`Move ${plural(victims.length, "file", "files")} to the Trash?\n\nThe best copy of each song is kept, and you can put files back from the Trash.\n\n${list}`)) return "";
   let moved = 0;
   const failed = [];
   for (const f of victims) {
@@ -3201,7 +3201,9 @@ async function trashExtraCopies(groups) {
   if (moved && state.lastItems) tagCache.setItems(state.lastItems.map(it => it.path));
   update();
   renderDuplicates();
-  toast(`Moved ${plural(moved, "file", "files")} to the Trash.${failed.length ? ` Couldn't move ${failed.slice(0, 3).join("; ")}${failed.length > 3 ? "; and more" : ""}.` : ""}`, failed.length > 0);
+  const msg = `Moved ${plural(moved, "file", "files")} to the Trash.${failed.length ? ` Couldn't move ${failed.slice(0, 3).join("; ")}${failed.length > 3 ? "; and more" : ""}.` : ""}`;
+  toast(msg, failed.length > 0);
+  return msg;
 }
 $("dup-export").addEventListener("click", () => {
   const lines = [["song", "in_catalog", "file_count", "file", "format", "size_bytes", "read_as", "path"]];
@@ -4627,9 +4629,12 @@ function renderHealth() {
   }).join("") || (health.done ? `<p>Every file opened and has the catalog's tags.</p>` : "");
 }
 $("health").addEventListener("toggle", () => { if ($("health").open) renderHealth(); });
-$("health-run").addEventListener("click", async () => {
-  if (!state.library) { setStatus("health-status", "Open your music folder first.", true); return; }
-  if (!window.jwProbe) { health.done = true; renderHealth(); setStatus("health-status", "Checked tags. Checking audio needs the Mac app."); return; }
+$("health-run").addEventListener("click", () => runHealthCheck());
+function healthStatus(text, isError) { health.status = text; setStatus("health-status", text, isError); }
+async function runHealthCheck() {
+  if (health.running) return;
+  if (!state.library) { healthStatus("Open your music folder first.", true); return; }
+  if (!window.jwProbe) { health.done = true; renderHealth(); healthStatus("Checked tags. Checking audio needs the Mac app."); return; }
   const files = state.library.filter(f => f.handle && f.handle._path && PLAYABLE.has(f.ext));
   Object.assign(health, { running: true, stop: false });
   health.probed.clear();
@@ -4639,39 +4644,47 @@ $("health-run").addEventListener("click", async () => {
     while (next < files.length && !health.stop) {
       const f = files[next++];
       try { health.probed.set(f.path, await window.jwProbe(f.handle._path)); } catch (e) { /* gone since the scan: skip */ }
-      if (++done % 10 === 0) setStatus("health-status", `Checked ${fmt(done)} of ${plural(files.length, "file", "files")}…`);
+      if (++done % 10 === 0) healthStatus(`Checked ${fmt(done)} of ${plural(files.length, "file", "files")}…`);
     }
   };
   await Promise.all([worker(), worker()]);
   Object.assign(health, { running: false, done: !health.stop });
-  setStatus("health-status", health.stop ? `Stopped after ${plural(done, "file", "files")}.` : `Checked ${plural(files.length, "file", "files")}.`);
+  healthStatus(health.stop ? `Stopped after ${plural(done, "file", "files")}.` : `Checked ${plural(files.length, "file", "files")}.`);
   renderHealth();
-});
+}
 $("health-stop").addEventListener("click", () => { health.stop = true; });
 $("health-list").addEventListener("click", async e => {
   const b = e.target.closest("button[data-health]");
   if (!b) return;
   if (b.dataset.health === "fixer") { showView("fixer"); return; }
-  const f = (state.library || []).find(x => x.path === b.dataset.path);
+  const op = b.dataset.health, f = (state.library || []).find(x => x.path === b.dataset.path);
   if (!f) return;
+  if (op === "trash" && !window.confirm(`Move “${baseName(f.path)}” to the Trash?`)) return;
+  if (op === "replace" && !window.confirm(`Download “${state.catalog[f.songs[0]].name}” from the site and move “${baseName(f.path)}” to the Trash?`)) return;
+  b.disabled = true;
+  try { await healthFix(op, f.path); } catch (err) { toast(`That didn't work: ${err.message}`, true); b.disabled = false; }
+});
+/** Show in Finder, move to Trash, or replace with the site's copy. Already confirmed by the caller; throws on failure. */
+async function healthFix(op, path) {
+  const f = (state.library || []).find(x => x.path === path);
+  if (!f) throw new Error("That file isn't in your library anymore");
   const forget = () => {
     state.library = state.library.filter(x => x !== f);
     if (state.lastItems) { state.lastItems = state.lastItems.filter(it => it.path !== f.path); tagCache.setItems(state.lastItems.map(it => it.path)); }
     health.probed.delete(f.path);
   };
-  try {
-    if (b.dataset.health === "reveal") { await window.jwReveal(f.handle._path); return; }
-    if (b.dataset.health === "trash") {
-      if (!window.confirm(`Move “${baseName(f.path)}” to the Trash?`)) return;
+  {
+    if (op === "reveal") { await window.jwReveal(f.handle._path); return ""; }
+    if (op === "trash") {
       await window.jwTrash(f.handle._path);
       forget();
       update();
-      toast(`Moved “${baseName(f.path)}” to the Trash.`);
+      const msg = `Moved “${baseName(f.path)}” to the Trash.`;
+      toast(msg);
+      return msg;
     }
-    if (b.dataset.health === "replace") {
+    if (op === "replace") {
       const song = state.catalog[f.songs[0]];
-      if (!window.confirm(`Download “${song.name}” from the site and move “${baseName(f.path)}” to the Trash?`)) return;
-      b.disabled = true;
       // Same name: the old file must go first (downloads never overwrite). Otherwise download first, so a failed
       // download leaves your copy where it was.
       const samePath = `${saveFolder(song)}/${saveFileName(song)}` === f.path;
@@ -4683,12 +4696,11 @@ $("health-list").addEventListener("click", async e => {
       if (!samePath) await retire();
       toast(downloadMessage(song, r), Boolean(r.note));
       if (!r.existed) plexRefresh();
+      return downloadMessage(song, r);
     }
-  } catch (err) {
-    toast(`That didn't work: ${err.message}`, true);
-    b.disabled = false;
   }
-});
+  return "";
+}
 
 /* ---------- music drive status (Mac app): is the folder answering, slowly, or not at all? */
 var driveBusy = false;
@@ -5169,6 +5181,35 @@ function pushNativeState() {
 window.jwNativeAction = async a => {
   const s = state.catalog && state.catalog[a.i];
   if (a.op === "refresh") { nativeCatalogKey = null; pushNativeState(); return ""; }
+  if (a.op === "dups") {
+    const groups = duplicateGroups();
+    return JSON.stringify({ canTrash: canTrash(), exactExtra: canTrash() ? extraCopies(groups.filter(isExactDuplicate)).length : 0,
+      groups: groups.map(g => {
+        const keep = bestCopy(g.files).path;
+        return { title: g.title, i: g.i, exact: isExactDuplicate(g), extra: g.extra,
+          files: g.files.map(f => ({ path: f.path, ext: f.ext, size: f.size || 0, title: f.title, keep: f.path === keep, onDisk: Boolean(f.handle && f.handle._path) })) };
+      }) });
+  }
+  if (a.op === "trashDups") { // confirmed in the native window; one group (by one of its files) or every exact one
+    const groups = duplicateGroups();
+    return await trashExtraCopies(a.path ? groups.filter(g => g.files.some(f => f.path === a.path)) : groups, true);
+  }
+  if (a.op === "health") {
+    const issues = healthIssues(), canDl = canDownloadToLibrary();
+    const titles = { damaged: ["May be damaged or cut off", "Replace it with the site's copy, or move it to the Trash."],
+      upgrade: ["Better copies on the site", "Upgrade downloads the site's higher-quality file; yours goes to the Trash."],
+      tags: ["Tags to fix", "The Tag fixer writes the catalog's tags to matched files. Unmatched files can be matched by hand there."] };
+    return JSON.stringify({ running: Boolean(health.running), done: Boolean(health.done), status: health.status || "", probeable: Boolean(window.jwProbe),
+      groups: ["damaged", "upgrade", "tags"].map(k => ({ key: k, title: titles[k][0], help: titles[k][1],
+        items: issues.filter(x => x.group === k).slice(0, 500).map(x => {
+          const song = x.f.songs && x.f.songs.length === 1 ? state.catalog[x.f.songs[0]] : null, onDisk = Boolean(x.f.handle && x.f.handle._path);
+          return { path: x.f.path, text: x.text, reveal: onDisk && Boolean(window.jwReveal), trash: onDisk && canTrash(), replace: onDisk && Boolean(song && fileUrl(song)) && canDl };
+        }) })).filter(g => g.items.length) });
+  }
+  if (a.op === "healthRun") { runHealthCheck(); return ""; }
+  if (a.op === "healthStop") { health.stop = true; return ""; }
+  if (a.op === "healthFix") { return await healthFix(a.fix, a.path); }
+  if (a.op === "classic") { showView(a.view); return ""; }
   if (!s) return "";
   if (a.op === "wish") { toggleWish(s); renderTable(); renderExportPanel(); pushNativeState(); return ""; }
   if (a.op === "download") { downloadAll([s]); pushNativeState(); return ""; }

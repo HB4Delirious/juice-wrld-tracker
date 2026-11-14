@@ -57,6 +57,7 @@ final class NativeStore: NSObject, ObservableObject, WKScriptMessageHandler {
     static let shared = NativeStore()
     @Published var state: NState?
     @Published var songs: [Song] = []
+    @Published var version = 0 // bumps with every snapshot, so screens that ask the page for more can refresh
     private var catalog: [NState.CatSong] = []
 
     func userContentController(_ controller: WKUserContentController, didReceive message: WKScriptMessage) {
@@ -70,6 +71,7 @@ final class NativeStore: NSObject, ObservableObject, WKScriptMessageHandler {
                 let owned = Set(decoded.owned), wished = Set(decoded.wished)
                 self.songs = self.catalog.map { Song(s: $0, o: owned.contains($0.i), w: wished.contains($0.i)) }
                 self.state = decoded
+                self.version += 1
             }
         }
     }
@@ -78,11 +80,25 @@ final class NativeStore: NSObject, ObservableObject, WKScriptMessageHandler {
     @Published var openSong: Song?
 
     /// Runs an action in the page (wish, download, play, details, refresh) and returns its text result.
-    @MainActor @discardableResult func act(_ op: String, _ i: Int = -1) async -> String {
-        let result = try? await WebViewStore.shared.webView.callAsyncJavaScript(
-            "return await (window.jwNativeAction ? window.jwNativeAction(a) : '')", arguments: ["a": ["op": op, "i": i]], contentWorld: .page)
-        return result as? String ?? ""
+    @MainActor @discardableResult func act(_ op: String, _ i: Int = -1, _ extra: [String: Any] = [:]) async -> String {
+        (try? await tryAct(op, i, extra)) ?? ""
     }
+
+    /// Like act, but passes on the page's error (for file fixes, whose failures the screen shows).
+    @MainActor func tryAct(_ op: String, _ i: Int = -1, _ extra: [String: Any] = [:]) async throws -> String {
+        var a: [String: Any] = ["op": op, "i": i]
+        a.merge(extra) { _, new in new }
+        do {
+            let result = try await WebViewStore.shared.webView.callAsyncJavaScript(
+                "return await (window.jwNativeAction ? window.jwNativeAction(a) : '')", arguments: ["a": a], contentWorld: .page)
+            return result as? String ?? ""
+        } catch {
+            // WebKit's own text is just "a JavaScript exception occurred"; the page's message is in userInfo.
+            let message = (error as NSError).userInfo["WKJavaScriptExceptionMessage"] as? String ?? error.localizedDescription
+            throw PageError(message: message.replacingOccurrences(of: "Error: ", with: ""))
+        }
+    }
+    struct PageError: LocalizedError { let message: String; var errorDescription: String? { message } }
 
     @MainActor func details(_ i: Int) async -> SongDetails? {
         let json = await act("details", i)
@@ -306,7 +322,7 @@ enum NativePage: String, CaseIterable, Identifiable {
         ["collection": "smallcircle.filled.circle", "fixer": "tag", "dups": "square.on.square", "health": "waveform.path.ecg", "people": "person.2",
          "stats": "chart.bar", "timeline": "point.3.connected.trianglepath.dotted", "trivia": "questionmark.circle", "export": "archivebox"][rawValue] ?? "circle"
     }
-    var isNative: Bool { [.collection, .timeline, .stats, .people].contains(self) }
+    var isNative: Bool { [.collection, .timeline, .stats, .people, .dups, .health].contains(self) }
 }
 
 struct NativeRoot: View {
@@ -324,6 +340,8 @@ struct NativeRoot: View {
                         case .timeline: TimelineScreen(songs: store.songs)
                         case .stats: StatsScreen(state: s, songs: store.songs)
                         case .people: CreditsScreen(songs: store.songs)
+                        case .dups: DuplicatesScreen()
+                        case .health: HealthScreen()
                         default: CollectionScreen(state: s, songs: store.songs)
                         }
                     } else { loading }

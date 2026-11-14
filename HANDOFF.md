@@ -41,7 +41,9 @@ Stages:
 1. Done: window, native sky, sidebar, Collection (scoreboard, eras, song list with search, filters and wishlist, song card).
 2. Done: Timeline, Stats (without Plex listening yet) and Credits, in `JuiceTracker/NativeScreens.swift`. The snapshot now
    sends the catalog's fixed details (dates, years, credits) only when they change; owned, wishlist and the queue go each time.
-3. File health and Duplicates (actions that change files: they stay in the page's tested code, called from Swift).
+3. Done: File health and Duplicates, in `JuiceTracker/NativeTools.swift`. Fixes that touch files stay in the page's tested
+   code (`trashExtraCopies(groups, confirmed)`, `runHealthCheck()`, `healthFix(op, path)`); the native screens ask for
+   confirmation in their own dialogs and show the page's result (or its error message).
 4. Tag fixer (review list in SwiftUI; writing stays in the page's core code, or JavaScriptCore without the page).
 5. Trivia, Export & backup, Settings polish; then Download all, File links and the player in SwiftUI.
 6. Make the native window the main window; the classic page runs hidden as the engine, then its UI code is deleted.

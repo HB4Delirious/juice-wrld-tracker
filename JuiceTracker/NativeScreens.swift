@@ -6,7 +6,7 @@ private func monthLabel(_ m: Int) -> String {
     ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"][m % 12] + " \(m / 12)"
 }
 
-private struct ScreenTitle: View {
+struct ScreenTitle: View {
     let text: String
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
