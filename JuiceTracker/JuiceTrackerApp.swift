@@ -1,5 +1,6 @@
 import AppKit
 import SwiftUI
+import CoreSpotlight
 import UserNotifications
 
 @main
@@ -32,6 +33,8 @@ struct JuiceTrackerApp: App {
                         .keyboardShortcut("1", modifiers: .command)
                     Button("Classic Window") { AppDelegate.shared?.showClassicWindow() }
                         .keyboardShortcut("2", modifiers: .command)
+                    Button("Mini Player") { MiniPlayer.show() }
+                        .keyboardShortcut("3", modifiers: .command)
                 }
                 CommandGroup(replacing: .help) {
                     Button("Open juicewrldapi.com") {
@@ -52,6 +55,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUs
     func applicationDidFinishLaunching(_ notification: Notification) {
         AppDelegate.shared = self
         JTFonts.register()
+        _ = NowPlaying.shared // follows the player for lyrics, artwork and the visualizer
         // macOS would otherwise quietly quit the app once its window is closed, defeating "Keep running".
         ProcessInfo.processInfo.automaticTerminationSupportEnabled = false
         _ = WebViewStore.shared // start the engine (the page) right away
@@ -142,6 +146,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUs
         WebViewStore.shared.stopAmbient() // music shouldn't keep playing from a hidden window
         sender.orderOut(nil)
         return false
+    }
+
+    /// A song picked in Spotlight (⌘Space) opens its card.
+    func application(_ application: NSApplication, continue userActivity: NSUserActivity,
+                     restorationHandler: @escaping ([NSUserActivityRestoring]) -> Void) -> Bool {
+        guard userActivity.activityType == CSSearchableItemActionType,
+              let id = userActivity.userInfo?[CSSearchableItemActivityIdentifier] as? String else { return false }
+        SpotlightIndex.open(id)
+        return true
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {

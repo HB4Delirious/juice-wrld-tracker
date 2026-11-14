@@ -93,6 +93,7 @@ private struct AmbientInfo: Decodable { let on: Bool; let era: String; let eras:
 
 struct PlayerPanel: View {
     @ObservedObject private var store = NativeStore.shared
+    @ObservedObject private var now = NowPlaying.shared
     @State private var title: String?
     @State private var paused = false
     @State private var volume: Double = 6
@@ -105,10 +106,13 @@ struct PlayerPanel: View {
             if let info, info.songs > 0 {
                 VStack(alignment: .leading, spacing: 8) {
                     HStack(spacing: 8) {
-                        Image(systemName: info.on && !paused && title != nil ? "waveform" : "music.note").foregroundColor(JT.lavender)
+                        if info.on && !paused && title != nil { Visualizer(height: 16).frame(width: 22) } else { Image(systemName: "music.note").foregroundColor(JT.lavender) }
                         VStack(alignment: .leading, spacing: 1) {
                             Text("Ambient music").font(.caption.bold())
                             Text(info.on ? (title ?? "Starting…") : "Off").font(.caption2).foregroundColor(JT.muted).lineLimit(1)
+                            if info.on, let line = now.currentLine, !line.isEmpty {
+                                Text(line).font(.caption2.italic()).foregroundColor(JT.lavenderHi).lineLimit(1).transition(.opacity).id(line)
+                            }
                         }
                         Spacer()
                         Toggle("", isOn: Binding(get: { info.on }, set: { on in Task { await store.act("ambientSet", -1, ["on": on]); await load() } }))
@@ -121,6 +125,7 @@ struct PlayerPanel: View {
                             Button { AmbientPlayer.shared.skip() } label: { Image(systemName: "forward.fill") }.buttonStyle(.borderless).help("Next song")
                             Slider(value: $volume, in: 0...100) { editing in if !editing { AmbientPlayer.shared.volume = Float(volume / 100) } }
                                 .controlSize(.mini)
+                            Button { MiniPlayer.show() } label: { Image(systemName: "pip.enter") }.buttonStyle(.borderless).help("Mini player (⌘3)")
                         }
                         // An era with no playable songs plays everything (the page falls back), so say "All eras" then.
                         Menu(info.eras.contains(info.era) ? info.era : "All eras") {
