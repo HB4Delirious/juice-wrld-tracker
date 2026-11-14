@@ -24,7 +24,8 @@ final class NativeBridge: NSObject, WKScriptMessageHandlerWithReply {
         }
     }
 
-    func stopAmbient() { ambient.stop() }
+    // Closing the window: the music and any trivia clip stop.
+    func stopAmbient() { ambient.stop(); ambient.stopClip() }
 
     func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage,
                                replyHandler: @escaping (Any?, String?) -> Void) {
@@ -413,13 +414,13 @@ final class AmbientPlayer: NSObject, AVAudioPlayerDelegate {
 
     /// Starts shuffling unless something is already playing, loading, or the user paused.
     func play() {
-        if player?.isPlaying == true || isPaused || items.isEmpty { return }
+        // While a trivia clip plays the music is paused for it; it comes back when the clip ends.
+        if player?.isPlaying == true || isPaused || items.isEmpty || clip != nil { return }
         next()
     }
 
     func stop() {
-        resumeAfterClip = false
-        stopClip() // a trivia clip mustn't keep playing from a closed window
+        resumeAfterClip = false // a clip in progress (trivia) keeps playing; the music won't come back after it
         generation += 1
         isPaused = false
         player?.stop()

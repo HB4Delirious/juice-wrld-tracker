@@ -4720,7 +4720,14 @@ function downloadAll(songs) {
   return added;
 }
 // Wishlist alerts' Download button (the app passes catalog ids).
-window.jwQueueDownloads = ids => {
+window.jwQueueDownloads = async ids => {
+  // The alert can be about a file that appeared today, after this page saved its copy of the catalog: ask the site.
+  for (const s of (state.catalog || []).filter(s => ids.map(String).includes(String(s.id)) && !s.filePath)) {
+    try {
+      const res = await fetch(`${API}${encodeURIComponent(s.id)}/`, { headers: { Accept: "application/json" } });
+      if (res.ok) s.filePath = cleanSong(await res.json()).filePath || "";
+    } catch (e) { /* offline: reported below as no file */ }
+  }
   const songs = (state.catalog || []).filter(s => ids.map(String).includes(String(s.id)) && fileUrl(s));
   if (songs.length) { downloadAll(songs); toast(`Downloading ${songs.map(s => `“${s.name}”`).join(", ")}…`); }
   else if (!state.catalog) { const q = loadQueue(); ids.forEach(id => q.push({ id, tries: 0 })); saveQueue(q); } // runs once the catalog loads
