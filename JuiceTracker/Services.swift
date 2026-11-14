@@ -432,6 +432,7 @@ struct SettingsView: View {
     @AppStorage(Pref.keepRunning) private var keepRunning = false
     @AppStorage(Pref.autoUpdate) private var autoUpdate = true
     @AppStorage(Pref.menuBar) private var menuBar = true
+    @AppStorage("eraTheme") private var eraTheme = "cosmic"
     @AppStorage(Pref.plexServer) private var plexServer = ""
     @State private var plexToken = "" // read when the window opens, never at app launch (see Keychain.write)
     @State private var plexStatus = ""
@@ -453,6 +454,13 @@ struct SettingsView: View {
                 Text("Daily checks run while Juice Tracker is open. Keep it running, or open it at login, to get alerts without the window.")
                     .font(.caption).foregroundColor(.secondary).fixedSize(horizontal: false, vertical: true)
             } header: { Text("New songs").bold() }
+
+            Section {
+                Picker("Era theme", selection: $eraTheme) {
+                    ForEach(EraTheme.all) { Text($0.name).tag($0.id) }
+                }
+                Text("Recolors the app's accents and sky after an era's mood.").font(.caption).foregroundColor(.secondary)
+            } header: { Text("Look").bold() }
 
             Section {
                 Toggle("Check for app updates automatically", isOn: $autoUpdate)

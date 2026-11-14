@@ -35,6 +35,8 @@ render("design/dmg-background.svg", width: 1320, height: 840, to: "design/dmg-ba
 let native: [(String, Int, Int)] = [
     ("planet", 210, 210), ("heart", 46, 46), ("flash", 560, 560), ("sparkles", 520, 520), ("fly", 32, 32),
     ("scribble", 200, 40), ("squiggle", 140, 12), ("check", 14, 14), ("logo", 64, 64),
+    ("era-race", 30, 30), ("era-halo", 30, 30), ("era-demon", 30, 30), ("era-party", 30, 30), ("era-999", 30, 30),
+    ("era-globe", 30, 30), ("era-vinyl", 30, 30), ("era-mic", 30, 30), ("juiceflash", 640, 640),
     ("sticker1", 30, 30), ("sticker2", 30, 30), ("sticker3", 30, 30), ("sticker4", 30, 30), ("sticker5", 30, 30), ("sticker6", 30, 30),
 ]
 for (name, w, h) in native {

@@ -58,6 +58,8 @@ tag writing, downloads). Window > Classic Window (⌘2) shows the original HTML 
 - **Listening (Stats):** your top songs this week and all time from the app's own plays, owned songs you've never played, and Plex play counts.
 - **Spotlight and Shortcuts:** songs you have show up in ⌘Space search; Shortcuts and Siri can play an era, pause, skip, say what's playing, and download your wishlist.
 - **Desktop widget:** your collection count, what's playing and "On this day" (right-click the desktop > Edit Widgets > Juice Tracker; macOS 14 or later).
+- **Juice touches** (original art): era cards wear stickers that fit the era (a race car for DRFL, a halo for LND, a demon for FD, balloons for the party eras, 999 flash, a globe for WOD), a second tattoo-flash layer drifts through the sky, loading shows a spinning 999, and **Badges** collects milestones (999 club and more) and completed eras.
+- **Era themes** (Settings > Look): recolor the accents and the sky after an era: Goodbye & Good Riddance blue, Death Race for Love red, Legends Never Die gold, Fighting Demons green or WRLD on Drugs cyan.
 - **Timeline:** every song as a dot in the month it was recorded, with yours lit up. **Collection card** (Export & backup): an image of your progress to post or keep.
 - **Settings (⌘,):**
   - Daily new-song and release alerts (macOS notifications), "Keep running when the window is closed", and "Open at login".

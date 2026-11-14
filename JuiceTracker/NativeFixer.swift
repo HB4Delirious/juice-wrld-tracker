@@ -50,7 +50,7 @@ struct TagFixerScreen: View {
                         }
                     }
                 } else {
-                    ProgressView().frame(maxWidth: .infinity, minHeight: 200)
+                    Spinner999().frame(maxWidth: .infinity, minHeight: 200)
                 }
             }
             .padding(.horizontal, 34).padding(.top, 40).padding(.bottom, 60)
