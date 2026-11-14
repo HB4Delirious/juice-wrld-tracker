@@ -49,6 +49,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUs
         ProcessInfo.processInfo.automaticTerminationSupportEnabled = false
         showMainWindow()
         UNUserNotificationCenter.current().delegate = self
+        SongAlerts.registerActions()
         SongAlerts.start()
         Updater.startDailyChecks()
         menuBar.start()
@@ -91,10 +92,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUs
         return true
     }
 
-    // Clicking an alert brings the window back.
+    // Clicking an alert brings the window back; a wishlist alert's Download button queues those songs.
     func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse,
                                 withCompletionHandler done: @escaping () -> Void) {
         showMainWindow()
+        if response.actionIdentifier == SongAlerts.downloadAction,
+           let ids = response.notification.request.content.userInfo["songIds"] as? [String] {
+            // Kept until the page takes them: if the alert started the app, the page isn't loaded yet.
+            let pending = UserDefaults.standard.stringArray(forKey: "pendingDownloads") ?? []
+            UserDefaults.standard.set(pending + ids, forKey: "pendingDownloads")
+            WebViewStore.shared.webView.evaluateJavaScript("window.jwTakePendingDownloads && window.jwTakePendingDownloads()")
+        }
         done()
     }
 

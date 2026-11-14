@@ -183,7 +183,7 @@ enum SongAlerts {
 
     static func check() async {
         var next = URL(string: "https://juicewrldapi.com/juicewrld/songs/?page=1&page_size=100")
-        var songs: [(id: String, name: String, released: Bool)] = []
+        var songs: [(id: String, name: String, released: Bool, hasFile: Bool)] = []
         do {
             while let url = next, songs.count < 50_000 {
                 let (data, response) = try await URLSession.shared.data(from: url)
@@ -194,7 +194,8 @@ enum SongAlerts {
                     // Same rule as the page's isReleased: category "released" or a release date.
                     let released = (s["category"] as? String)?.lowercased() == "released"
                         || !((s["release_date"] as? String) ?? "").trimmingCharacters(in: .whitespaces).isEmpty
-                    songs.append((id, s["name"] as? String ?? "", released))
+                    let hasFile = !((s["path"] as? String) ?? "").trimmingCharacters(in: .whitespaces).isEmpty
+                    songs.append((id, s["name"] as? String ?? "", released, hasFile))
                 }
                 // The API's "next" link is plain http; apps may only use https (App Transport Security).
                 next = (json["next"] as? String).map { $0.replacingOccurrences(of: "http://", with: "https://") }.flatMap(URL.init(string:))
@@ -204,18 +205,57 @@ enum SongAlerts {
         let defaults = UserDefaults.standard
         let known = Set(defaults.stringArray(forKey: "alertsKnownIds") ?? [])
         let wasReleased = Set(defaults.stringArray(forKey: "alertsReleasedIds") ?? [])
+        // Older snapshots have no file list: treat every song as already having had one, so nothing alerts falsely.
+        let hadFile = defaults.stringArray(forKey: "alertsFileIds").map(Set.init)
+        let wished = Set(defaults.stringArray(forKey: "wishlistIds") ?? [])
+        let wishNews = songs.filter { wished.contains($0.id) }.compactMap { s -> (id: String, name: String, what: String)? in
+            if s.released && !wasReleased.contains(s.id) && known.contains(s.id) { return (s.id, s.name, "was just officially released") }
+            if s.hasFile, let hadFile, !hadFile.contains(s.id) { return (s.id, s.name, "now has a file on juicewrldapi.com") }
+            return nil
+        }
         let added = songs.filter { !known.contains($0.id) }
         let nowReleased = songs.filter { $0.released && known.contains($0.id) && !wasReleased.contains($0.id) }
         defaults.set(songs.map(\.id), forKey: "alertsKnownIds")
         defaults.set(songs.filter(\.released).map(\.id), forKey: "alertsReleasedIds")
+        defaults.set(songs.filter(\.hasFile).map(\.id), forKey: "alertsFileIds")
         defaults.set(Date(), forKey: "alertsLastCheck")
         defaults.set("\(songs.count) songs, \(known.isEmpty ? 0 : added.count) new, \(nowReleased.count) newly released", forKey: "alertsLastResult")
+        if !known.isEmpty, !wishNews.isEmpty, !defaults.bool(forKey: "alertsDryRun") { notifyWishlist(wishNews) }
+        let wishIds = Set(wishNews.map(\.id)) // already in their own alert
+        let others = added.filter { !wishIds.contains($0.id) }, otherReleases = nowReleased.filter { !wishIds.contains($0.id) }
         guard !known.isEmpty, !added.isEmpty || !nowReleased.isEmpty else { return } // first run only takes a snapshot
         // For the menu bar's "New songs" line.
         defaults.set(added.map(\.name) + nowReleased.map { "\($0.name) (released)" }, forKey: "alertsLastNew")
         defaults.set(Date(), forKey: "alertsLastNewDate")
         if defaults.bool(forKey: "alertsDryRun") { return } // set only when testing, so no notification prompt appears
-        notify(added: added.map(\.name), released: nowReleased.map(\.name))
+        guard !others.isEmpty || !otherReleases.isEmpty else { return }
+        notify(added: others.map(\.name), released: otherReleases.map(\.name))
+    }
+
+    static let wishCategory = "wishlist"
+    static let downloadAction = "download"
+
+    /// Registers the "Download" button that wishlist alerts carry.
+    static func registerActions() {
+        let download = UNNotificationAction(identifier: downloadAction, title: "Download", options: [.foreground])
+        UNUserNotificationCenter.current().setNotificationCategories([
+            UNNotificationCategory(identifier: wishCategory, actions: [download], intentIdentifiers: []),
+        ])
+    }
+
+    /// Its own alert for wishlist songs, with a Download button (the song's id travels in userInfo).
+    static func notifyWishlist(_ news: [(id: String, name: String, what: String)]) {
+        let content = UNMutableNotificationContent()
+        content.title = news.count == 1 ? "On your wishlist: \(news[0].name)" : "\(news.count) wishlist songs have news"
+        content.body = news.prefix(4).map { "\($0.name) \($0.what)." }.joined(separator: " ")
+        content.sound = .default
+        content.categoryIdentifier = wishCategory
+        content.userInfo = ["songIds": news.map(\.id)]
+        let center = UNUserNotificationCenter.current()
+        center.requestAuthorization(options: [.alert, .sound]) { ok, _ in
+            guard ok else { return }
+            center.add(UNNotificationRequest(identifier: "wish-\(UUID().uuidString)", content: content, trigger: nil))
+        }
     }
 
     static func notify(added: [String], released: [String]) {
@@ -234,6 +274,33 @@ enum SongAlerts {
             guard ok else { return }
             center.add(UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil))
         }
+    }
+}
+
+// MARK: - Library snapshots
+
+/// A dated CSV of the library (paths, tags, matched songs), saved weekly off the music drive, so a failed drive
+/// still leaves a list of what was there. iCloud Drive when it's on, else Documents. The newest 12 are kept.
+enum Snapshots {
+    static var folder: URL {
+        let home = FileManager.default.homeDirectoryForCurrentUser
+        let icloud = home.appendingPathComponent("Library/Mobile Documents/com~apple~CloudDocs")
+        let base = FileManager.default.fileExists(atPath: icloud.path) ? icloud : home.appendingPathComponent("Documents")
+        return base.appendingPathComponent("Juice Tracker Snapshots")
+    }
+
+    static func save(_ text: String) throws -> URL {
+        let fm = FileManager.default, dir = folder
+        try fm.createDirectory(at: dir, withIntermediateDirectories: true)
+        let f = DateFormatter()
+        f.dateFormat = "yyyy-MM-dd"
+        let url = dir.appendingPathComponent("juice-wrld-library-\(f.string(from: Date())).csv")
+        try Data(text.utf8).write(to: url, options: .atomic)
+        let old = (try? fm.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil)) ?? []
+        for stale in old.filter({ $0.lastPathComponent.hasPrefix("juice-wrld-library-") }).sorted(by: { $0.lastPathComponent > $1.lastPathComponent }).dropFirst(12) {
+            try? fm.trashItem(at: stale, resultingItemURL: nil)
+        }
+        return url
     }
 }
 

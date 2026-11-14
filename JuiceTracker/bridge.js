@@ -161,6 +161,13 @@
   // { kind, size, mtime } for a path; the drive status times it.
   window.jwStat = path => call("stat", { path });
 
+  // Wishlist ids for the daily check's alerts; library snapshots (weekly CSV off the music drive).
+  window.jwSetWishlist = ids => call("wishlist", { ids }).catch(() => {});
+  window.jwSnapshot = text => call("snapshot", { text });
+  window.jwSnapshotFolder = () => call("snapshotFolder");
+  // Song ids from a wishlist alert's Download button, waiting for the page; reading them clears them.
+  window.jwPendingDownloads = () => call("pendingDownloads");
+
   // A handle for a file path from an earlier scan, with no disk access (the native side still checks every use).
   window.jwFileHandle = (path, name) => new NativeFileHandle(path, name);
 

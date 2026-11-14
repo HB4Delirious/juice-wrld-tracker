@@ -24,7 +24,8 @@ final class NativeBridge: NSObject, WKScriptMessageHandlerWithReply {
         }
     }
 
-    func stopAmbient() { ambient.stop() }
+    // Closing the window: the music and any trivia clip stop.
+    func stopAmbient() { ambient.stop(); ambient.stopClip() }
 
     func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage,
                                replyHandler: @escaping (Any?, String?) -> Void) {
@@ -51,6 +52,15 @@ final class NativeBridge: NSObject, WKScriptMessageHandlerWithReply {
             case "skip": ambient.skip()
             default: break
             }
+            if let path = body["clipPath"] as? String {
+                // Trivia "name that song": a short clip, louder than the background music, which pauses meanwhile.
+                guard let url = allowedURL(path) else {
+                    replyHandler(nil, "NotAllowedError: That location isn't inside a folder you chose.")
+                    return
+                }
+                ambient.playClip(url, from: (body["start"] as? NSNumber)?.doubleValue ?? 30, seconds: (body["seconds"] as? NSNumber)?.doubleValue ?? 15)
+            }
+            if body["stopClip"] as? Bool == true { ambient.stopClip() }
             if let path = body["playPath"] as? String {
                 guard let url = allowedURL(path) else {
                     replyHandler(nil, "NotAllowedError: That location isn't inside a folder you chose.")
@@ -113,6 +123,34 @@ final class NativeBridge: NSObject, WKScriptMessageHandlerWithReply {
             default:
                 replyHandler(nil, "TypeError: Unknown Plex action.")
             }
+            return
+        case "wishlist":
+            // The page's wishlist (catalog ids), so the daily check can give those songs their own alert.
+            UserDefaults.standard.set((body["ids"] as? [Any] ?? []).map { "\($0)" }, forKey: "wishlistIds")
+            replyHandler(true, nil)
+            return
+        case "snapshot":
+            // A weekly copy of the library list, kept off the music drive (iCloud Drive when it's on).
+            let text = body["text"] as? String ?? ""
+            DispatchQueue.global(qos: .utility).async {
+                do {
+                    let url = try Snapshots.save(text)
+                    DispatchQueue.main.async { replyHandler(["path": url.path, "folder": url.deletingLastPathComponent().path], nil) }
+                } catch {
+                    DispatchQueue.main.async { replyHandler(nil, "UnknownError: \(error.localizedDescription)") }
+                }
+            }
+            return
+        case "pendingDownloads":
+            let ids = UserDefaults.standard.stringArray(forKey: "pendingDownloads") ?? []
+            UserDefaults.standard.removeObject(forKey: "pendingDownloads")
+            replyHandler(ids, nil)
+            return
+        case "snapshotFolder":
+            let folder = Snapshots.folder
+            try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+            NSWorkspace.shared.open(folder)
+            replyHandler(folder.path, nil)
             return
         case "restoreFolder":
             restoreFolder(id: body["id"] as? String ?? "", reply: replyHandler)
@@ -319,7 +357,8 @@ final class NativeBridge: NSObject, WKScriptMessageHandlerWithReply {
             guard kind(of: url) == "file" else { throw BridgeError(message: "NotFoundError: File not found.") }
             let asset = AVURLAsset(url: url)
             let seconds = CMTimeGetSeconds(asset.duration)
-            return ["ok": asset.isPlayable && !asset.tracks(withMediaType: .audio).isEmpty, "seconds": seconds.isFinite ? seconds : 0]
+            let size = ((try? fm.attributesOfItem(atPath: url.path))?[.size] as? NSNumber)?.intValue ?? 0
+            return ["ok": asset.isPlayable && !asset.tracks(withMediaType: .audio).isEmpty, "seconds": seconds.isFinite ? seconds : 0, "size": size]
         case "reveal":
             guard kind(of: url) != nil else { throw BridgeError(message: "NotFoundError: File not found.") }
             DispatchQueue.main.async { NSWorkspace.shared.activateFileViewerSelecting([url]) }
@@ -353,6 +392,9 @@ final class AmbientPlayer: NSObject, AVAudioPlayerDelegate {
     private var player: AVAudioPlayer?
     private var artwork: MPMediaItemArtwork?
     private var generation = 0 // bumps on every start/stop so a slow load can't start after the user turned it off
+    private var clip: AVAudioPlayer?
+    private var clipGeneration = 0
+    private var resumeAfterClip = false
 
     private override init() {
         super.init()
@@ -372,11 +414,13 @@ final class AmbientPlayer: NSObject, AVAudioPlayerDelegate {
 
     /// Starts shuffling unless something is already playing, loading, or the user paused.
     func play() {
-        if player?.isPlaying == true || isPaused || items.isEmpty { return }
+        // While a trivia clip plays the music is paused for it; it comes back when the clip ends.
+        if player?.isPlaying == true || isPaused || items.isEmpty || clip != nil { return }
         next()
     }
 
     func stop() {
+        resumeAfterClip = false // a clip in progress (trivia) keeps playing; the music won't come back after it
         generation += 1
         isPaused = false
         player?.stop()
@@ -393,8 +437,61 @@ final class AmbientPlayer: NSObject, AVAudioPlayerDelegate {
 
     private func next(failures: Int = 0) {
         guard !items.isEmpty, failures < min(items.count, 5) else { stop(); return }
-        if order.isEmpty { order = Array(items.indices).shuffled() }
+        if order.isEmpty {
+            // Songs not heard yet today first; once all have played, everything shuffles again.
+            let heard = Self.heardToday()
+            let fresh = items.indices.filter { !heard.contains(items[$0].url.path) }
+            order = (fresh.isEmpty ? Array(items.indices) : fresh).shuffled()
+        }
         start(items[order.removeLast()], failures: failures)
+    }
+
+    /// Paths played today, kept across launches.
+    private static func heardToday() -> Set<String> {
+        let saved = UserDefaults.standard.dictionary(forKey: "ambientHeard") ?? [:]
+        guard saved["day"] as? String == today() else { return [] }
+        return Set(saved["paths"] as? [String] ?? [])
+    }
+    private static func markHeard(_ path: String) {
+        var paths = heardToday()
+        paths.insert(path)
+        UserDefaults.standard.set(["day": today(), "paths": Array(paths)], forKey: "ambientHeard")
+    }
+    private static func today() -> String {
+        let f = DateFormatter()
+        f.dateFormat = "yyyy-MM-dd"
+        return f.string(from: Date())
+    }
+
+    /// Plays part of a song for trivia, then goes back to the background music if it was playing.
+    func playClip(_ url: URL, from start: Double, seconds: Double) {
+        clipGeneration += 1
+        let gen = clipGeneration
+        DispatchQueue.global(qos: .userInitiated).async {
+            let loaded = try? AVAudioPlayer(contentsOf: url)
+            loaded?.prepareToPlay()
+            DispatchQueue.main.async { [weak self] in
+                guard let self, gen == self.clipGeneration, let loaded else { return }
+                self.clip?.stop()
+                if self.clip == nil { self.resumeAfterClip = self.player?.isPlaying == true }
+                self.player?.pause()
+                loaded.currentTime = max(0, min(start, loaded.duration - seconds))
+                loaded.volume = 0.7
+                loaded.play()
+                self.clip = loaded
+                DispatchQueue.main.asyncAfter(deadline: .now() + seconds) { [weak self] in
+                    if gen == self?.clipGeneration { self?.stopClip() }
+                }
+            }
+        }
+    }
+
+    func stopClip() {
+        clipGeneration += 1
+        guard let clip else { return }
+        clip.stop()
+        self.clip = nil
+        if resumeAfterClip, !isPaused { player?.play() }
     }
 
     private func start(_ item: (url: URL, title: String), failures: Int = 0) {
@@ -415,6 +512,7 @@ final class AmbientPlayer: NSObject, AVAudioPlayerDelegate {
                 loaded.setVolume(self.volume, fadeDuration: 3)
                 self.player = loaded
                 self.title = item.title
+                Self.markHeard(item.url.path)
                 let image = cover ?? NSApp.applicationIconImage ?? NSImage()
                 self.artwork = MPMediaItemArtwork(boundsSize: image.size) { _ in image }
                 self.publish()

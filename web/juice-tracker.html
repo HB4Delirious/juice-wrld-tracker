@@ -641,6 +641,21 @@
   .tl-year { position: absolute; bottom: 0; left: 4px; font: 600 var(--t-xs) var(--body); color: var(--muted); white-space: nowrap; }
   .tl-dot { width: 9px; height: 9px; padding: 0; border-radius: 50%; border: 0; background: rgba(195, 178, 227, .28); cursor: pointer; }
   .tl-dot.owned { background: var(--have); box-shadow: 0 0 6px rgba(201, 242, 74, .6); }
+  .dlq { border: 1px solid var(--line); border-radius: var(--r-sm); padding: 8px 10px; display: flex; flex-direction: column; gap: 6px; font-size: var(--t-xs); color: var(--muted); }
+  .dlq .row { justify-content: space-between; gap: 8px; flex-wrap: nowrap; }
+  .dlq-track { height: 4px; border-radius: 2px; background: var(--line); overflow: hidden; }
+  .dlq-track span { display: block; height: 100%; background: var(--have); width: 0; transition: width .3s; }
+  .player { flex-wrap: wrap; }
+  .player select { flex: 1 0 100%; font: 400 var(--t-xs) var(--body); background: rgba(10, 5, 26, .6); color: var(--mist); border: 1px solid var(--line); border-radius: 8px; padding: 4px 6px; }
+  .today-card { border: 1px solid var(--line-2); border-radius: var(--r-md); padding: 12px 16px; margin: 0 0 14px; background: rgba(10, 5, 26, .45); }
+  .today-card h3 { margin: 0 0 6px; font-family: var(--display); font-weight: 400; font-size: var(--t-xl); }
+  .today-card p { margin: 4px 0; font-size: var(--t-sm); }
+  .have { color: var(--have); }
+  .versions-wrap { overflow-x: auto; }
+  .versions { width: 100%; border-collapse: collapse; font-size: var(--t-sm); margin-bottom: 10px; }
+  .versions th, .versions td { text-align: left; padding: 5px 8px; border-bottom: 1px solid var(--line); }
+  .versions th { color: var(--muted); font-weight: 600; }
+  .versions tr.current td { background: rgba(255, 106, 213, .08); }
   .tl-dot:hover, .tl-dot:focus-visible { background: var(--lavender-hi); outline: none; transform: scale(1.5); }
 </style>
 </head>
@@ -678,6 +693,10 @@
       <li><button type="button" data-view="export" class="tool" aria-current="false"><svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16v13H4zM3 4h18v3H3zM10 11h4"/></svg><span>Export & backup</span></button></li>
     </ul></nav>
     <div class="rail-foot">
+      <div class="dlq" id="dlq" hidden role="status">
+        <div class="row"><span id="dlq-text"></span><button type="button" class="ghost small" id="dlq-stop">Stop</button></div>
+        <div class="dlq-track"><span id="dlq-bar"></span></div>
+      </div>
       <button type="button" class="drive" id="drive-status" hidden><i aria-hidden="true"></i><span></span></button>
       <button type="button" class="ambient-toggle" id="ambient-btn" aria-pressed="false" hidden>
         <span class="eq" aria-hidden="true"><i></i><i></i><i></i></span>
@@ -691,6 +710,7 @@
           <svg viewBox="0 0 24 24" aria-hidden="true" fill="currentColor"><path d="M5 5.5v13l9-6.5zM16 5h3v14h-3z"/></svg>
         </button>
         <input type="range" id="player-volume" min="0" max="100" step="1" aria-label="Volume">
+        <select id="player-era" aria-label="Play songs from"></select>
       </div>
       <a class="tip" id="tip-link" href="#" target="_blank" rel="noopener" hidden>
         <svg viewBox="0 0 24 24" aria-hidden="true" fill="currentColor"><path d="M12 20.5S3.5 15.3 3.5 9.3A4.6 4.6 0 0 1 12 6.8a4.6 4.6 0 0 1 8.5 2.5c0 6-8.5 11.2-8.5 11.2z"/></svg>
@@ -763,6 +783,7 @@
       <div class="cats" id="cats"></div>
     </div>
     <div id="notices"></div>
+    <div class="today-card" id="today-card" hidden></div>
     </div>
 
     <div class="tools-stack">
@@ -925,6 +946,17 @@
               <label class="btn ghost">Restore a backup<input type="file" id="export-restore" accept=".json,application/json"></label>
             </div>
           </div>
+          <div class="export-item" id="snapshot-item" hidden>
+            <h3>Library snapshot</h3>
+            <p class="hint">Every week the app saves a list of your files, tags and matched songs to iCloud Drive (or Documents if iCloud Drive is off), away from your music drive. If a drive fails, open a snapshot here to download what you had again.</p>
+            <p class="hint" id="snapshot-last"></p>
+            <div class="row">
+              <button type="button" class="primary" id="snapshot-now">Save a snapshot now</button>
+              <button type="button" class="ghost small" id="snapshot-show">Show snapshots</button>
+              <button type="button" class="ghost small" id="snapshot-restore">Download from a snapshot…</button>
+            </div>
+            <input type="file" id="snapshot-file" accept=".csv,text/csv" hidden>
+          </div>
           <div class="export-item" id="plex-item" hidden>
             <h3>Plex playlists</h3>
             <p class="hint">Makes a playlist in Plex from songs you have. Making the same one again replaces it.</p>
@@ -1072,6 +1104,7 @@ function cleanSong(s) {
     leakType: textOf(s.leakType ?? s.leak_type),
     sessions: textOf(s.sessions ?? s.session_titles),
     dates: textOf(s.dates),
+    bitrate: textOf(s.bitrate),
     filePath: typeof s.filePath === "string" ? s.filePath : (typeof s.path === "string" && s.path.includes("/") ? s.path : ""),
     hasDetails: s.hasDetails ?? DETAIL_KEYS.some(k => k in s),
   };
@@ -1774,6 +1807,40 @@ function lengthSeconds(text) {
   return m ? Number(m[1] || 0) * 3600 + Number(m[2]) * 60 + Number(m[3]) : null;
 }
 
+/** Every "Month D, YYYY" in a text, as { y, m (0-11), d }. */
+function datesIn(text) {
+  const out = [], re = /\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s+(\d{1,2})(?:st|nd|rd|th)?,?\s+((?:19|20)\d{2})\b/gi;
+  for (let m; (m = re.exec(String(text || "")));) out.push({ y: Number(m[3]), m: MONTH_NUM[m[1].toLowerCase()], d: Number(m[2]) });
+  return out;
+}
+/** The best bitrate the site lists for a format ("Original Files\n2117kbps (.wav)\n320kpbs (.mp3)"), or 0. */
+function siteKbps(text, ext) {
+  let best = 0;
+  const re = /(\d{2,5})\s*k[bp]{1,2}s\s*\(\.(\w+)\)/gi;
+  for (let m; (m = re.exec(String(text || "")));) if (!ext || m[2].toLowerCase() === ext) best = Math.max(best, Number(m[1]));
+  return best;
+}
+/** A CSV file's rows (quotes, doubled quotes, commas and line breaks inside quotes). */
+function parseCsv(text) {
+  const rows = [], t = String(text || "").replace(/^\ufeff/, "");
+  let row = [], cell = "", quoted = false;
+  for (let n = 0; n < t.length; n++) {
+    const c = t[n];
+    if (quoted) {
+      if (c !== '"') cell += c;
+      else if (t[n + 1] === '"') { cell += '"'; n++; }
+      else quoted = false;
+    } else if (c === '"') quoted = true;
+    else if (c === ",") { row.push(cell); cell = ""; }
+    else if (c === "\n" || c === "\r") {
+      if (c === "\r" && t[n + 1] === "\n") n++;
+      row.push(cell); rows.push(row); row = []; cell = "";
+    } else cell += c;
+  }
+  if (cell || row.length) { row.push(cell); rows.push(row); }
+  return rows;
+}
+
 /* ---------- duplicates: which copy to keep (also used by ⌘K search keys) */
 const LOSSLESS = new Set(["flac", "wav", "aiff", "aif", "alac"]);
 const cmdkKey = text => String(text || "").toLowerCase().normalize("NFKD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, " ").trim();
@@ -2169,6 +2236,12 @@ function update() {
   renderHealth();
   if (state.listen) renderListening();
   checkDrive();
+  renderToday();
+  renderSnapshotItem();
+  window.jwSetWishlist?.(Object.keys(state.personal.wish));
+  if (state.catalog && !queueResumed) window.jwTakePendingDownloads();
+  resumeQueue();
+  maybeSnapshot();
 }
 
 function renderNotices() {
@@ -2872,6 +2945,7 @@ function readPersonal() {
 }
 state.personal = readPersonal();
 function savePersonal() {
+  window.jwSetWishlist?.(Object.keys(state.personal.wish)); // the app's daily check gives wishlist songs their own alert
   const data = JSON.stringify(state.personal);
   try { localStorage.setItem(PERSONAL_KEY, data); return true; } catch (e) { /* storage full: make room below */ }
   // The cached catalog shares this storage. Swap it for the slim copy (details load when a song card opens), then retry,
@@ -3031,6 +3105,11 @@ function plexSources() {
     { id: "recent", label: "Downloaded in the last 30 days", title: "Juice WRLD: Recently downloaded",
       songs: state.catalog.map((s, i) => i).filter(i => owned(i) && Date.parse(state.personal.downloaded[state.catalog[i].id] || "") > monthAgo) },
   ];
+  if (state.listen) {
+    const L = listeningLists();
+    out.push({ id: "most", label: "Your 50 most played (Plex)", title: "Juice WRLD: Most played", songs: L.most });
+    out.push({ id: "never", label: "Songs you've never played (Plex)", title: "Juice WRLD: Never played", songs: L.never });
+  }
   eraStats().filter(e => e.have).forEach(e => out.push({ id: `era:${e.name}`, label: `Era: ${e.name}`, title: `Juice WRLD: ${e.name}`,
     songs: state.catalog.map((s, i) => i).filter(i => owned(i) && eraName(state.catalog[i]) === e.name) }));
   return out;
@@ -3040,6 +3119,12 @@ async function renderPlexItem() {
   try { configured = Boolean(window.jwPlex && (await window.jwPlex({ action: "status" })).configured); } catch (e) { /* not the app */ }
   $("plex-item").hidden = !configured;
   if (!configured) return;
+  // Play counts add the "most played" and "never played" lists. Only with the panel open: fetching them reads the
+  // Plex token from the Keychain, which can prompt after an update, and must not happen at launch.
+  if (!state.listen && !state.listenTried && $("export").open) {
+    state.listenTried = true;
+    fetchListening().then(renderPlexItem).catch(() => {});
+  }
   const keep = $("plex-source").value;
   $("plex-source").innerHTML = plexSources().map(s => `<option value="${esc(s.id)}">${esc(s.label)} (${fmt(s.songs.length)})</option>`).join("");
   if (keep) $("plex-source").value = keep;
@@ -3122,6 +3207,7 @@ $("export-restore").addEventListener("change", async e => {
 
 /* ---------- trivia */
 const TRIVIA_TYPES = { mixed: "Mixed", era: "Eras", producer: "Producers", year: "Recording years", release: "Released or not" };
+if (window.jwAmbient) TRIVIA_TYPES.listen = "Name that song (plays a clip)"; // Mac app: clips of your own files
 const ROUND_LENGTH = 10;
 const shuffle = arr => { const a = [...arr]; for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
 const pickOne = arr => arr[Math.floor(Math.random() * arr.length)];
@@ -3160,6 +3246,14 @@ function triviaBuilders() {
         return { prompt: `What year was “${s.name}” recorded?`, answer: String(y), options: shuffle([y, ...decoys]).map(String) };
       },
     },
+    listen: {
+      ok: i => state.owned.size >= 4 && (state.owned.get(i) || []).some(canPlay),
+      make: i => {
+        const s = state.catalog[i], f = state.owned.get(i).find(canPlay), key = versionKey(s.name);
+        const decoys = [...new Set(shuffle([...state.owned.keys()]).map(j => state.catalog[j].name).filter(n => versionKey(n) !== key))].slice(0, 3);
+        return { prompt: "Which song is playing?", answer: s.name, options: shuffle([s.name, ...decoys]), clip: f.handle._path };
+      },
+    },
     release: {
       ok: () => hasReleased && hasUnreleased,
       make: i => {
@@ -3172,8 +3266,8 @@ function triviaBuilders() {
 
 function buildRound(type, poolName) {
   const builders = triviaBuilders();
-  const pool = shuffle(poolName === "library" ? [...state.owned.keys()] : state.catalog.map((_, i) => i));
-  const types = type === "mixed" ? Object.keys(builders) : [type];
+  const pool = shuffle(poolName === "library" || type === "listen" ? [...state.owned.keys()] : state.catalog.map((_, i) => i));
+  const types = type === "mixed" ? Object.keys(builders).filter(t => t !== "listen") : [type];
   const questions = [], used = new Set();
   for (let attempt = 0; attempt < pool.length * 2 && questions.length < ROUND_LENGTH; attempt++) {
     const i = pool[attempt % pool.length];
@@ -3210,6 +3304,7 @@ function renderTrivia() {
     return;
   }
   if (r.n >= r.questions.length) {
+    window.jwAmbient?.({ stopClip: true }).catch(() => {});
     const prevBest = r.prevBest;
     const newBest = prevBest === undefined || r.score > prevBest;
     box.innerHTML = `<div class="trivia-card">
@@ -3227,6 +3322,7 @@ function renderTrivia() {
   box.innerHTML = `<div class="trivia-card">
     <p class="trivia-progress">Question ${r.n + 1} of ${r.questions.length}. Score ${r.score}.</p>
     <h3 class="trivia-q" id="trivia-q">${esc(q.prompt)}</h3>
+    ${q.clip ? `<p><button type="button" class="ghost small" id="trivia-replay">Play the clip again</button></p>` : ""}
     <div class="trivia-options ${q.options.length === 2 ? "two" : ""}" role="group" aria-labelledby="trivia-q">${q.options.map((o, n) => {
       const cls = !answered ? "" : o === q.answer ? "right" : o === r.picked ? "wrong" : "dim";
       const mark = cls === "right" ? "Correct answer" : cls === "wrong" ? "Your pick" : "";
@@ -3237,6 +3333,7 @@ function renderTrivia() {
       <div class="row"><button class="primary" type="button" id="trivia-next">${r.n + 1 < r.questions.length ? "Next question" : "See your score"}</button></div>` : ""}
   </div>`;
   if (answered) $("trivia-next").focus({ preventScroll: true });
+  if (q.clip && r.clipFor !== r.n) { r.clipFor = r.n; playTriviaClip(q); }
 }
 
 function startRound() {
@@ -3282,7 +3379,8 @@ $("trivia-body").addEventListener("click", e => {
   const t = e.target;
   if (t.closest("#trivia-start")) return startRound();
   if (t.closest("#trivia-again")) return startRound();
-  if (t.closest("#trivia-change")) { state.trivia.round = null; renderTrivia(); $("trivia-start")?.focus(); return; }
+  if (t.closest("#trivia-replay")) { const r = state.trivia.round; return playTriviaClip(r && r.questions[r.n]); }
+  if (t.closest("#trivia-change")) { window.jwAmbient?.({ stopClip: true }).catch(() => {}); state.trivia.round = null; renderTrivia(); $("trivia-start")?.focus(); return; }
   if (t.closest("#trivia-next")) return nextTrivia();
   const opt = t.closest("button[data-answer]");
   if (opt) return answerTrivia(opt.dataset.answer);
@@ -3382,6 +3480,7 @@ function renderEras() {
     </div>
     <div class="row" style="flex-direction:column;align-items:flex-end">
       ${eraCompleteButton(picked.name)}
+      ${window.jwAmbient && (state.library || []).some(f => f.songs && f.songs.length && canPlay(f) && eraName(state.catalog[f.songs[0]]) === picked.name) ? `<button type="button" class="ghost small" id="era-play">Play this era</button>` : ""}
       ${picked.have < picked.total ? `<button type="button" class="small${canDownloadToLibrary() ? " ghost" : ""}" id="era-links">Get file links</button>` : ""}
       ${folder ? `<a class="site-link" href="${esc(folder)}" target="_blank" rel="noopener"><span>Open this era's folder</span></a>` : ""}
       <button type="button" class="ghost small" id="era-clear">Show all eras</button>
@@ -3409,6 +3508,7 @@ $("era-toggle").addEventListener("click", () => { state.showAllEras = !state.sho
 $("era-banner").addEventListener("click", e => {
   if (e.target.closest("#era-links") && state.era !== null) { openLinks(eraRows(), `${state.era} era${Object.values(state.filters).some(v => String(v).trim()) ? ", with your filters" : ""}`, "#era-links"); return; }
   if (e.target.closest("#era-complete") && state.era !== null) { completeEra(state.era); return; }
+  if (e.target.closest("#era-play") && state.era !== null) { setAmbientEra(state.era); toast(`Playing songs from ${state.era}.`); return; }
   const songBtn = e.target.closest("button[data-open-song]");
   if (songBtn) { openSong(Number(songBtn.dataset.openSong)); return; }
   if (e.target.closest("#era-clear")) {
@@ -3629,6 +3729,7 @@ function songCardHtml(song, i, detailState) {
     ${facts.length ? `<h3 class="section-h">Details</h3><dl class="facts">${facts.map(([k, v]) => `<dt>${k}</dt><dd>${esc(v)}</dd>`).join("")}</dl>` : ""}
     ${credits ? `<h3 class="section-h">Credits</h3>${credits}` : ""}
     ${notes.length ? `<h3 class="section-h">Notes</h3>${notes.map(n => `<p class="prose">${esc(n)}</p>`).join("")}` : ""}
+    ${versionsHtml(i)}
     ${personalSectionHtml(song)}
     <h3 class="section-h">Your library</h3>
     ${files.length
@@ -4149,34 +4250,6 @@ async function downloadToLibrary(song, link) {
     link.removeAttribute("aria-busy");
   }
 }
-/** Download all: one at a time (gentle on the site and the drive), stoppable from the dialog. */
-async function downloadAll(songs) {
-  if (state.bulk || !songs.length) return;
-  const job = state.bulk = { stop: false, done: 0, total: songs.length, saved: 0, failed: [] };
-  if (state.links) renderLinksDialog();
-  for (const song of songs) {
-    if (job.stop) break;
-    const progress = `Downloading ${fmt(job.done + 1)} of ${fmt(job.total)}: ${song.name}…`;
-    if ($("links-status")) setStatus("links-status", progress);
-    try {
-      const r = await downloadSong(song);
-      if (!r.existed) job.saved++;
-      if (r.note) job.failed.push(`${song.name} (${r.note})`);
-    } catch (err) {
-      // The music folder is gone (a network drive dropped): every other song would fail the same way.
-      if (/isn't available/.test(err.message)) { job.offline = err.message; break; }
-      job.failed.push(`${song.name} (${err.message})`);
-    }
-    job.done++;
-    if (state.links) renderLinksDialog();
-  }
-  state.bulk = null;
-  if (job.saved) plexRefresh();
-  if (state.links) renderLinksDialog();
-  const msg = job.offline ? `${job.saved ? `Downloaded ${plural(job.saved, "song", "songs")}, then stopped. ` : ""}${job.offline}` : `${job.stop ? "Stopped. " : ""}Downloaded ${plural(job.saved, "song", "songs")}.${job.failed.length ? ` ${plural(job.failed.length, "had a problem", "had problems")}: ${job.failed.slice(0, 3).join("; ")}${job.failed.length > 3 ? "; and more" : ""}.` : ""}`;
-  if ($("links-status")) setStatus("links-status", msg, Boolean(job.offline) || (job.failed.length > 0 && !job.saved));
-  toast(msg, Boolean(job.offline) || (job.failed.length > 0 && !job.saved));
-}
 function autoTagOn() { return state.personal.autoTag !== false; }
 $("fix-auto").addEventListener("change", e => { state.personal.autoTag = e.target.checked; savePersonal(); });
 /** Tells Plex (Settings, ⌘,) to rescan after files change. No-op outside the app or when Plex isn't set up. */
@@ -4207,13 +4280,19 @@ function renderPlayer() {
   $("ambient-btn").classList.toggle("paused", playerPaused);
 }
 function ambientItems() {
-  return (state.library || []).filter(f => f.songs && f.songs.length && canPlay(f))
+  const all = (state.library || []).filter(f => f.songs && f.songs.length && canPlay(f)), era = ambientEra();
+  const picked = era ? all.filter(f => state.catalog && eraName(state.catalog[f.songs[0]]) === era) : [];
+  return (picked.length ? picked : all)
     .map(f => ({ path: f.handle._path, title: (state.catalog && state.catalog[f.songs[0]]?.name) || baseName(f.path) }));
 }
 function syncAmbient() {
   if (!window.jwAmbient) return;
   const items = ambientItems(), on = ambientOn();
   $("ambient-btn").hidden = !items.length;
+  const eras = [...new Set((state.library || []).filter(f => f.songs && f.songs.length && canPlay(f)).map(f => eraName(state.catalog[f.songs[0]])))].sort();
+  const sel = $("player-era"), era = ambientEra();
+  sel.innerHTML = `<option value="">All eras</option>${eras.map(e => `<option value="${esc(e)}">${esc(e)}</option>`).join("")}`;
+  sel.value = eras.includes(era) ? era : "";
   $("ambient-btn").setAttribute("aria-pressed", String(on));
   const label = $("ambient-now");
   if (!on) label.textContent = "Off";
@@ -4310,7 +4389,7 @@ function completeEra(name) {
   if (!withFile.length || state.bulk) return;
   if (!window.confirm(`Download the ${plural(withFile.length, "song", "songs")} you're missing from ${name} into your music folder? They go into the folders shown, one at a time.`)) return;
   openLinks(rows, `${name} era`, "#era-complete"); // shows progress and a Stop button
-  downloadAll(withFile.map(r => r.song));
+  downloadAll(withFile.map(r => r.song)); // queued: carries on after a restart or a dropped drive
 }
 
 /* ---------- Plex listening stats (Stats view, once Plex is set up in Settings) */
@@ -4326,9 +4405,7 @@ $("listen-load").addEventListener("click", async () => {
   btn.disabled = true;
   btn.textContent = "Loading…";
   try {
-    const r = await window.jwPlex({ action: "stats", paths: files.map(f => f.handle?._path || f.path) });
-    const byPath = new Map(r.items.map(it => [it.path, it]));
-    state.listen = { counts: new Map(files.map(f => [f.path, byPath.get(f.handle?._path || f.path) || null])), missing: r.missing };
+    await fetchListening();
     renderListening();
   } catch (err) {
     $("listen-body").innerHTML = `<p class="hint error">${esc(err.message)}</p>`;
@@ -4374,14 +4451,21 @@ function healthIssues() {
   for (const f of state.library || []) {
     const song = f.songs && f.songs.length === 1 ? state.catalog[f.songs[0]] : null;
     const p = health.probed.get(f.path), before = out.length;
+    const size = p && p.size ? p.size : f.size; // the check reads the size from disk; the scan's may be from the tag cache
     if (p && !p.ok) out.push({ f, group: "damaged", text: "Doesn't open as audio. It may be damaged." });
-    else if (p && song) {
-      const want = lengthSeconds(song.length);
+    else if (p && (song || p.seconds < 5)) {
+      const want = song ? lengthSeconds(song.length) : null;
       if ((want && want >= 45 && p.seconds < want * 0.6) || p.seconds < 5) {
         out.push({ f, group: "damaged", text: `Plays for ${fmtTime(p.seconds)}${want ? `, but “${song.name}” is ${song.length}` : ""}. It may be cut off.` });
       }
     }
-    if (out.length === before && f.size !== undefined && f.size !== null && f.size < 300 * 1024) out.push({ f, group: "damaged", text: `Very small for a song (${formatSize(f.size)}).` });
+    if (out.length === before && size !== undefined && size !== null && size < 300 * 1024) out.push({ f, group: "damaged", text: `Very small for a song (${formatSize(size)}).` });
+    if (song && out.length === before && !LOSSLESS.has(f.ext) && fileUrl(song)) {
+      const siteExt = extOf(song.filePath || ""), want = lengthSeconds(song.length), site = siteKbps(song.bitrate, siteExt);
+      const mine = want && size ? (size * 8) / 1000 / want : 0;
+      if (LOSSLESS.has(siteExt)) out.push({ f, group: "upgrade", text: `The site has a lossless copy (${siteExt.toUpperCase()}); yours is ${f.ext.toUpperCase()}.` });
+      else if (mine && site && mine < site * 0.7) out.push({ f, group: "upgrade", text: `Yours is about ${Math.round(mine)} kbps; the site's copy is ${site} kbps.` });
+    }
     if (!f.fromTags) out.push({ f, group: "tags", text: "No title tag, so it's matched by its file name." });
     else if (!f.songs || !f.songs.length) out.push({ f, group: "tags", text: `Its title, “${f.title}”, isn't in the catalog.` });
     else if (f.fuzzy) out.push({ f, group: "tags", text: `Its title, “${f.title}”, is close to “${state.catalog[f.songs[0]].name}” but not exact.` });
@@ -4400,6 +4484,7 @@ function renderHealth() {
   const onDisk = f => Boolean(f.handle && f.handle._path);
   const groups = [
     ["damaged", "May be damaged or cut off", "Replace it with the site's copy, or move it to the Trash."],
+    ["upgrade", "Better copies on the site", "Upgrade downloads the site's higher-quality file; yours goes to the Trash."],
     ["tags", "Tags to fix", "The Tag fixer writes the catalog's tags to matched files. Unmatched files can be matched by hand there."],
   ];
   $("health-list").innerHTML = groups.map(([g, title, help]) => {
@@ -4410,7 +4495,7 @@ function renderHealth() {
       const fixes = g === "tags"
         ? `<button type="button" class="ghost small" data-health="fixer">Open Tag fixer</button>`
         : [onDisk(x.f) && window.jwReveal ? `<button type="button" class="ghost small" data-health="reveal" data-path="${esc(x.f.path)}">Show in Finder</button>` : "",
-           onDisk(x.f) && song && fileUrl(song) && canDownloadToLibrary() ? `<button type="button" class="small" data-health="replace" data-path="${esc(x.f.path)}">Replace with the site's copy</button>` : "",
+           onDisk(x.f) && song && fileUrl(song) && canDownloadToLibrary() ? `<button type="button" class="small" data-health="replace" data-path="${esc(x.f.path)}">${g === "upgrade" ? "Upgrade" : "Replace with the site's copy"}</button>` : "",
            onDisk(x.f) && canTrash() ? `<button type="button" class="ghost small" data-health="trash" data-path="${esc(x.f.path)}">Move to Trash</button>` : ""].join("");
       return `<div class="health-row"><span class="what"><span>${esc(x.text)}</span><code>${esc(x.f.path)}</code></span><span class="row">${fixes}</span></div>`;
     }).join("")}${list.length > 300 ? `<p class="hint">And ${fmt(list.length - 300)} more.</p>` : ""}</div>`;
@@ -4460,12 +4545,17 @@ $("health-list").addEventListener("click", async e => {
     }
     if (b.dataset.health === "replace") {
       const song = state.catalog[f.songs[0]];
-      if (!window.confirm(`Move “${baseName(f.path)}” to the Trash and download “${song.name}” from the site in its place?`)) return;
+      if (!window.confirm(`Download “${song.name}” from the site and move “${baseName(f.path)}” to the Trash?`)) return;
       b.disabled = true;
-      await window.jwTrash(f.handle._path);
-      forget();
-      update(); // the song now counts as missing, so it can be downloaded
-      const r = await downloadSong(song);
+      // Same name: the old file must go first (downloads never overwrite). Otherwise download first, so a failed
+      // download leaves your copy where it was.
+      const samePath = `${saveFolder(song)}/${saveFileName(song)}` === f.path;
+      const retire = async () => { await window.jwTrash(f.handle._path); forget(); update(); };
+      if (samePath) await retire();
+      let r;
+      try { r = await downloadSong(song); }
+      catch (err) { throw new Error(samePath ? `${err.message} Your old copy is in the Trash.` : err.message); }
+      if (!samePath) await retire();
       toast(downloadMessage(song, r), Boolean(r.note));
       if (!r.existed) plexRefresh();
     }
@@ -4612,6 +4702,267 @@ function renderTimeline() {
   $("timeline-track").innerHTML = cols.join("");
 }
 $("timeline").addEventListener("toggle", () => { if ($("timeline").open) renderTimeline(); });
+
+/* ---------- download queue: kept in browser storage, so it carries on after quitting or a dropped drive.
+   Failed songs go to the back of the line and get 3 tries; an offline drive pauses the queue until it's back.
+   (var, not const: update() can call resumeQueue before this part of the script runs) */
+var DLQ_KEY = "jw-download-queue", queueResumed = false;
+function loadQueue() { try { const q = JSON.parse(localStorage.getItem(DLQ_KEY)); return Array.isArray(q) ? q : []; } catch (e) { return []; } }
+function saveQueue(q) { try { localStorage.setItem(DLQ_KEY, JSON.stringify(q)); } catch (e) { /* storage full: the queue lives for this session */ } }
+/** Adds songs to the queue (once each) and starts it. */
+function downloadAll(songs) {
+  const q = loadQueue(), have = new Set(q.map(x => String(x.id)));
+  let added = 0;
+  for (const s of songs) if (!have.has(String(s.id))) { q.push({ id: s.id, tries: 0 }); added++; }
+  saveQueue(q);
+  if (state.bulk) { state.bulk.total += added; renderQueuePanel(); if (state.links) renderLinksDialog(); }
+  runQueue();
+  return added;
+}
+// Wishlist alerts' Download button (the app passes catalog ids).
+window.jwQueueDownloads = async ids => {
+  // The alert can be about a file that appeared today, after this page saved its copy of the catalog: ask the site.
+  for (const s of (state.catalog || []).filter(s => ids.map(String).includes(String(s.id)) && !s.filePath)) {
+    try {
+      const res = await fetch(`${API}${encodeURIComponent(s.id)}/`, { headers: { Accept: "application/json" } });
+      if (res.ok) s.filePath = cleanSong(await res.json()).filePath || "";
+    } catch (e) { /* offline: reported below as no file */ }
+  }
+  const songs = (state.catalog || []).filter(s => ids.map(String).includes(String(s.id)) && fileUrl(s));
+  if (songs.length) { downloadAll(songs); toast(`Downloading ${songs.map(s => `“${s.name}”`).join(", ")}…`); }
+  else if (!state.catalog) { const q = loadQueue(); ids.forEach(id => q.push({ id, tries: 0 })); saveQueue(q); } // runs once the catalog loads
+  else toast("That song has no file on the site yet.", true);
+};
+// The app keeps a wishlist alert's Download until the page is ready (the alert can start the app).
+window.jwTakePendingDownloads = async () => {
+  const ids = await window.jwPendingDownloads?.().catch(() => null);
+  if (ids && ids.length) window.jwQueueDownloads(ids);
+};
+function resumeQueue() {
+  if (queueResumed || !canDownloadToLibrary() || !loadQueue().length) return;
+  queueResumed = true;
+  runQueue();
+}
+async function runQueue() {
+  if (state.bulk || !canDownloadToLibrary() || !state.catalog) return;
+  if (!loadQueue().length) return;
+  const job = state.bulk = { stop: false, done: 0, total: loadQueue().length, saved: 0, failed: [], waiting: "" };
+  renderQueuePanel();
+  if (state.links) renderLinksDialog();
+  while (!job.stop) {
+    const q = loadQueue(), item = q[0];
+    if (!item) break;
+    const song = state.catalog.find(s => String(s.id) === String(item.id));
+    if (!song || !fileUrl(song)) { saveQueue(q.slice(1)); job.done++; continue; }
+    job.current = song.name;
+    renderQueuePanel();
+    if ($("links-status")) setStatus("links-status", `Downloading ${fmt(job.done + 1)} of ${fmt(job.total)}: ${song.name}…`);
+    try {
+      const r = await downloadSong(song);
+      if (!r.existed) job.saved++;
+      if (r.note) job.failed.push(`${song.name} (${r.note})`);
+      saveQueue(loadQueue().filter(x => String(x.id) !== String(item.id)));
+      job.done++;
+    } catch (err) {
+      if (/isn't available/.test(err.message)) { await waitForDrive(job, err.message); continue; } // try the same song again
+      const rest = loadQueue().filter(x => String(x.id) !== String(item.id));
+      item.tries = (item.tries || 0) + 1;
+      if (item.tries >= 3) { job.failed.push(`${song.name} (${err.message})`); job.done++; saveQueue(rest); }
+      else { saveQueue([...rest, item]); await sleep(4000 * item.tries); } // back of the line, after a pause
+    }
+    renderQueuePanel();
+    if (state.links) renderLinksDialog();
+  }
+  if (job.stop) saveQueue([]);
+  state.bulk = null;
+  renderQueuePanel();
+  if (job.saved) plexRefresh();
+  if (state.links) renderLinksDialog();
+  const msg = `${job.stop ? "Stopped. " : ""}Downloaded ${plural(job.saved, "song", "songs")}.${job.failed.length ? ` ${plural(job.failed.length, "had a problem", "had problems")}: ${job.failed.slice(0, 3).join("; ")}${job.failed.length > 3 ? "; and more" : ""}.` : ""}`;
+  if ($("links-status")) setStatus("links-status", msg, job.failed.length > 0 && !job.saved);
+  toast(msg, job.failed.length > 0 && !job.saved);
+}
+/** The music drive dropped: try to reconnect every 30 seconds until it answers (or the queue is stopped). */
+async function waitForDrive(job, message) {
+  job.waiting = message;
+  renderQueuePanel();
+  while (!job.stop) {
+    for (let s = 0; s < 30 && !job.stop; s++) await sleep(1000); // Stop answers within a second
+    if (job.stop) break;
+    try {
+      const dir = await window.jwRestoreFolder("plex-music"); // the folder's bookmark remounts the share
+      if (dir && state.rootHandle && dir._path !== state.rootHandle._path) await loadFromHandle(dir);
+      const st = await Promise.race([window.jwStat(state.rootHandle._path), sleep(10000).then(() => null)]);
+      if (st && st.kind === "directory") break;
+    } catch (e) { /* still down */ }
+  }
+  job.waiting = "";
+  checkDrive();
+  renderQueuePanel();
+}
+function renderQueuePanel() {
+  const el = $("dlq"), job = state.bulk;
+  if (!el) return;
+  el.hidden = !job;
+  if (!job) return;
+  $("dlq-text").textContent = job.waiting
+    ? `Waiting for the music drive to come back. ${plural(loadQueue().length, "song", "songs")} queued.`
+    : `Downloading ${fmt(Math.min(job.done + 1, job.total))} of ${fmt(job.total)}${job.current ? `: ${job.current}` : ""}`;
+  $("dlq-bar").style.width = `${job.total ? (job.done / job.total) * 100 : 0}%`;
+}
+$("dlq-stop").addEventListener("click", () => { if (state.bulk) { state.bulk.stop = true; $("dlq-text").textContent = "Stopping after this song…"; } });
+
+/* ---------- versions of a song, side by side in its card */
+var versionIndex = null, versionIndexFor = null;
+function versionKey(name) { return normalize(String(name || "").replace(/\s*[\(\[\{][^\)\]\}]*[\)\]\}]/g, " ")); }
+function versionsOf(i) {
+  if (versionIndexFor !== state.catalog) {
+    versionIndex = new Map();
+    state.catalog.forEach((s, j) => { const k = versionKey(s.name); if (!k) return; if (!versionIndex.has(k)) versionIndex.set(k, []); versionIndex.get(k).push(j); });
+    versionIndexFor = state.catalog;
+  }
+  return versionIndex.get(versionKey(state.catalog[i].name)) || [i];
+}
+function versionsHtml(i) {
+  const list = versionsOf(i);
+  if (list.length < 2 || list.length > 15) return ""; // 86 songs are called "Untitled": that's a common title, not versions
+  const missing = list.filter(j => !state.owned.has(j) && fileUrl(state.catalog[j]));
+  const month = s => { const m = recordMonth(s.recordDates); return m === null ? "" : `${MONTH_ABBR[m % 12]} ${Math.floor(m / 12)}`; };
+  return `<h3 class="section-h">All versions (${list.length})</h3>
+    <div class="versions-wrap"><table class="versions"><thead><tr><th>Version</th><th>Era</th><th>Length</th><th>Recorded</th><th>Yours</th></tr></thead><tbody>${list.map(j => {
+      const s = state.catalog[j];
+      return `<tr${j === i ? ' class="current"' : ""}><td>${j === i ? `<strong>${esc(s.name)}</strong>` : `<button type="button" class="song-link" data-open-song="${j}">${esc(s.name)}</button>`}</td>
+        <td>${esc(eraName(s))}</td><td>${esc(s.length || "")}</td><td>${esc(month(s))}</td><td>${state.owned.has(j) ? '<span class="have">✓</span>' : '<span class="muted">—</span>'}</td></tr>`;
+    }).join("")}</tbody></table></div>
+    ${canDownloadToLibrary() && missing.length ? `<button type="button" class="small" data-dl-versions="${missing.join(",")}">Download the ${plural(missing.length, "missing version", "missing versions")}</button>` : ""}`;
+}
+document.addEventListener("click", e => {
+  const b = e.target.closest("button[data-dl-versions]");
+  if (!b) return;
+  const songs = b.dataset.dlVersions.split(",").map(n => state.catalog[Number(n)]).filter(Boolean);
+  downloadAll(songs);
+  b.disabled = true;
+  toast(`Added ${plural(songs.length, "version", "versions")} to the download queue.`);
+});
+
+/* ---------- on this day: songs recorded, previewed, surfaced or released on today's date */
+function renderToday() {
+  const el = $("today-card");
+  if (!el || !state.catalog) return;
+  const now = new Date(), m = now.getMonth(), d = now.getDate();
+  const kinds = [["recordDates", "Recorded"], ["previewDate", "Previewed"], ["leakDate", "Surfaced"], ["release", "Released"]];
+  const groups = new Map();
+  state.catalog.forEach((s, i) => {
+    for (const [k, label] of kinds) for (const x of datesIn(s[k])) {
+      if (x.m !== m || x.d !== d) continue;
+      const key = `${x.y}|${label}`;
+      if (!groups.has(key)) groups.set(key, new Set());
+      groups.get(key).add(i);
+    }
+  });
+  if (!groups.size) { el.hidden = true; return; }
+  const rows = [...groups].sort((a, b) => a[0].localeCompare(b[0]));
+  let shown = 0;
+  el.innerHTML = `<h3>On this day</h3>${rows.map(([key, set]) => {
+    if (shown >= 14) return "";
+    const [y, label] = key.split("|"), list = [...set].slice(0, 14 - shown);
+    shown += list.length;
+    return `<p><strong>${esc(label)} in ${esc(y)}:</strong> ${list.map(i => `<button type="button" class="song-link" data-open-song="${i}">${esc(state.catalog[i].name)}</button>${state.owned.has(i) ? ' <span class="have" title="In your library">✓</span>' : ""}`).join(", ")}${set.size > list.length ? ` and ${fmt(set.size - list.length)} more` : ""}</p>`;
+  }).join("")}`;
+  el.hidden = false;
+}
+
+/* ---------- Plex: play counts are loaded once and reused for Stats and the smart playlists */
+async function fetchListening() {
+  const files = (state.library || []).filter(f => f.songs && f.songs.length);
+  if (!files.length) throw new Error("Open your music folder first");
+  const r = await window.jwPlex({ action: "stats", paths: files.map(f => f.handle?._path || f.path) });
+  const byPath = new Map(r.items.map(it => [it.path, it]));
+  state.listen = { counts: new Map(files.map(f => [f.path, byPath.get(f.handle?._path || f.path) || null])), missing: r.missing };
+}
+function listeningLists() {
+  const L = state.listen, played = new Map(), never = [];
+  for (const f of state.library || []) {
+    const c = L.counts.get(f.path);
+    if (c && c.plays && f.songs && f.songs.length) played.set(f.songs[0], (played.get(f.songs[0]) || 0) + c.plays);
+  }
+  state.owned.forEach((files, i) => { if (files.some(f => L.counts.get(f.path)) && files.every(f => !(L.counts.get(f.path)?.plays))) never.push(i); });
+  return { most: [...played].sort((a, b) => b[1] - a[1]).slice(0, 50).map(([i]) => i), never };
+}
+
+/* ---------- background music: pick an era */
+function ambientEra() { try { return localStorage.getItem("jw-ambient-era") || ""; } catch (e) { return ""; } }
+function setAmbientEra(name) {
+  try { if (name) localStorage.setItem("jw-ambient-era", name); else localStorage.removeItem("jw-ambient-era"); } catch (e) {}
+  try { localStorage.setItem("jw-ambient", "on"); } catch (e) {}
+  playerPaused = false;
+  syncAmbient();
+  window.jwAmbient?.({ cmd: "skip" }).catch(() => {}); // start the new mix now, not after this song
+}
+$("player-era").addEventListener("change", e => setAmbientEra(e.target.value));
+
+/* ---------- library snapshots (Mac app): weekly, off the music drive */
+function snapshotCsv() {
+  const lines = [["path", "title", "artist", "album", "year", "format", "size_bytes", "song_ids", "song_names", "era"]];
+  for (const f of state.library || []) {
+    const songs = (f.songs || []).map(j => state.catalog && state.catalog[j]).filter(Boolean);
+    lines.push([f.path, f.tags?.title || "", f.tags?.artist || "", f.tags?.album || "", f.tags?.year || "", f.ext, f.size ?? "",
+      songs.map(s => s.id).join(" "), songs.map(s => s.name).join(" / "), songs[0] ? eraName(songs[0]) : ""]);
+  }
+  return csvText(lines);
+}
+function lastSnapshot() { try { return Number(localStorage.getItem("jw-last-snapshot")) || 0; } catch (e) { return 0; } }
+async function saveSnapshot(quiet) {
+  if (!window.jwSnapshot || !state.library || !state.library.length) return;
+  try {
+    const r = await window.jwSnapshot(snapshotCsv());
+    try { localStorage.setItem("jw-last-snapshot", String(Date.now())); } catch (e) {}
+    if (!quiet) setStatus("export-status", `Saved a snapshot of ${plural(state.library.length, "file", "files")} to ${r.folder}.`);
+    renderSnapshotItem();
+  } catch (err) {
+    if (!quiet) setStatus("export-status", `Couldn't save the snapshot: ${err.message}`, true);
+  }
+}
+function renderSnapshotItem() {
+  if (!$("snapshot-item")) return;
+  $("snapshot-item").hidden = !window.jwSnapshot;
+  const last = lastSnapshot();
+  $("snapshot-last").textContent = last ? `Last snapshot: ${new Date(last).toLocaleDateString()}.` : "No snapshot yet.";
+}
+var snapshotTimer = null;
+function maybeSnapshot() {
+  if (snapshotTimer || !window.jwSnapshot || Date.now() - lastSnapshot() < 7 * 864e5) return;
+  snapshotTimer = setTimeout(() => saveSnapshot(true), 60000); // after launch settles, once per session
+}
+$("snapshot-now").addEventListener("click", () => saveSnapshot(false));
+$("snapshot-show").addEventListener("click", () => window.jwSnapshotFolder?.());
+$("snapshot-restore").addEventListener("click", () => $("snapshot-file").click());
+$("snapshot-file").addEventListener("change", async e => {
+  const file = e.target.files && e.target.files[0];
+  e.target.value = "";
+  if (!file || !state.catalog) return;
+  const rows = parseCsv(await file.text()), col = rows[0] ? rows[0].indexOf("song_ids") : -1;
+  if (col < 0) { setStatus("export-status", "That file isn't a Juice Tracker library snapshot.", true); return; }
+  // One song per file: the version whose name is the file's title (a file can match all versions of a song).
+  const [nameCol, titleCol, pathCol] = ["song_names", "title", "path"].map(h => rows[0].indexOf(h));
+  const ids = new Set(rows.slice(1).map(r => {
+    const list = String(r[col] || "").split(" ").filter(Boolean), names = String(r[nameCol] || "").split(" / ");
+    const title = r[titleCol] || titleFromFilename(r[pathCol] || "");
+    let k = names.findIndex(n => cmdkKey(n) === cmdkKey(title));
+    if (k < 0) k = names.findIndex(n => normalize(n) === normalize(title));
+    return list[k >= 0 && k < list.length ? k : 0];
+  }).filter(Boolean));
+  const lost = state.catalog.map((song, i) => ({ song, i })).filter(r => ids.has(String(r.song.id)) && !state.owned.has(r.i));
+  if (!lost.length) { setStatus("export-status", `You still have every song in that snapshot (${plural(ids.size, "song", "songs")}).`); return; }
+  openLinks(lost, `Songs in your snapshot that aren't in your library now`, "#snapshot-restore");
+});
+
+/* ---------- trivia: name that song from a clip of your own files (Mac app) */
+function playTriviaClip(q) {
+  if (!q || !q.clip) return;
+  if (q.start === undefined) q.start = 25 + Math.floor(Math.random() * 40);
+  window.jwAmbient?.({ clipPath: q.clip, start: q.start, seconds: 15 }).catch(() => {});
+}
 
 // Mac app only: reopen the music folder picked last time. The last scan shows right away from the tag cache;
 // then the folder is listed in the background, since a network drive can take minutes to answer.
