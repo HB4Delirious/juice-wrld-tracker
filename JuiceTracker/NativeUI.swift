@@ -207,9 +207,8 @@ final class SkyNSView: NSView {
         // the faint tattoo-flash doodles (hearts, lightning, butterflies, chains, crowns), drifting the other way
         if let flash = NSImage(named: "jt-flash") {
             let tile: CGFloat = 560
-            let layer = CALayer()
-            layer.frame = CGRect(x: -tile, y: 0, width: bounds.width + tile, height: bounds.height + tile)
-            layer.backgroundColor = NSColor(patternImage: flash).cgColor
+            let layer = Self.tiled(flash, tile: tile, covering: CGSize(width: bounds.width + tile, height: bounds.height + tile))
+            layer.frame.origin = CGPoint(x: -tile, y: 0)
             root.addSublayer(layer)
             let drift = CABasicAnimation(keyPath: "position")
             drift.fromValue = layer.position
@@ -223,7 +222,8 @@ final class SkyNSView: NSView {
         // twinkling sparkles
         let sparkles = CALayer()
         sparkles.frame = b
-        sparkles.backgroundColor = NSColor(patternImage: NSImage(named: "jt-sparkles") ?? Self.sparkleTile()).cgColor
+        let sparkleTiles = Self.tiled(NSImage(named: "jt-sparkles") ?? Self.sparkleTile(), tile: 520, covering: b.size)
+        sparkles.addSublayer(sparkleTiles)
         let twinkle = CABasicAnimation(keyPath: "opacity")
         twinkle.fromValue = 0.15
         twinkle.toValue = 1
@@ -264,9 +264,8 @@ final class SkyNSView: NSView {
     }
 
     private func addStarField(to root: CALayer, tile: CGFloat, count: Int, seed: UInt64, seconds: Double, alpha: CGFloat) {
-        let field = CALayer()
-        field.frame = CGRect(x: 0, y: 0, width: bounds.width + tile, height: bounds.height + tile)
-        field.backgroundColor = NSColor(patternImage: Self.starTile(size: tile, count: count, seed: seed, alpha: alpha)).cgColor
+        let field = Self.tiled(Self.starTile(size: tile, count: count, seed: seed, alpha: alpha), tile: tile,
+                               covering: CGSize(width: bounds.width + tile, height: bounds.height + tile))
         root.addSublayer(field)
         let drift = CABasicAnimation(keyPath: "position")
         drift.fromValue = field.position
@@ -275,6 +274,27 @@ final class SkyNSView: NSView {
         drift.repeatCount = .infinity
         drift.timingFunction = CAMediaTimingFunction(name: .linear)
         field.add(drift, forKey: "drift")
+    }
+
+    /// A layer covering `size` with copies of one image, repeated by Core Animation on the graphics chip. (A pattern
+    /// color did the same but made the app redraw the tiles itself whenever the layer moved: about a third of a core.)
+    private static func tiled(_ image: NSImage, tile: CGFloat, covering size: CGSize) -> CALayer {
+        let scale = NSScreen.main?.backingScaleFactor ?? 2
+        let one = CALayer()
+        one.frame = CGRect(x: 0, y: 0, width: tile, height: tile)
+        one.contents = image.cgImage(forProposedRect: nil, context: nil, hints: [.ctm: AffineTransform(scale: scale)])
+        one.contentsScale = scale
+        let row = CAReplicatorLayer()
+        row.frame = CGRect(x: 0, y: 0, width: size.width, height: tile)
+        row.instanceCount = Int((size.width / tile).rounded(.up))
+        row.instanceTransform = CATransform3DMakeTranslation(tile, 0, 0)
+        row.addSublayer(one)
+        let grid = CAReplicatorLayer()
+        grid.frame = CGRect(origin: .zero, size: size)
+        grid.instanceCount = Int((size.height / tile).rounded(.up))
+        grid.instanceTransform = CATransform3DMakeTranslation(0, tile, 0)
+        grid.addSublayer(row)
+        return grid
     }
 
     private static func starTile(size: CGFloat, count: Int, seed: UInt64, alpha: CGFloat) -> NSImage {
@@ -640,7 +660,6 @@ struct CollectionScreen: View {
     @State private var query = ""
     @State private var limit = 200
     @State private var askAll: [Int] = []
-    @State private var floatHeart = false
     init(state: NState, songs: [Song]) { self.state = state; self.all = songs }
 
     private var era: String? { store.eraFilter }
@@ -699,12 +718,8 @@ struct CollectionScreen: View {
                     .rotationEffect(.degrees(-1.2), anchor: .leading)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.trailing, 200)
-                Image("jt-planet").resizable().frame(width: 200, height: 200).offset(x: 24, y: -24)
-                    .offset(y: floatHeart ? -8 : 0)
-                Image("jt-heart").resizable().frame(width: 46, height: 46).offset(x: -150, y: 120)
-                    .offset(y: floatHeart ? 6 : -4).rotationEffect(.degrees(floatHeart ? 5 : -3))
+                FloatingDoodles().frame(width: 240, height: 230).offset(x: 24, y: -40).allowsHitTesting(false)
             }
-            .onAppear { withAnimation(.easeInOut(duration: 4.5).repeatForever(autoreverses: true)) { floatHeart = true } }
             meter.padding(.top, 26)
             categories.padding(.top, 24)
         }
@@ -868,6 +883,36 @@ struct CollectionScreen: View {
         }
         .onChange(of: query) { _ in limit = 200 }
     }
+}
+
+/// The planet and the cracked heart, bobbing. Animated by Core Animation, so the app does nothing per frame
+/// (an endless SwiftUI animation here cost about 13% CPU).
+private struct FloatingDoodles: NSViewRepresentable {
+    func makeNSView(context: Context) -> NSView {
+        let v = NSView(frame: NSRect(x: 0, y: 0, width: 240, height: 230))
+        v.wantsLayer = true
+        func add(_ name: String, _ frame: CGRect, rise: CGFloat, turn: CGFloat, delay: Double) {
+            guard let image = NSImage(named: name) else { return }
+            let l = CALayer()
+            l.frame = frame
+            l.contents = image
+            l.contentsGravity = .resizeAspect
+            v.layer?.addSublayer(l)
+            let bob = CABasicAnimation(keyPath: "transform")
+            bob.fromValue = CATransform3DIdentity
+            bob.toValue = CATransform3DConcat(CATransform3DMakeRotation(turn * .pi / 180, 0, 0, 1), CATransform3DMakeTranslation(0, rise, 0))
+            bob.duration = 4.5
+            bob.autoreverses = true
+            bob.repeatCount = .infinity
+            bob.beginTime = CACurrentMediaTime() + delay
+            bob.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+            l.add(bob, forKey: "bob")
+        }
+        add("jt-planet", CGRect(x: 40, y: 30, width: 200, height: 200), rise: 8, turn: 0, delay: 0)
+        add("jt-heart", CGRect(x: 10, y: 0, width: 46, height: 46), rise: 10, turn: 7, delay: 2)
+        return v
+    }
+    func updateNSView(_ nsView: NSView, context: Context) {}
 }
 
 struct EraCard: View {
