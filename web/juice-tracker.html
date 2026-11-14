@@ -701,6 +701,7 @@
     animation: fly-across var(--t) cubic-bezier(.4, 0, .6, 1) forwards, fly-flap .3s steps(4) infinite alternate; }
   @keyframes fly-flap { from { transform: scaleX(var(--flip, 1)); } to { transform: scaleX(calc(var(--flip, 1) * .45)); } }
   @keyframes fly-across { 0% { translate: 0 0; } 50% { translate: calc(var(--dx) / 2) calc(var(--dy) / 2 - 80px); } 100% { translate: var(--dx) var(--dy); } }
+  .engine *, .engine *::before, .engine *::after { animation: none !important; transition: none !important; }
   /* calm: the endless motion pauses while the window is in the background or untouched for a minute (set in the
      script), so the app costs almost nothing while music plays; it carries on from where it stopped. */
   .calm .sky > div, .calm .shell::before, .calm .shell::after, .calm .scoreboard::before, .calm .scoreboard::after,
@@ -3181,11 +3182,11 @@ $("dup-clean-all").addEventListener("click", () => trashExtraCopies(state.dupGro
 
 /* Duplicate cleanup (Mac app): keep the best copy, move the rest to the Trash. Never deletes outright. */
 function canTrash() { return Boolean(window.jwTrash && state.rootHandle && state.rootHandle._path); }
-async function trashExtraCopies(groups) {
+async function trashExtraCopies(groups, confirmed = false) {
   const victims = extraCopies(groups.filter(g => g && isExactDuplicate(g)));
-  if (!victims.length) return;
+  if (!victims.length) return "";
   const list = victims.slice(0, 12).map(f => `• ${f.path}`).join("\n") + (victims.length > 12 ? `\n…and ${fmt(victims.length - 12)} more` : "");
-  if (!window.confirm(`Move ${plural(victims.length, "file", "files")} to the Trash?\n\nThe best copy of each song is kept, and you can put files back from the Trash.\n\n${list}`)) return;
+  if (!confirmed && !window.confirm(`Move ${plural(victims.length, "file", "files")} to the Trash?\n\nThe best copy of each song is kept, and you can put files back from the Trash.\n\n${list}`)) return "";
   let moved = 0;
   const failed = [];
   for (const f of victims) {
@@ -3201,7 +3202,9 @@ async function trashExtraCopies(groups) {
   if (moved && state.lastItems) tagCache.setItems(state.lastItems.map(it => it.path));
   update();
   renderDuplicates();
-  toast(`Moved ${plural(moved, "file", "files")} to the Trash.${failed.length ? ` Couldn't move ${failed.slice(0, 3).join("; ")}${failed.length > 3 ? "; and more" : ""}.` : ""}`, failed.length > 0);
+  const msg = `Moved ${plural(moved, "file", "files")} to the Trash.${failed.length ? ` Couldn't move ${failed.slice(0, 3).join("; ")}${failed.length > 3 ? "; and more" : ""}.` : ""}`;
+  toast(msg, failed.length > 0);
+  return msg;
 }
 $("dup-export").addEventListener("click", () => {
   const lines = [["song", "in_catalog", "file_count", "file", "format", "size_bytes", "read_as", "path"]];
@@ -3251,22 +3254,27 @@ async function renderPlexItem() {
   $("plex-source").innerHTML = plexSources().map(s => `<option value="${esc(s.id)}">${esc(s.label)} (${fmt(s.songs.length)})</option>`).join("");
   if (keep) $("plex-source").value = keep;
 }
-$("plex-make").addEventListener("click", async () => {
-  const src = plexSources().find(s => s.id === $("plex-source").value);
+$("plex-make").addEventListener("click", () => makePlexPlaylist($("plex-source").value).catch(() => {}));
+/** Makes (or replaces) a Plex playlist from one of plexSources(). Returns a summary; throws if it fails. */
+async function makePlexPlaylist(id) {
+  const src = plexSources().find(s => s.id === id);
   // One file can match several catalog versions of a song; send each file once.
   const paths = src ? [...new Set(src.songs.flatMap(i => (state.owned.get(i) || []).map(f => f.handle && f.handle._path).filter(Boolean)))] : [];
-  if (!paths.length) { setStatus("export-status", "There are no songs you have in that list yet.", true); return; }
+  if (!paths.length) { setStatus("export-status", "There are no songs you have in that list yet.", true); throw new Error("There are no songs you have in that list yet"); }
   $("plex-make").disabled = true;
   setStatus("export-status", `Making “${src.title}” in Plex…`);
   try {
     const r = await window.jwPlex({ action: "playlist", title: src.title, paths });
-    setStatus("export-status", `Made “${src.title}” in Plex with ${plural(r.matched, "song", "songs")}.${r.missing ? ` ${plural(r.missing, "file wasn't", "files weren't")} found in Plex yet; let Plex finish scanning and make it again.` : ""}`);
+    const msg = `Made “${src.title}” in Plex with ${plural(r.matched, "song", "songs")}.${r.missing ? ` ${plural(r.missing, "file wasn't", "files weren't")} found in Plex yet; let Plex finish scanning and make it again.` : ""}`;
+    setStatus("export-status", msg);
+    return msg;
   } catch (err) {
     setStatus("export-status", `Couldn't make the playlist: ${err.message}`, true);
+    throw err;
   } finally {
     $("plex-make").disabled = false;
   }
-});
+}
 
 function renderExportPanel() {
   if (!state.catalog || !state.library) return;
@@ -3280,16 +3288,24 @@ function renderExportPanel() {
 }
 $("export")?.addEventListener("toggle", () => { if ($("export").open) renderExportPanel(); });
 $("export-full").addEventListener("click", () => {
+  downloadText(`juice-wrld-full-catalog-${today()}.csv`, fullCatalogCsv(), "text/csv");
+  setStatus("export-status", `Exported ${plural(state.catalog.length, "song", "songs")}.`);
+});
+function fullCatalogCsv() {
   const lines = [[...FULL_COLUMNS.map(([h]) => h), "in_your_library", "your_files", "on_wishlist", "your_note", "new_since_last_check", "now_released"]];
   state.catalog.forEach((s, i) => lines.push([
     ...FULL_COLUMNS.map(([, get]) => get(s)),
     state.owned.has(i) ? "yes" : "no", (state.owned.get(i) || []).map(f => f.path).join(" | "),
     isWished(s) ? "yes" : "", noteOf(s), state.newIds.has(s.id) ? "yes" : "", state.releasedIds.has(s.id) ? "yes" : "",
   ]));
-  downloadText(`juice-wrld-full-catalog-${today()}.csv`, csvText(lines), "text/csv");
-  setStatus("export-status", `Exported ${plural(state.catalog.length, "song", "songs")}.`);
-});
+  return csvText(lines);
+}
 $("export-backup").addEventListener("click", () => {
+  const backup = backupData();
+  downloadText(`juice-wrld-tracker-backup-${today()}.json`, JSON.stringify(backup, null, 2), "application/json");
+  setStatus("export-status", `Backed up ${plural(backup.wishlist.length, "wishlist song", "wishlist songs")} and ${plural(backup.notes.length, "note", "notes")}.`);
+});
+function backupData() {
   const byId = new Map(state.catalog.map(s => [s.id, s.name]));
   const backup = {
     app: "juice-wrld-collection-tracker", version: 1, exportedAt: new Date().toISOString(),
@@ -3298,16 +3314,20 @@ $("export-backup").addEventListener("click", () => {
     trivia: state.personal.trivia, linkTemplate: state.personal.linkTemplate || "",
     matchOverrides: state.personal.matchOverrides, opened: state.personal.opened, fixGenre: state.personal.fixGenre || "",
   };
-  downloadText(`juice-wrld-tracker-backup-${today()}.json`, JSON.stringify(backup, null, 2), "application/json");
-  setStatus("export-status", `Backed up ${plural(backup.wishlist.length, "wishlist song", "wishlist songs")} and ${plural(backup.notes.length, "note", "notes")}.`);
-});
+  return backup;
+}
 $("export-restore").addEventListener("change", async e => {
   const file = e.target.files[0];
   e.target.value = "";
   if (!file) return;
-  try {
-    const data = JSON.parse(await file.text());
-    if (data.app !== "juice-wrld-collection-tracker") throw new Error();
+  try { setStatus("export-status", restoreBackup(await file.text())); }
+  catch (err) { setStatus("export-status", "That file isn't a backup from this tracker.", true); }
+});
+/** Merges a backup into what's here (nothing is overwritten). Returns a summary; throws if it isn't a backup. */
+function restoreBackup(text) {
+  {
+    const data = JSON.parse(text);
+    if (data.app !== "juice-wrld-collection-tracker") throw new Error("That file isn't a backup from this tracker.");
     let addedWish = 0, addedNotes = 0;
     for (const w of data.wishlist || []) if (w.id && !state.personal.wish[w.id]) { state.personal.wish[w.id] = w.added || new Date().toISOString(); addedWish++; }
     for (const n of data.notes || []) if (n.id && n.text && !state.personal.notes[n.id]) { state.personal.notes[n.id] = n.text; addedNotes++; }
@@ -3321,11 +3341,9 @@ $("export-restore").addEventListener("change", async e => {
     savePersonal();
     update();
     renderExportPanel();
-    setStatus("export-status", `Restored ${plural(addedWish, "wishlist song", "wishlist songs")} and ${plural(addedNotes, "note", "notes")}. Anything you already had was kept.`);
-  } catch (err) {
-    setStatus("export-status", "That file isn't a backup from this tracker.", true);
+    return `Restored ${plural(addedWish, "wishlist song", "wishlist songs")} and ${plural(addedNotes, "note", "notes")}. Anything you already had was kept.`;
   }
-});
+}
 
 /* ---------- trivia */
 const TRIVIA_TYPES = { mixed: "Mixed", era: "Eras", producer: "Producers", year: "Recording years", release: "Released or not" };
@@ -4165,13 +4183,16 @@ $("fix-backup").addEventListener("click", async () => {
 
 
 const WRITERS = { mp3: [writeMp3, verifyMp3], flac: [writeFlac, verifyFlac], m4a: [writeM4a, verifyM4a] };
-$("fix-write").addEventListener("click", async () => {
+$("fix-write").addEventListener("click", () => writeSelectedTags(false));
+/** Writes the ticked changes. The native window asks for confirmation itself (confirmed = true). */
+async function writeSelectedTags(confirmed) {
+  if (state.writing) return;
   const items = state.plan.changes.filter(isSelected);
   if (!items.length || !state.rootHandle) return;
   let perm = await state.rootHandle.queryPermission({ mode: "readwrite" });
   if (perm !== "granted") perm = await state.rootHandle.requestPermission({ mode: "readwrite" });
   if (perm !== "granted") { setStatus("fix-status", "Editing wasn't allowed. Click Write tags again and allow the browser to save changes to the folder.", true); return; }
-  if (!window.confirm(`Write new tags to ${plural(items.length, "file", "files")}?${state.backupDir ? "" : "\n\nNo backup folder is set, so the originals won't be saved."}`)) return;
+  if (!confirmed && !window.confirm(`Write new tags to ${plural(items.length, "file", "files")}?${state.backupDir ? "" : "\n\nNo backup folder is set, so the originals won't be saved."}`)) return;
 
   state.writing = true;
   renderFixer();
@@ -4193,7 +4214,7 @@ $("fix-write").addEventListener("click", async () => {
   if (ok) plexRefresh();
   const msg = `Updated ${plural(ok, "file", "files")}.${failed.length ? ` ${plural(failed.length, "file", "files")} were left unchanged: ${failed.slice(0, 5).join("; ")}${failed.length > 5 ? "; and more" : ""}.` : ""} In Plex, refresh the library's metadata to see the new tags.`;
   setStatus("fix-status", msg, failed.length > 0 && ok === 0);
-});
+}
 
 /* ---------- views (sidebar) */
 // Ko-fi page for the "Support this project" button. Empty hides the button.
@@ -4627,9 +4648,12 @@ function renderHealth() {
   }).join("") || (health.done ? `<p>Every file opened and has the catalog's tags.</p>` : "");
 }
 $("health").addEventListener("toggle", () => { if ($("health").open) renderHealth(); });
-$("health-run").addEventListener("click", async () => {
-  if (!state.library) { setStatus("health-status", "Open your music folder first.", true); return; }
-  if (!window.jwProbe) { health.done = true; renderHealth(); setStatus("health-status", "Checked tags. Checking audio needs the Mac app."); return; }
+$("health-run").addEventListener("click", () => runHealthCheck());
+function healthStatus(text, isError) { health.status = text; setStatus("health-status", text, isError); }
+async function runHealthCheck() {
+  if (health.running) return;
+  if (!state.library) { healthStatus("Open your music folder first.", true); return; }
+  if (!window.jwProbe) { health.done = true; renderHealth(); healthStatus("Checked tags. Checking audio needs the Mac app."); return; }
   const files = state.library.filter(f => f.handle && f.handle._path && PLAYABLE.has(f.ext));
   Object.assign(health, { running: true, stop: false });
   health.probed.clear();
@@ -4639,39 +4663,47 @@ $("health-run").addEventListener("click", async () => {
     while (next < files.length && !health.stop) {
       const f = files[next++];
       try { health.probed.set(f.path, await window.jwProbe(f.handle._path)); } catch (e) { /* gone since the scan: skip */ }
-      if (++done % 10 === 0) setStatus("health-status", `Checked ${fmt(done)} of ${plural(files.length, "file", "files")}…`);
+      if (++done % 10 === 0) healthStatus(`Checked ${fmt(done)} of ${plural(files.length, "file", "files")}…`);
     }
   };
   await Promise.all([worker(), worker()]);
   Object.assign(health, { running: false, done: !health.stop });
-  setStatus("health-status", health.stop ? `Stopped after ${plural(done, "file", "files")}.` : `Checked ${plural(files.length, "file", "files")}.`);
+  healthStatus(health.stop ? `Stopped after ${plural(done, "file", "files")}.` : `Checked ${plural(files.length, "file", "files")}.`);
   renderHealth();
-});
+}
 $("health-stop").addEventListener("click", () => { health.stop = true; });
 $("health-list").addEventListener("click", async e => {
   const b = e.target.closest("button[data-health]");
   if (!b) return;
   if (b.dataset.health === "fixer") { showView("fixer"); return; }
-  const f = (state.library || []).find(x => x.path === b.dataset.path);
+  const op = b.dataset.health, f = (state.library || []).find(x => x.path === b.dataset.path);
   if (!f) return;
+  if (op === "trash" && !window.confirm(`Move “${baseName(f.path)}” to the Trash?`)) return;
+  if (op === "replace" && !window.confirm(`Download “${state.catalog[f.songs[0]].name}” from the site and move “${baseName(f.path)}” to the Trash?`)) return;
+  b.disabled = true;
+  try { await healthFix(op, f.path); } catch (err) { toast(`That didn't work: ${err.message}`, true); b.disabled = false; }
+});
+/** Show in Finder, move to Trash, or replace with the site's copy. Already confirmed by the caller; throws on failure. */
+async function healthFix(op, path) {
+  const f = (state.library || []).find(x => x.path === path);
+  if (!f) throw new Error("That file isn't in your library anymore");
   const forget = () => {
     state.library = state.library.filter(x => x !== f);
     if (state.lastItems) { state.lastItems = state.lastItems.filter(it => it.path !== f.path); tagCache.setItems(state.lastItems.map(it => it.path)); }
     health.probed.delete(f.path);
   };
-  try {
-    if (b.dataset.health === "reveal") { await window.jwReveal(f.handle._path); return; }
-    if (b.dataset.health === "trash") {
-      if (!window.confirm(`Move “${baseName(f.path)}” to the Trash?`)) return;
+  {
+    if (op === "reveal") { await window.jwReveal(f.handle._path); return ""; }
+    if (op === "trash") {
       await window.jwTrash(f.handle._path);
       forget();
       update();
-      toast(`Moved “${baseName(f.path)}” to the Trash.`);
+      const msg = `Moved “${baseName(f.path)}” to the Trash.`;
+      toast(msg);
+      return msg;
     }
-    if (b.dataset.health === "replace") {
+    if (op === "replace") {
       const song = state.catalog[f.songs[0]];
-      if (!window.confirm(`Download “${song.name}” from the site and move “${baseName(f.path)}” to the Trash?`)) return;
-      b.disabled = true;
       // Same name: the old file must go first (downloads never overwrite). Otherwise download first, so a failed
       // download leaves your copy where it was.
       const samePath = `${saveFolder(song)}/${saveFileName(song)}` === f.path;
@@ -4683,12 +4715,11 @@ $("health-list").addEventListener("click", async e => {
       if (!samePath) await retire();
       toast(downloadMessage(song, r), Boolean(r.note));
       if (!r.existed) plexRefresh();
+      return downloadMessage(song, r);
     }
-  } catch (err) {
-    toast(`That didn't work: ${err.message}`, true);
-    b.disabled = false;
   }
-});
+  return "";
+}
 
 /* ---------- music drive status (Mac app): is the folder answering, slowly, or not at all? */
 var driveBusy = false;
@@ -5131,16 +5162,33 @@ function confetti() {
 
 /* ---------- the native (SwiftUI) window: this page stays the engine and sends it a snapshot after each change.
    The native window draws it and calls jwNativeAction for anything that changes data. */
+// The catalog's fixed details (names, dates, credits) are sent only when they change; owned, wishlist and the
+// queue go every time. Credits and dates fill in as song details load, so the detail count is part of the check.
+var nativeCatalogKey = null;
 function nativeState() {
   const cats = new Map();
   state.catalog.forEach((s, i) => { const c = cats.get(s.category) || { name: capital(s.category), have: 0, total: 0 }; c.total++; if (state.owned.has(i)) c.have++; cats.set(s.category, c); });
-  return {
+  const key = `${state.catalog.length}|${state.catalog.filter(s => s.hasDetails).length}|${state.catalog[0] && state.catalog[0].id}`;
+  const out = {
     total: state.catalog.length, have: state.owned.size, folder: state.rootHandle ? state.rootHandle.name : "",
     queue: state.bulk ? { done: state.bulk.done, total: state.bulk.total, current: state.bulk.current || "", waiting: Boolean(state.bulk.waiting) } : null,
     cats: [...cats.values()].sort((a, b) => b.total - a.total),
     eras: eraStats().map(e => ({ name: e.name, have: e.have, total: e.total, time: hasValue(e.info.timeFrame) ? e.info.timeFrame : "", desc: hasValue(e.info.description) ? e.info.description : "" })),
-    songs: state.catalog.map((s, i) => ({ i, n: s.name, e: eraName(s), c: capital(s.category), l: s.length || "", o: state.owned.has(i), w: isWished(s), f: Boolean(fileUrl(s)) })),
+    owned: [...state.owned.keys()],
+    wished: state.catalog.map((s, i) => isWished(s) ? i : -1).filter(i => i >= 0),
+    catalog: null,
   };
+  if (key !== nativeCatalogKey) {
+    nativeCatalogKey = key;
+    const year = v => { const y = yearOf(v); return y ? Number(y) : null; };
+    out.catalog = state.catalog.map((s, i) => {
+      const d = state.derived[i] || deriveSong(s);
+      return { i, n: s.name, e: eraName(s), c: capital(s.category), l: s.length || "", f: Boolean(fileUrl(s)), m: recordMonth(s.recordDates),
+        ry: [...d.recYears], py: year(s.previewDate), sy: year(s.leakDate), rl: isReleased(s) ? year(s.release) : null,
+        pr: d.producers, ar: d.artists, en: d.engineers, st: d.studios };
+    });
+  }
+  return out;
 }
 var nativeTimer = null;
 function pushNativeState() {
@@ -5151,7 +5199,132 @@ function pushNativeState() {
 }
 window.jwNativeAction = async a => {
   const s = state.catalog && state.catalog[a.i];
-  if (a.op === "refresh") { pushNativeState(); return ""; }
+  if (a.op === "refresh") { nativeCatalogKey = null; pushNativeState(); return ""; }
+  if (a.op === "dups") {
+    const groups = duplicateGroups();
+    return JSON.stringify({ canTrash: canTrash(), exactExtra: canTrash() ? extraCopies(groups.filter(isExactDuplicate)).length : 0,
+      groups: groups.map(g => {
+        const keep = bestCopy(g.files).path;
+        return { title: g.title, i: g.i, exact: isExactDuplicate(g), extra: g.extra,
+          files: g.files.map(f => ({ path: f.path, ext: f.ext, size: f.size || 0, title: f.title, keep: f.path === keep, onDisk: Boolean(f.handle && f.handle._path) })) };
+      }) });
+  }
+  if (a.op === "trashDups") { // confirmed in the native window; one group (by one of its files) or every exact one
+    const groups = duplicateGroups();
+    return await trashExtraCopies(a.path ? groups.filter(g => g.files.some(f => f.path === a.path)) : groups, true);
+  }
+  if (a.op === "health") {
+    const issues = healthIssues(), canDl = canDownloadToLibrary();
+    const titles = { damaged: ["May be damaged or cut off", "Replace it with the site's copy, or move it to the Trash."],
+      upgrade: ["Better copies on the site", "Upgrade downloads the site's higher-quality file; yours goes to the Trash."],
+      tags: ["Tags to fix", "The Tag fixer writes the catalog's tags to matched files. Unmatched files can be matched by hand there."] };
+    return JSON.stringify({ running: Boolean(health.running), done: Boolean(health.done), status: health.status || "", probeable: Boolean(window.jwProbe),
+      groups: ["damaged", "upgrade", "tags"].map(k => ({ key: k, title: titles[k][0], help: titles[k][1],
+        items: issues.filter(x => x.group === k).slice(0, 500).map(x => {
+          const song = x.f.songs && x.f.songs.length === 1 ? state.catalog[x.f.songs[0]] : null, onDisk = Boolean(x.f.handle && x.f.handle._path);
+          return { path: x.f.path, text: x.text, reveal: onDisk && Boolean(window.jwReveal), trash: onDisk && canTrash(), replace: onDisk && Boolean(song && fileUrl(song)) && canDl };
+        }) })).filter(g => g.items.length) });
+  }
+  if (a.op === "healthRun") { runHealthCheck(); return ""; }
+  if (a.op === "healthStop") { health.stop = true; return ""; }
+  if (a.op === "healthFix") { return await healthFix(a.fix, a.path); }
+  if (a.op === "classic") { showView(a.view); return ""; }
+  // setup: catalog and music folder
+  if (a.op === "setup") return JSON.stringify({ catalog: Boolean(state.catalog), folder: state.rootHandle ? state.rootHandle.name : "",
+    catalogStatus: $("catalog-status").textContent, folderStatus: $("folder-status").textContent });
+  if (a.op === "loadCatalog") { $("fetch-btn").click(); return ""; }
+  if (a.op === "pickFolder") { $("folder-btn").click(); return ""; }
+  if (a.op === "rescan") { await rescanFolder(); return ""; }
+  // downloads and notes
+  if (a.op === "downloadMany") { const songs = (a.ids || []).map(n => state.catalog[n]).filter(x => x && fileUrl(x)); return String(downloadAll(songs) || 0); }
+  if (a.op === "stopQueue") { if (state.bulk) state.bulk.stop = true; return ""; }
+  if (a.op === "note") { const so = state.catalog[a.i]; if (so) { if (String(a.text || "").trim()) state.personal.notes[so.id] = a.text; else delete state.personal.notes[so.id]; savePersonal(); } return ""; }
+  // background music: on/off and which era
+  if (a.op === "ambientInfo") {
+    const eras = [...new Set((state.library || []).filter(f => f.songs && f.songs.length && canPlay(f)).map(f => eraName(state.catalog[f.songs[0]])))].sort();
+    return JSON.stringify({ on: ambientOn(), era: ambientEra(), eras, songs: ambientItems().length });
+  }
+  if (a.op === "ambientSet") {
+    if (a.on !== undefined) { try { localStorage.setItem("jw-ambient", a.on ? "on" : "off"); } catch (e) {} syncAmbient(); }
+    if (a.era !== undefined) setAmbientEra(a.era);
+    return "";
+  }
+  // trivia
+  if (a.op === "triviaInfo") return JSON.stringify({ types: Object.entries(TRIVIA_TYPES).map(([key, label]) => ({ key, label })), best: state.personal.trivia, length: ROUND_LENGTH });
+  if (a.op === "triviaRound") return JSON.stringify(buildRound(a.type, a.pool).map(q => ({ prompt: q.prompt, options: q.options.map(String), answer: String(q.answer), i: q.i, clip: q.clip || "" })));
+  if (a.op === "triviaBest") { state.personal.trivia[a.key] = Math.max(state.personal.trivia[a.key] || 0, Number(a.score) || 0); savePersonal(); return ""; }
+  if (a.op === "triviaClip") { playTriviaClip({ clip: a.path }); return ""; }
+  if (a.op === "triviaStop") { await window.jwAmbient?.({ stopClip: true }); return ""; }
+  // export and backup
+  if (a.op === "exportCatalog") return fullCatalogCsv();
+  if (a.op === "backupData") return JSON.stringify(backupData(), null, 2);
+  if (a.op === "restoreData") return restoreBackup(a.text);
+  if (a.op === "card") { const c = await drawCollectionCard(); return c.toDataURL("image/png"); }
+  if (a.op === "snapshotInfo") return JSON.stringify({ available: Boolean(window.jwSnapshot), last: lastSnapshot() });
+  if (a.op === "snapshotNow") { await saveSnapshot(false); return $("export-status").textContent; }
+  if (a.op === "snapshotFolder") { await window.jwSnapshotFolder?.(); return ""; }
+  if (a.op === "snapshotLost") { // songs in a snapshot (CSV text) that aren't in the library now: catalog indexes
+    const rows = parseCsv(a.text), col = rows[0] ? rows[0].indexOf("song_ids") : -1;
+    if (col < 0) throw new Error("That file isn't a Juice Tracker library snapshot.");
+    const [nameCol, titleCol, pathCol] = ["song_names", "title", "path"].map(k => rows[0].indexOf(k));
+    const ids = new Set(rows.slice(1).map(r => {
+      const list = String(r[col] || "").split(" ").filter(Boolean), names = String(r[nameCol] || "").split(" / ");
+      const title = r[titleCol] || titleFromFilename(r[pathCol] || "");
+      let k = names.findIndex(n => cmdkKey(n) === cmdkKey(title));
+      if (k < 0) k = names.findIndex(n => normalize(n) === normalize(title));
+      return list[k >= 0 && k < list.length ? k : 0];
+    }).filter(Boolean));
+    return JSON.stringify(state.catalog.map((so, i) => (ids.has(String(so.id)) && !state.owned.has(i) ? i : -1)).filter(i => i >= 0));
+  }
+  if (a.op === "plexSources") {
+    let configured = false;
+    try { configured = Boolean(window.jwPlex && (await window.jwPlex({ action: "status" })).configured); } catch (e) {}
+    if (configured && !state.listen) { try { await fetchListening(); } catch (e) { /* no play counts: those lists just don't show */ } }
+    return JSON.stringify(configured ? plexSources().map(x => ({ id: x.id, label: x.label, count: x.songs.length })) : []);
+  }
+  if (a.op === "plexMake") return await makePlexPlaylist(a.id);
+  // Tag fixer: its settings stay in the page's own controls, so both windows always agree.
+  if (a.op === "fixer") {
+    renderFixer();
+    const plan = state.plan || { changes: [], skipped: [], same: 0 };
+    return JSON.stringify({
+      support: $("fix-support").hidden ? "" : $("fix-support").textContent,
+      fields: [...document.querySelectorAll("#fix-fields input")].map(i => ({ key: i.value, label: i.parentElement.textContent.trim(), on: i.checked })),
+      blanks: $("fix-blanks").checked, autoTag: autoTagOn(), autoTagShown: canDownloadToLibrary(), genre: $("fix-genre").value, genrePlaceholder: DEFAULT_GENRE,
+      backup: $("fix-backup-status").textContent, backupSet: Boolean(state.backupDir), canPickBackup: canEditFolders,
+      writing: Boolean(state.writing), status: $("fix-status").textContent, same: plan.same, total: plan.changes.length,
+      selected: plan.changes.filter(isSelected).length,
+      changes: plan.changes.slice(0, 400).map(it => ({ path: it.f.path, file: baseName(it.f.path), song: it.song.name, fuzzy: Boolean(it.f.fuzzy), selected: isSelected(it),
+        how: it.f.matchedBy === "file" ? "matched by file name" : it.f.manual ? "matched by you" : "",
+        changes: it.changes.map(c => ({ label: FIELD_LABELS[c.k], from: c.from, to: c.to })) })),
+      skipped: plan.skipped.slice(0, 200).map(x => ({ file: baseName(x.f.path), reason: x.reason })),
+      choose: (state.chooseFiles || []).slice(0, 200).map(f => ({ path: f.path, file: baseName(f.path), folder: parentOf(f.path),
+        options: f.songs.map(i => { const so = state.catalog[i]; return { id: String(so.id), label: `${so.name} (${eraName(so)}, ${capital(so.category)})` }; }) })),
+      manual: Object.keys(state.personal.matchOverrides).length,
+    });
+  }
+  if (a.op === "fixSet") { // a tag checkbox ("field:title"), "blanks" or "autoTag"
+    const box = a.key === "blanks" ? $("fix-blanks") : a.key === "autoTag" ? $("fix-auto") : document.querySelector(`#fix-fields input[value="${a.key.slice(6)}"]`);
+    if (box && box.checked !== Boolean(a.on)) { box.checked = Boolean(a.on); box.dispatchEvent(new Event("change", { bubbles: true })); }
+    return "";
+  }
+  if (a.op === "fixGenre") { $("fix-genre").value = a.value || ""; $("fix-genre").dispatchEvent(new Event("input", { bubbles: true })); return ""; }
+  if (a.op === "fixSel") { state.fixSel.set(a.path, Boolean(a.on)); return ""; }
+  if (a.op === "fixAll" || a.op === "fixNone") { renderFixer(); state.plan.changes.forEach(it => state.fixSel.set(it.f.path, a.op === "fixAll")); return ""; }
+  if (a.op === "fixMatch") { // "Right song" (the catalog id), "Wrong song" ("none"), or a pick for a file that fits several songs
+    let value = a.value;
+    if (value === "confirm") { const it = (state.plan ? state.plan.changes : []).find(x => x.f.path === a.path); if (!it) return ""; value = it.song.id; }
+    if (value && value !== "none") state.fixSel.set(a.path, true);
+    setOverride(a.path, value);
+    return "";
+  }
+  if (a.op === "fixUndoMatches") { state.personal.matchOverrides = {}; savePersonal(); update(); return ""; }
+  if (a.op === "fixBackup") {
+    try { await setBackupDir(await window.showDirectoryPicker({ id: "tag-backups", mode: "readwrite" })); }
+    catch (err) { if (err.name !== "AbortError") setStatus("fix-backup-status", `Couldn't use that folder: ${err.message}`, true); }
+    return "";
+  }
+  if (a.op === "fixWrite") { writeSelectedTags(true); return ""; }
   if (!s) return "";
   if (a.op === "wish") { toggleWish(s); renderTable(); renderExportPanel(); pushNativeState(); return ""; }
   if (a.op === "download") { downloadAll([s]); pushNativeState(); return ""; }
@@ -5168,10 +5341,14 @@ window.jwNativeAction = async a => {
     out.files = (state.owned.get(a.i) || []).map(f => f.path);
     out.playable = (state.owned.get(a.i) || []).some(canPlay);
     out.siteUrl = fileUrl(s) || "";
+    out.note = noteOf(s);
     return JSON.stringify(out);
   }
   return "";
 };
+
+/* ---------- engine mode: the native window is the interface; this page runs unseen, so nothing here animates */
+window.jwEngineMode = on => { document.documentElement.classList.toggle("engine", Boolean(on)); };
 
 /* ---------- the sky follows the time of day */
 function skyForClock() {

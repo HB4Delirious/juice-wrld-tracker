@@ -33,6 +33,11 @@ In the Mac app, the sidebar's **Ambient music** toggle plays your matched songs,
 
 ## Mac app extras
 
+The Mac app's interface is native SwiftUI (with a Core Animation sky), which uses far less CPU than the HTML page:
+about 2–5% against about 30%. The HTML page still runs unseen behind it and does the work (catalog, scanning, matching,
+tag writing, downloads). Window > Classic Window (⌘2) shows the original HTML interface.
+
+
 - **Search:** ⌘K jumps to any song, era, producer/artist/engineer/studio, or page.
 - **Download all:** the File links list downloads every missing song in view, one at a time (stoppable). New downloads are auto-tagged with the tag fixer's settings (option in the tag fixer).
 - **Duplicates:** keep the best copy (lossless, then largest) and move the rest to the Trash. Only for files with exactly the same title, so remixes and versions are never touched.

@@ -32,15 +32,26 @@ Goal: a native SwiftUI interface, which costs far less CPU than the web page (me
 window in front, against about 30.5% for the classic window). The classic page stays the engine while screens move over:
 it loads the catalog, scans and matches the library, writes tags (with its tested safety checks) and downloads.
 
-- `JuiceTracker/NativeUI.swift`: the native window (Window > Native Preview (Beta), ⌘2). The sky is drawn by Core
+- `JuiceTracker/NativeUI.swift`: the native window (the app's main window; ⌘1). The sky is drawn by Core
   Animation. `NativeStore` receives the page's snapshot (`jwState` message, sent by `pushNativeState()` after each change)
   and calls `window.jwNativeAction({ op, i })` for actions (wish, download, play, details, refresh).
 - Screens not moved yet open in the classic window (`showView(...)`).
 
 Stages:
 1. Done: window, native sky, sidebar, Collection (scoreboard, eras, song list with search, filters and wishlist, song card).
-2. Timeline, Stats and Credits (read-only screens: the snapshot grows, the views move).
-3. File health and Duplicates (actions that change files: they stay in the page's tested code, called from Swift).
-4. Tag fixer (review list in SwiftUI; writing stays in the page's core code, or JavaScriptCore without the page).
-5. Trivia, Export & backup, Settings polish; then Download all, File links and the player in SwiftUI.
-6. Make the native window the main window; the classic page runs hidden as the engine, then its UI code is deleted.
+2. Done: Timeline, Stats (without Plex listening yet) and Credits, in `JuiceTracker/NativeScreens.swift`. The snapshot now
+   sends the catalog's fixed details (dates, years, credits) only when they change; owned, wishlist and the queue go each time.
+3. Done: File health and Duplicates, in `JuiceTracker/NativeTools.swift`. Fixes that touch files stay in the page's tested
+   code (`trashExtraCopies(groups, confirmed)`, `runHealthCheck()`, `healthFix(op, path)`); the native screens ask for
+   confirmation in their own dialogs and show the page's result (or its error message).
+4. Done: Tag fixer, in `JuiceTracker/NativeFixer.swift`. Its settings stay in the page's own controls (`fixSet`,
+   `fixGenre`), so both windows agree; writing runs the page's `writeSelectedTags(confirmed)` with its safety checks.
+5. Done: Trivia, Export & backup, the setup screen, the sidebar player, Download all / Complete this era, and notes on
+   song cards (`JuiceTracker/NativeExtras.swift`).
+6. Done: the native window is the app's window. The page runs unseen inside it (`EngineHostView`, in "engine mode" so
+   nothing animates) and moves into Window > Classic Window (⌘2) only while that's open.
+
+Not done on purpose: the classic interface's code is still there. The page is the engine (its render functions also
+compute state: the fixer plan, health results, duplicates), and it's the only version that runs in a browser.
+Taking the classic screens out means first moving that state into plain functions; worth doing once the native app
+has settled.
