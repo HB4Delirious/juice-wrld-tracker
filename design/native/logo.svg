@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" class="mark" viewBox="0 0 64 64" aria-hidden="true">
+        <g id="wing"><path d="M31 30C25 13 9 7 5.5 15.5 2 24 13.5 31.5 31 32z" fill="#ff6ad5"/><path d="M31 34c-12 .5-21 8-17.5 15.5C17 56 27 47.5 31 37z" fill="#ffa04a"/></g>
+        <use href="#wing" transform="translate(64 0) scale(-1 1)"/>
+        <path d="M32 22v26M31 24c-2-6-5-9-8.5-10M33 24c2-6 5-9 8.5-10" stroke="#fff6fb" stroke-width="2" fill="none" stroke-linecap="round"/>
+        <path d="M14 17l5 4-3 3 5 4" stroke="#0a0618" stroke-width="1.6" fill="none" stroke-linejoin="round"/>
+      </svg>

@@ -13,9 +13,12 @@ struct NState: Decodable {
     struct Cat: Decodable, Hashable { let name: String; let have: Int; let total: Int }
     struct Era: Decodable, Hashable, Identifiable { let name: String; let have: Int; let total: Int; let time: String; let desc: String; var id: String { name } }
     struct Queue: Decodable, Hashable { let done: Int; let total: Int; let current: String; let waiting: Bool }
+    struct Drive: Decodable, Hashable { let kind: String; let text: String }
+    struct Notice: Decodable, Hashable { let text: String; let released: Bool }
+    struct TodayRow: Decodable, Hashable { let head: String; let songs: [Int]; let more: Int }
     /// A catalog song's fixed details: sent once, and again only when they change.
     struct CatSong: Decodable, Hashable {
-        let i: Int; let n: String; let e: String; let c: String; let l: String; let f: Bool
+        let i: Int; let n: String; let a: [String]; let rel: Bool; let e: String; let c: String; let l: String; let f: Bool
         let m: Int?             // recording month as year * 12 + month (0-11)
         let ry: [Int]           // recording years
         let py: Int?, sy: Int?, rl: Int?  // previewed, surfaced, released years
@@ -29,6 +32,12 @@ struct NState: Decodable {
     let eras: [Era]
     let owned: [Int]
     let wished: [Int]
+    let fresh: [Int]      // new since the last check
+    let released: [Int]   // newly released since the last check
+    let files: Int
+    let drive: Drive?
+    let notices: [Notice]
+    let today: [TodayRow]
     let catalog: [CatSong]?
 }
 
@@ -59,6 +68,8 @@ final class NativeStore: NSObject, ObservableObject, WKScriptMessageHandler {
     @Published var state: NState?
     @Published var songs: [Song] = []
     @Published var page: NativePage = .collection // the screen showing in the native window
+    @Published var eraFilter: String?            // the era picked on the Collection screen (or from ⌘K)
+    @Published var showSetup = false
     @Published var version = 0 // bumps with every snapshot, so screens that ask the page for more can refresh
     private var catalog: [NState.CatSong] = []
 
@@ -193,10 +204,26 @@ final class SkyNSView: NSView {
         addStarField(to: root, tile: 420, count: 70, seed: 7, seconds: 260, alpha: 0.8)
         addStarField(to: root, tile: 690, count: 55, seed: 21, seconds: 190, alpha: 1)
 
+        // the faint tattoo-flash doodles (hearts, lightning, butterflies, chains, crowns), drifting the other way
+        if let flash = NSImage(named: "jt-flash") {
+            let tile: CGFloat = 560
+            let layer = Self.tiled(flash, tile: tile, covering: CGSize(width: bounds.width + tile, height: bounds.height + tile))
+            layer.frame.origin = CGPoint(x: -tile, y: 0)
+            root.addSublayer(layer)
+            let drift = CABasicAnimation(keyPath: "position")
+            drift.fromValue = layer.position
+            drift.toValue = CGPoint(x: layer.position.x + tile, y: layer.position.y - tile)
+            drift.duration = 150
+            drift.repeatCount = .infinity
+            drift.timingFunction = CAMediaTimingFunction(name: .linear)
+            layer.add(drift, forKey: "drift")
+        }
+
         // twinkling sparkles
         let sparkles = CALayer()
         sparkles.frame = b
-        sparkles.backgroundColor = NSColor(patternImage: Self.sparkleTile()).cgColor
+        let sparkleTiles = Self.tiled(NSImage(named: "jt-sparkles") ?? Self.sparkleTile(), tile: 520, covering: b.size)
+        sparkles.addSublayer(sparkleTiles)
         let twinkle = CABasicAnimation(keyPath: "opacity")
         twinkle.fromValue = 0.15
         twinkle.toValue = 1
@@ -237,9 +264,8 @@ final class SkyNSView: NSView {
     }
 
     private func addStarField(to root: CALayer, tile: CGFloat, count: Int, seed: UInt64, seconds: Double, alpha: CGFloat) {
-        let field = CALayer()
-        field.frame = CGRect(x: 0, y: 0, width: bounds.width + tile, height: bounds.height + tile)
-        field.backgroundColor = NSColor(patternImage: Self.starTile(size: tile, count: count, seed: seed, alpha: alpha)).cgColor
+        let field = Self.tiled(Self.starTile(size: tile, count: count, seed: seed, alpha: alpha), tile: tile,
+                               covering: CGSize(width: bounds.width + tile, height: bounds.height + tile))
         root.addSublayer(field)
         let drift = CABasicAnimation(keyPath: "position")
         drift.fromValue = field.position
@@ -248,6 +274,27 @@ final class SkyNSView: NSView {
         drift.repeatCount = .infinity
         drift.timingFunction = CAMediaTimingFunction(name: .linear)
         field.add(drift, forKey: "drift")
+    }
+
+    /// A layer covering `size` with copies of one image, repeated by Core Animation on the graphics chip. (A pattern
+    /// color did the same but made the app redraw the tiles itself whenever the layer moved: about a third of a core.)
+    private static func tiled(_ image: NSImage, tile: CGFloat, covering size: CGSize) -> CALayer {
+        let scale = NSScreen.main?.backingScaleFactor ?? 2
+        let one = CALayer()
+        one.frame = CGRect(x: 0, y: 0, width: tile, height: tile)
+        one.contents = image.cgImage(forProposedRect: nil, context: nil, hints: [.ctm: AffineTransform(scale: scale)])
+        one.contentsScale = scale
+        let row = CAReplicatorLayer()
+        row.frame = CGRect(x: 0, y: 0, width: size.width, height: tile)
+        row.instanceCount = Int((size.width / tile).rounded(.up))
+        row.instanceTransform = CATransform3DMakeTranslation(tile, 0, 0)
+        row.addSublayer(one)
+        let grid = CAReplicatorLayer()
+        grid.frame = CGRect(origin: .zero, size: size)
+        grid.instanceCount = Int((size.height / tile).rounded(.up))
+        grid.instanceTransform = CATransform3DMakeTranslation(0, tile, 0)
+        grid.addSublayer(row)
+        return grid
     }
 
     private static func starTile(size: CGFloat, count: Int, seed: UInt64, alpha: CGFloat) -> NSImage {
@@ -286,30 +333,87 @@ struct SkyBackground: NSViewRepresentable {
     func updateNSView(_ view: SkyNSView, context: Context) {}
 }
 
-// MARK: - Look
+// MARK: - Look (the classic page's colors, fonts and hand-drawn outlines)
 
 enum JT {
-    static let lavender = Color(red: 1, green: 106 / 255, blue: 213 / 255)
-    static let have = Color(red: 201 / 255, green: 242 / 255, blue: 74 / 255)
-    static let missing = Color(red: 1, green: 93 / 255, blue: 108 / 255)
+    static let night = Color(red: 10 / 255, green: 6 / 255, blue: 24 / 255)
+    static let dusk = Color(red: 24 / 255, green: 12 / 255, blue: 52 / 255).opacity(0.82)
+    static let raise = Color(red: 58 / 255, green: 30 / 255, blue: 108 / 255).opacity(0.82)
+    static let line = Color(red: 190 / 255, green: 150 / 255, blue: 1).opacity(0.2)
+    static let line2 = Color(red: 210 / 255, green: 170 / 255, blue: 1).opacity(0.38)
+    static let mist = Color(red: 1, green: 246 / 255, blue: 251 / 255)
     static let muted = Color(red: 195 / 255, green: 178 / 255, blue: 227 / 255)
-    static let line = Color(red: 190 / 255, green: 150 / 255, blue: 1).opacity(0.25)
-    static let rainbow = LinearGradient(colors: [Color(red: 1, green: 0.36, blue: 0.42), Color(red: 1, green: 0.63, blue: 0.29), Color(red: 1, green: 0.88, blue: 0.29),
-                                                 Color(red: 0.79, green: 0.95, blue: 0.29), Color(red: 0.31, green: 0.85, blue: 1), Color(red: 0.72, green: 0.48, blue: 1),
-                                                 Color(red: 1, green: 0.42, blue: 0.84)], startPoint: .leading, endPoint: .trailing)
-    static func marker(_ size: CGFloat) -> Font { .custom("Marker Felt", size: size).weight(.bold) }
+    static let lavender = Color(red: 1, green: 106 / 255, blue: 213 / 255)
+    static let lavenderHi = Color(red: 1, green: 148 / 255, blue: 226 / 255)
+    static let have = Color(red: 201 / 255, green: 242 / 255, blue: 74 / 255)
+    static let new = Color(red: 1, green: 160 / 255, blue: 74 / 255)
+    static let missing = Color(red: 1, green: 93 / 255, blue: 108 / 255)
+    static let yellow = Color(red: 1, green: 225 / 255, blue: 74 / 255)
+    static let rainbowColors = [Color(red: 1, green: 93 / 255, blue: 108 / 255), Color(red: 1, green: 160 / 255, blue: 74 / 255),
+                                Color(red: 1, green: 225 / 255, blue: 74 / 255), Color(red: 201 / 255, green: 242 / 255, blue: 74 / 255),
+                                Color(red: 79 / 255, green: 216 / 255, blue: 1), Color(red: 106 / 255, green: 168 / 255, blue: 1),
+                                Color(red: 183 / 255, green: 123 / 255, blue: 1), Color(red: 1, green: 106 / 255, blue: 213 / 255)]
+    static let rainbow = LinearGradient(colors: rainbowColors, startPoint: .leading, endPoint: .trailing)
+    static let countGradient = LinearGradient(colors: [Color(red: 1, green: 160 / 255, blue: 74 / 255), Color(red: 1, green: 225 / 255, blue: 74 / 255),
+                                                       Color(red: 201 / 255, green: 242 / 255, blue: 74 / 255), Color(red: 79 / 255, green: 216 / 255, blue: 1),
+                                                       Color(red: 1, green: 106 / 255, blue: 213 / 255)], startPoint: .leading, endPoint: .trailing)
+    /// Permanent Marker: the app's own voice (brand, hero, page titles).
+    static func marker(_ size: CGFloat) -> Font { .custom("Permanent Marker", size: size) }
+    /// Figtree: everything you read.
+    static func body(_ size: CGFloat, _ weight: Font.Weight = .regular) -> Font { .custom("Figtree", size: size).weight(weight) }
 }
 
-/// A frosted panel with a slightly uneven, hand-drawn outline.
-struct Doodled: ViewModifier {
-    var radius: CGFloat = 16
-    func body(content: Content) -> some View {
-        content
-            .background(RoundedRectangle(cornerRadius: radius, style: .continuous).fill(Color(red: 24 / 255, green: 12 / 255, blue: 52 / 255).opacity(0.72)))
-            .overlay(RoundedRectangle(cornerRadius: radius + 2, style: .continuous).stroke(JT.line, lineWidth: 1.5).rotationEffect(.degrees(0.25)))
+/// A rounded box drawn by hand: each corner a different size, each side bowing a little (like the classic outlines).
+struct DoodleRect: Shape {
+    var seed = 0
+    func path(in r: CGRect) -> Path {
+        let shapes: [[CGFloat]] = [[20, 30, 18, 26], [14, 22, 12, 20], [22, 15, 20, 17], [26, 18, 24, 16]]
+        let scale = min(1, min(r.width, r.height) / 90)
+        let c = shapes[abs(seed) % shapes.count].map { min($0 * scale, min(r.width, r.height) / 2) }
+        let bows: [CGFloat] = [1.4, -1.1, 1.2, -1.3]
+        let b = (0..<4).map { bows[($0 + seed) % 4] }
+        var p = Path()
+        p.move(to: CGPoint(x: r.minX + c[0], y: r.minY))
+        p.addQuadCurve(to: CGPoint(x: r.maxX - c[1], y: r.minY), control: CGPoint(x: r.midX, y: r.minY + b[0]))
+        p.addQuadCurve(to: CGPoint(x: r.maxX, y: r.minY + c[1]), control: CGPoint(x: r.maxX, y: r.minY))
+        p.addQuadCurve(to: CGPoint(x: r.maxX, y: r.maxY - c[2]), control: CGPoint(x: r.maxX + b[1], y: r.midY))
+        p.addQuadCurve(to: CGPoint(x: r.maxX - c[2], y: r.maxY), control: CGPoint(x: r.maxX, y: r.maxY))
+        p.addQuadCurve(to: CGPoint(x: r.minX + c[3], y: r.maxY), control: CGPoint(x: r.midX, y: r.maxY + b[2]))
+        p.addQuadCurve(to: CGPoint(x: r.minX, y: r.maxY - c[3]), control: CGPoint(x: r.minX, y: r.maxY))
+        p.addQuadCurve(to: CGPoint(x: r.minX, y: r.minY + c[0]), control: CGPoint(x: r.minX + b[3], y: r.midY))
+        p.addQuadCurve(to: CGPoint(x: r.minX + c[0], y: r.minY), control: CGPoint(x: r.minX, y: r.minY))
+        p.closeSubpath()
+        return p
     }
 }
-extension View { func doodled(_ radius: CGFloat = 16) -> some View { modifier(Doodled(radius: radius)) } }
+
+/// A frosted panel with a hand-drawn outline, like the classic page's boxes.
+struct Doodled: ViewModifier {
+    var radius: CGFloat = 16
+    var seed = 0
+    var stroke = JT.line2
+    func body(content: Content) -> some View {
+        content
+            .background(DoodleRect(seed: seed).fill(JT.dusk))
+            .overlay(DoodleRect(seed: seed).stroke(stroke, lineWidth: 1.6))
+    }
+}
+extension View {
+    func doodled(_ radius: CGFloat = 16, seed: Int = 0, stroke: Color = JT.line2) -> some View { modifier(Doodled(radius: radius, seed: seed, stroke: stroke)) }
+}
+
+/// A page title: marker lettering, tilted a touch, with the rainbow squiggle underneath.
+struct ScreenTitle: View {
+    let text: String
+    var size: CGFloat = 40
+    var body: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(text).font(JT.marker(size)).foregroundColor(JT.mist)
+            Image("jt-squiggle").resizable().frame(width: size * 3, height: size * 0.27)
+        }
+        .rotationEffect(.degrees(-1), anchor: .leading)
+    }
+}
 
 // MARK: - Window
 
@@ -324,18 +428,18 @@ enum NativePage: String, CaseIterable, Identifiable {
         ["collection": "smallcircle.filled.circle", "fixer": "tag", "dups": "square.on.square", "health": "waveform.path.ecg", "people": "person.2",
          "stats": "chart.bar", "timeline": "point.3.connected.trianglepath.dotted", "trivia": "questionmark.circle", "export": "archivebox"][rawValue] ?? "circle"
     }
-    var isNative: Bool { true }
 }
 
 struct NativeRoot: View {
     @ObservedObject private var store = NativeStore.shared
+    @State private var searching = false
     private var page: NativePage { store.page }
 
     var body: some View {
         ZStack {
             SkyBackground().ignoresSafeArea()
             HStack(spacing: 0) {
-                sidebar.frame(width: 210)
+                Sidebar(searching: $searching).frame(width: 238)
                 Group {
                     if let s = store.state, !store.songs.isEmpty {
                         switch page {
@@ -354,138 +458,362 @@ struct NativeRoot: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
+        .font(JT.body(15))
+        .foregroundColor(JT.mist)
         .preferredColorScheme(.dark)
         .sheet(item: $store.openSong) { s in SongCard(opened: s, close: { store.openSong = nil }) }
+        .sheet(isPresented: $searching) { QuickSearch(close: { searching = false }) }
         .task { await store.act("refresh") }
-    }
-
-    private var sidebar: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            HStack(spacing: 8) {
-                Image(systemName: "sparkles").foregroundColor(JT.lavender)
-                Text("Juice\nTracker").font(JT.marker(22)).lineSpacing(-4)
-            }
-            .padding(.top, 34).padding(.bottom, 18).padding(.horizontal, 10)
-            ForEach(NativePage.allCases) { p in
-                Button {
-                    if p.isNative { store.page = p } else { store.openClassic(p.rawValue) }
-                } label: {
-                    HStack(spacing: 10) {
-                        Image(systemName: p.icon).frame(width: 18)
-                        Text(p.title)
-                        Spacer()
-                        if !p.isNative { Image(systemName: "arrow.up.forward.square").font(.caption).foregroundColor(JT.muted.opacity(0.7)).help("Opens in the classic window for now") }
-                    }
-                    .padding(.vertical, 7).padding(.horizontal, 10)
-                    .background(RoundedRectangle(cornerRadius: 10).fill(page == p ? JT.lavender.opacity(0.18) : .clear))
-                    .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .foregroundColor(page == p ? .white : JT.muted)
-            }
-            Spacer()
-            if let q = store.state?.queue {
-                VStack(alignment: .leading, spacing: 5) {
-                    Text(q.waiting ? "Waiting for the music drive…" : "Downloading \(min(q.done + 1, q.total)) of \(q.total)").font(.caption)
-                    if !q.current.isEmpty { Text(q.current).font(.caption2).foregroundColor(JT.muted).lineLimit(1) }
-                    ProgressView(value: Double(q.done), total: Double(max(q.total, 1))).tint(JT.have)
-                    Button("Stop") { Task { await store.act("stopQueue") } }.buttonStyle(.borderless).font(.caption)
-                }
-                .padding(10).doodled(10)
-            }
-            PlayerPanel()
-            Button { store.openClassic(store.page.rawValue) } label: { Label("Classic window", systemImage: "macwindow") }
-                .buttonStyle(.borderless).font(.caption).foregroundColor(JT.muted).padding(.horizontal, 6).padding(.bottom, 14)
-                .help("The original HTML interface (⌘2)")
-        }
-        .padding(.horizontal, 10)
-        .background(Color.black.opacity(0.25))
     }
 }
 
-// MARK: - Collection
+// MARK: - Sidebar (the classic rail)
+
+struct Sidebar: View {
+    @ObservedObject private var store = NativeStore.shared
+    @Binding var searching: Bool
+    @State private var hovered: NativePage?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Button { store.page = .collection } label: {
+                HStack(spacing: 10) {
+                    Image("jt-logo").resizable().frame(width: 44, height: 44)
+                    Text("Juice\nTracker").font(JT.marker(23)).lineSpacing(-6).foregroundColor(JT.mist).fixedSize()
+                }
+            }
+            .buttonStyle(.plain)
+            .padding(.top, 38).padding(.horizontal, 8).padding(.bottom, 22)
+
+            Button { searching = true } label: {
+                HStack(spacing: 10) {
+                    Image(systemName: "magnifyingglass").font(.system(size: 13, weight: .semibold))
+                    Text("Search")
+                    Spacer()
+                    Text("⌘K").font(JT.body(12, .medium)).padding(.horizontal, 6).padding(.vertical, 1)
+                        .overlay(RoundedRectangle(cornerRadius: 6).stroke(JT.line2))
+                }
+                .foregroundColor(JT.muted)
+                .padding(.horizontal, 12).padding(.vertical, 9)
+                .background(RoundedRectangle(cornerRadius: 12).fill(Color.white.opacity(0.03)))
+                .overlay(RoundedRectangle(cornerRadius: 12).stroke(JT.line))
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .keyboardShortcut("k", modifiers: .command)
+            .padding(.bottom, 22)
+
+            ForEach(NativePage.allCases) { p in navItem(p) }
+            Spacer()
+
+            VStack(alignment: .leading, spacing: 10) {
+                if let q = store.state?.queue {
+                    VStack(alignment: .leading, spacing: 5) {
+                        HStack {
+                            Text(q.waiting ? "Waiting for the music drive…" : "Downloading \(min(q.done + 1, q.total)) of \(q.total)").font(JT.body(12))
+                            Spacer()
+                            Button("Stop") { Task { await store.act("stopQueue") } }.buttonStyle(.borderless).font(JT.body(12))
+                        }
+                        if !q.current.isEmpty { Text(q.current).font(JT.body(11)).foregroundColor(JT.muted).lineLimit(1) }
+                        GeometryReader { g in
+                            ZStack(alignment: .leading) {
+                                Capsule().fill(JT.line)
+                                Capsule().fill(JT.have).frame(width: g.size.width * CGFloat(q.done) / CGFloat(max(q.total, 1)))
+                            }
+                        }
+                        .frame(height: 4)
+                    }
+                    .padding(10).overlay(RoundedRectangle(cornerRadius: 10).stroke(JT.line))
+                }
+                if let d = store.state?.drive {
+                    Button { Task { await store.act("driveCheck") } } label: {
+                        HStack(spacing: 8) {
+                            Circle().fill(d.kind == "ok" ? JT.have : d.kind == "slow" ? JT.new : d.kind == "off" ? JT.missing : JT.muted).frame(width: 8, height: 8)
+                            Text(d.text).font(JT.body(12.5)).foregroundColor(JT.muted).lineLimit(1)
+                        }
+                        .padding(.horizontal, 12).padding(.vertical, 5)
+                        .overlay(Capsule().stroke(JT.line))
+                    }
+                    .buttonStyle(.plain)
+                }
+                PlayerPanel()
+                Link(destination: URL(string: "https://ko-fi.com/hb4delirious")!) {
+                    HStack(spacing: 8) {
+                        Image(systemName: "heart.fill").foregroundColor(JT.missing)
+                        Text("Support this project").font(JT.body(14, .semibold)).foregroundColor(JT.night)
+                    }
+                    .padding(.horizontal, 16).padding(.vertical, 9)
+                    .background(Capsule().fill(LinearGradient(colors: [Color(red: 1, green: 0.72, blue: 0.35), JT.new], startPoint: .top, endPoint: .bottom)))
+                }
+                (Text("Your files stay on this computer. Only song info comes from ") + Text("juicewrldapi.com").foregroundColor(JT.lavender).underline() + Text("."))
+                    .font(JT.body(12.5)).foregroundColor(JT.muted).lineLimit(3).minimumScaleFactor(0.9)
+                Button { store.openClassic(store.page.rawValue) } label: { Label("Classic window", systemImage: "macwindow") }
+                    .buttonStyle(.borderless).font(JT.body(12)).foregroundColor(JT.muted.opacity(0.8))
+                    .help("The original HTML interface (⌘2)")
+            }
+            .padding(.bottom, 16)
+        }
+        .padding(.horizontal, 16)
+        .background(LinearGradient(colors: [Color(red: 13 / 255, green: 7 / 255, blue: 30 / 255).opacity(0.92), Color(red: 22 / 255, green: 10 / 255, blue: 44 / 255).opacity(0.85)],
+                                   startPoint: .top, endPoint: .bottom))
+        .overlay(Rectangle().fill(JT.line).frame(width: 1), alignment: .trailing)
+    }
+
+    private func navItem(_ p: NativePage) -> some View {
+        let current = store.page == p
+        return Button { store.page = p } label: {
+            HStack(spacing: 12) {
+                Image(systemName: p.icon).font(.system(size: 15, weight: .medium)).frame(width: 22)
+                    .foregroundColor(current ? JT.lavender : nil)
+                    .rotationEffect(.degrees(current || hovered == p ? -10 : 0)).scaleEffect(current || hovered == p ? 1.15 : 1)
+                Text(p.title).font(JT.body(16))
+                Spacer()
+            }
+            .foregroundColor(current || hovered == p ? JT.mist : JT.muted)
+            .padding(.vertical, 9).padding(.horizontal, 12)
+            .background(
+                ZStack {
+                    if current {
+                        RoundedRectangle(cornerRadius: 12).fill(JT.raise)
+                        Image("jt-scribble").resizable()
+                    } else if hovered == p {
+                        RoundedRectangle(cornerRadius: 12).fill(JT.raise.opacity(0.6))
+                    }
+                }
+            )
+            .overlay(alignment: .leading) {
+                if current { Capsule().fill(LinearGradient(colors: JT.rainbowColors, startPoint: .top, endPoint: .bottom)).frame(width: 3).padding(.vertical, 7) }
+            }
+            .contentShape(Rectangle())
+            .animation(.spring(response: 0.25, dampingFraction: 0.55), value: hovered)
+        }
+        .buttonStyle(.plain)
+        .onHover { hovered = $0 ? p : (hovered == p ? nil : hovered) }
+    }
+}
+
+/// ⌘K: jump to a page, an era or a song.
+struct QuickSearch: View {
+    @ObservedObject private var store = NativeStore.shared
+    let close: () -> Void
+    @State private var query = ""
+
+    private enum Hit: Identifiable { case page(NativePage), era(String), song(Song)
+        var id: String { switch self { case .page(let p): return "p" + p.rawValue; case .era(let e): return "e" + e; case .song(let s): return "s\(s.i)" } }
+    }
+
+    private var hits: [Hit] {
+        let q = query.lowercased().trimmingCharacters(in: .whitespaces)
+        guard !q.isEmpty else { return NativePage.allCases.map { .page($0) } }
+        let pages = NativePage.allCases.filter { $0.title.lowercased().contains(q) }.map { Hit.page($0) }
+        let eras = (store.state?.eras ?? []).filter { $0.name.lowercased().contains(q) }.prefix(6).map { Hit.era($0.name) }
+        let songs = store.songs.filter { $0.n.lowercased().contains(q) || $0.s.a.contains { $0.lowercased().contains(q) } }
+            .sorted { ($0.n.lowercased().hasPrefix(q) ? 0 : 1, $0.n) < ($1.n.lowercased().hasPrefix(q) ? 0 : 1, $1.n) }.prefix(30).map { Hit.song($0) }
+        return pages + eras + songs
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            TextField("Search songs, eras and pages", text: $query).textFieldStyle(.plain).font(JT.body(20))
+                .padding(12).background(RoundedRectangle(cornerRadius: 12).fill(Color.white.opacity(0.06)))
+                .onSubmit { if let first = hits.first { pick(first) } }
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: 2) {
+                    ForEach(hits) { hit in
+                        Button { pick(hit) } label: {
+                            HStack {
+                                switch hit {
+                                case .page(let p): Image(systemName: p.icon).frame(width: 22); Text(p.title); Spacer(); Text("Page").foregroundColor(JT.muted)
+                                case .era(let e): Image(systemName: "sparkles").frame(width: 22); Text(e); Spacer(); Text("Era").foregroundColor(JT.muted)
+                                case .song(let s): Image(systemName: s.o ? "checkmark.circle.fill" : "music.note").foregroundColor(s.o ? JT.have : JT.muted).frame(width: 22)
+                                    Text(s.n).lineLimit(1); Spacer(); Text(s.e).foregroundColor(JT.muted)
+                                }
+                            }
+                            .padding(.vertical, 7).padding(.horizontal, 10).contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+            }
+            HStack { Spacer(); Button("Close", action: close).keyboardShortcut(.cancelAction) }
+        }
+        .padding(18).frame(width: 560, height: 480).background(JT.night).font(JT.body(15)).preferredColorScheme(.dark)
+    }
+
+    private func pick(_ hit: Hit) {
+        close()
+        switch hit {
+        case .page(let p): store.page = p
+        case .era(let e): store.page = .collection; store.eraFilter = e
+        case .song(let s): DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { store.openSong = s }
+        }
+    }
+}
+
+// MARK: - Collection (the classic home page)
 
 struct CollectionScreen: View {
     let state: NState
     let all: [Song]
+    @ObservedObject private var store = NativeStore.shared
     @State private var tab = "all"
     @State private var query = ""
-    @State private var era: String?
     @State private var limit = 200
     @State private var askAll: [Int] = []
     init(state: NState, songs: [Song]) { self.state = state; self.all = songs }
 
+    private var era: String? { store.eraFilter }
+    private var fresh: Set<Int> { Set(state.fresh) }
+    private var releasedNow: Set<Int> { Set(state.released) }
+
     private var songs: [Song] {
         let q = query.lowercased().trimmingCharacters(in: .whitespaces)
+        let fresh = self.fresh, rel = releasedNow
         return all.filter { s in
             (era == nil || s.e == era) &&
-            (tab == "all" || (tab == "have" && s.o) || (tab == "missing" && !s.o) || (tab == "wish" && s.w)) &&
-            (q.isEmpty || s.n.lowercased().contains(q) || s.e.lowercased().contains(q))
+            (tab == "all" || (tab == "have" && s.o) || (tab == "missing" && !s.o) || (tab == "wish" && s.w) || (tab == "new" && fresh.contains(s.i)) || (tab == "released" && rel.contains(s.i))) &&
+            (q.isEmpty || s.n.lowercased().contains(q) || s.e.lowercased().contains(q) || s.s.a.contains { $0.lowercased().contains(q) })
         }
     }
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 26) {
-                scoreboard
-                eras
-                songList
+        ScrollViewReader { proxy in
+            ScrollView {
+                VStack(alignment: .leading, spacing: 0) {
+                    topLine.padding(.bottom, 22)
+                    scoreboard
+                    notices.padding(.top, 26)
+                    erasSection.padding(.top, 44)
+                    songList.padding(.top, 34).id("songs")
+                }
+                .padding(.horizontal, 40).padding(.top, 34).padding(.bottom, 80)
+                .frame(maxWidth: 1240, alignment: .leading)
+                .frame(maxWidth: .infinity)
             }
-            .padding(.horizontal, 34).padding(.top, 40).padding(.bottom, 60)
-            .frame(maxWidth: 1080, alignment: .leading)
+            .onChange(of: store.eraFilter) { e in if e != nil { withAnimation { proxy.scrollTo("songs", anchor: .top) } } }
+        }
+    }
+
+    private var topLine: some View {
+        HStack(spacing: 22) {
+            (Text("\(state.total.formatted())").bold() + Text(" songs in the catalog").foregroundColor(JT.muted))
+            (Text("\(state.files.formatted())").bold() + Text(" files in your music folder").foregroundColor(JT.muted))
+            Spacer()
+            Button("Setup (show)") { store.showSetup = true }.buttonStyle(.plain).foregroundColor(JT.lavender)
+        }
+        .font(JT.body(15.5))
+        .sheet(isPresented: $store.showSetup) {
+            VStack { SetupView(); HStack { Spacer(); Button("Done") { store.showSetup = false }.keyboardShortcut(.cancelAction) }.padding() }
+                .frame(width: 820, height: 420).background(JT.night).preferredColorScheme(.dark)
         }
     }
 
     private var scoreboard: some View {
-        VStack(alignment: .leading, spacing: 18) {
-            (Text("You have ") + Text("\(state.have)").foregroundColor(JT.have) + Text(" of \(state.total) songs").foregroundColor(JT.muted))
-                .font(JT.marker(46))
-                .rotationEffect(.degrees(-1.2), anchor: .leading)
-            GeometryReader { g in
-                ZStack(alignment: .leading) {
-                    Capsule().fill(Color.white.opacity(0.08))
-                    Capsule().fill(JT.rainbow).frame(width: max(12, g.size.width * CGFloat(state.have) / CGFloat(max(state.total, 1))))
-                }
+        VStack(alignment: .leading, spacing: 0) {
+            ZStack(alignment: .topTrailing) {
+                (Text("You have ") + Text(state.have.formatted()).foregroundColor(.clear) + Text(" of \(state.total.formatted()) songs").foregroundColor(JT.muted.opacity(0.95)))
+                    .font(JT.marker(64)).lineSpacing(-6)
+                    .overlay(alignment: .topLeading) { countOverlay }
+                    .shadow(color: JT.lavender.opacity(0.45), radius: 14)
+                    .rotationEffect(.degrees(-1.2), anchor: .leading)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.trailing, 200)
+                FloatingDoodles().frame(width: 240, height: 230).offset(x: 24, y: -40).allowsHitTesting(false)
             }
-            .frame(height: 12)
+            meter.padding(.top, 26)
+            categories.padding(.top, 24)
+        }
+    }
+
+    /// The count in rainbow letters, laid exactly over the gap left for it in the headline.
+    private var countOverlay: some View {
+        (Text("You have ").foregroundColor(.clear) + Text(state.have.formatted()).foregroundColor(.white))
+            .font(JT.marker(64))
+            .overlay(JT.countGradient.mask((Text("You have ").foregroundColor(.clear) + Text(state.have.formatted())).font(JT.marker(64))))
+            .foregroundColor(.clear)
+    }
+
+    private var meter: some View {
+        GeometryReader { g in
+            let pct = CGFloat(state.have) / CGFloat(max(state.total, 1))
+            ZStack(alignment: .leading) {
+                Capsule().fill(JT.raise)
+                JT.rainbow.frame(width: g.size.width).mask(alignment: .leading) { Capsule().frame(width: max(12, g.size.width * pct)) }
+                Image("jt-fly").resizable().frame(width: 32, height: 32).shadow(color: JT.lavender.opacity(0.6), radius: 6)
+                    .offset(x: max(0, g.size.width * pct - 16), y: -10)
+            }
             .animation(.easeOut(duration: 0.9), value: state.have)
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: 170), spacing: 10)], spacing: 10) {
-                ForEach(state.cats, id: \.self) { c in
-                    VStack(alignment: .leading, spacing: 6) {
-                        HStack { Text(c.name); Spacer(); Text("\(c.have) / \(c.total)").foregroundColor(JT.muted) }.font(.callout)
-                        ProgressView(value: Double(c.have), total: Double(max(c.total, 1))).tint(JT.have)
-                    }
-                    .padding(12).doodled(12)
-                }
-            }
         }
+        .frame(height: 12)
     }
 
-    private var eras: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("Eras").font(JT.marker(28))
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: 210), spacing: 12)], spacing: 12) {
-                ForEach(state.eras) { e in
-                    Button { era = era == e.name ? nil : e.name; limit = 200 } label: {
-                        VStack(alignment: .leading, spacing: 5) {
-                            Text(e.name).font(.headline)
-                            if !e.time.isEmpty { Text(e.time).font(.caption).foregroundColor(JT.muted) }
-                            if !e.desc.isEmpty { Text(e.desc).font(.caption).foregroundColor(JT.muted).lineLimit(2) }
-                            Spacer(minLength: 6)
-                            ProgressView(value: Double(e.have), total: Double(max(e.total, 1))).tint(JT.have)
-                            Text("\(e.have) of \(e.total) songs").font(.caption).foregroundColor(JT.muted)
+    private var categories: some View {
+        HStack(spacing: 0) {
+            ForEach(Array(state.cats.enumerated()), id: \.element) { n, c in
+                VStack(alignment: .leading, spacing: 10) {
+                    HStack { Text(c.name); Spacer(); Text("\(c.have.formatted()) / \(c.total.formatted())").foregroundColor(JT.muted) }.font(JT.body(15.5))
+                    GeometryReader { g in
+                        ZStack(alignment: .leading) {
+                            Capsule().fill(JT.raise)
+                            Capsule().fill(JT.have).frame(width: g.size.width * CGFloat(c.have) / CGFloat(max(c.total, 1)))
                         }
-                        .frame(maxWidth: .infinity, minHeight: 118, alignment: .topLeading)
-                        .padding(14)
-                        .doodled(14)
-                        .overlay(RoundedRectangle(cornerRadius: 16).stroke(JT.lavender, lineWidth: era == e.name ? 2.5 : 0))
                     }
-                    .buttonStyle(HoverLift())
+                    .frame(height: 4)
                 }
+                .padding(.horizontal, 18).padding(.vertical, 16)
+                .overlay(alignment: .leading) { if n > 0 { Rectangle().fill(JT.line).frame(width: 1) } }
+            }
+        }
+        .doodled(16, seed: 1)
+    }
+
+    @ViewBuilder private var notices: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            ForEach(state.notices, id: \.self) { n in
+                HStack(spacing: 18) {
+                    Capsule().fill(n.released ? JT.have : JT.new).frame(width: 2.5)
+                    Text(n.text).font(JT.body(16))
+                }
+                .padding(.vertical, 8)
+            }
+            if !state.today.isEmpty {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("On this day").font(JT.marker(20)).padding(.bottom, 4)
+                    ForEach(state.today, id: \.self) { row in
+                        todayLine(row)
+                    }
+                }
+                .padding(18).frame(maxWidth: .infinity, alignment: .leading)
+                .doodled(16, seed: 2)
             }
         }
     }
 
+    private func todayLine(_ row: NState.TodayRow) -> some View {
+        // A flowing line of tappable song names, with a check for the ones you have.
+        var text = Text(row.head + " ").font(JT.body(15.5)).bold()
+        for (k, i) in row.songs.enumerated() where all.indices.contains(i) {
+            let s = all[i]
+            text = text + Text(s.n).font(JT.body(15.5)) + (s.o ? Text(" ✓").foregroundColor(JT.have) : Text("")) + Text(k < row.songs.count - 1 ? ", " : "")
+        }
+        if row.more > 0 { text = text + Text(" and \(row.more) more") }
+        return text
+            .onTapGesture { if let first = row.songs.first, all.indices.contains(first) { store.openSong = all[first] } }
+            .help("Click to open the first song")
+    }
+
+    private var erasSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            ScreenTitle(text: "Eras", size: 34)
+            Text("Pick an era to see its songs below.").font(JT.body(16)).foregroundColor(JT.muted).padding(.bottom, 10)
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 230), spacing: 16)], spacing: 16) {
+                ForEach(Array(state.eras.enumerated()), id: \.element) { n, e in EraCard(era: e, sticker: n % 6 + 1, seed: n, picked: era == e.name) }
+            }
+        }
+    }
+
+    /// The song list keeps the earlier native design (segmented tabs, one-line rows), which you preferred to the
+    /// classic page's table.
     private var songList: some View {
         let list = songs
         return VStack(alignment: .leading, spacing: 12) {
@@ -495,7 +823,7 @@ struct CollectionScreen: View {
                 }
                 .pickerStyle(.segmented).labelsHidden().frame(maxWidth: 460)
                 TextField("Search songs or eras", text: $query).textFieldStyle(.roundedBorder).frame(maxWidth: 260)
-                if let era { Button { self.era = nil } label: { Label(era, systemImage: "xmark.circle.fill") }.buttonStyle(.borderless) }
+                if let era { Button { store.eraFilter = nil } label: { Label(era, systemImage: "xmark.circle.fill") }.buttonStyle(.borderless) }
             }
             HStack {
                 Text("\(list.count) songs").font(.caption).foregroundColor(JT.muted)
@@ -522,20 +850,77 @@ struct CollectionScreen: View {
     }
 }
 
-struct HoverLift: ButtonStyle {
-    func makeBody(configuration: Configuration) -> some View { Lifted(configuration: configuration) }
-    struct Lifted: View {
-        let configuration: ButtonStyleConfiguration
-        @State private var hover = false
-        var body: some View {
-            configuration.label
-                .scaleEffect(configuration.isPressed ? 0.97 : 1)
-                .offset(y: hover ? -3 : 0)
-                .rotationEffect(.degrees(hover ? -0.4 : 0))
-                .shadow(color: JT.lavender.opacity(hover ? 0.3 : 0), radius: 14, y: 8)
-                .animation(.spring(response: 0.3, dampingFraction: 0.6), value: hover)
-                .onHover { hover = $0 }
+/// The planet and the cracked heart, bobbing. Animated by Core Animation, so the app does nothing per frame
+/// (an endless SwiftUI animation here cost about 13% CPU).
+private struct FloatingDoodles: NSViewRepresentable {
+    func makeNSView(context: Context) -> NSView {
+        let v = NSView(frame: NSRect(x: 0, y: 0, width: 240, height: 230))
+        v.wantsLayer = true
+        func add(_ name: String, _ frame: CGRect, rise: CGFloat, turn: CGFloat, delay: Double) {
+            guard let image = NSImage(named: name) else { return }
+            let l = CALayer()
+            l.frame = frame
+            l.contents = image
+            l.contentsGravity = .resizeAspect
+            v.layer?.addSublayer(l)
+            let bob = CABasicAnimation(keyPath: "transform")
+            bob.fromValue = CATransform3DIdentity
+            bob.toValue = CATransform3DConcat(CATransform3DMakeRotation(turn * .pi / 180, 0, 0, 1), CATransform3DMakeTranslation(0, rise, 0))
+            bob.duration = 4.5
+            bob.autoreverses = true
+            bob.repeatCount = .infinity
+            bob.beginTime = CACurrentMediaTime() + delay
+            bob.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+            l.add(bob, forKey: "bob")
         }
+        add("jt-planet", CGRect(x: 40, y: 30, width: 200, height: 200), rise: 8, turn: 0, delay: 0)
+        add("jt-heart", CGRect(x: 10, y: 0, width: 46, height: 46), rise: 10, turn: 7, delay: 2)
+        return v
+    }
+    func updateNSView(_ nsView: NSView, context: Context) {}
+}
+
+struct EraCard: View {
+    let era: NState.Era
+    let sticker: Int
+    let seed: Int
+    let picked: Bool
+    @State private var hover = false
+
+    var body: some View {
+        Button { NativeStore.shared.eraFilter = picked ? nil : era.name } label: {
+            VStack(alignment: .leading, spacing: 8) {
+                Text(era.name).font(JT.body(17, .semibold)).lineLimit(1)
+                if !era.time.isEmpty { Text(era.time).font(JT.body(13.5)).foregroundColor(JT.muted).lineLimit(1) }
+                if !era.desc.isEmpty { Text(era.desc).font(JT.body(14)).foregroundColor(JT.muted).lineLimit(2).padding(.top, 10) }
+                Spacer(minLength: 12)
+                GeometryReader { g in
+                    ZStack(alignment: .leading) {
+                        Capsule().fill(picked ? JT.night : JT.raise)
+                        Capsule().fill(JT.have).frame(width: g.size.width * CGFloat(era.have) / CGFloat(max(era.total, 1)))
+                    }
+                }
+                .frame(height: 4)
+                Text("\(era.have.formatted()) of \(era.total.formatted()) \(era.total == 1 ? "song" : "songs")").font(JT.body(13.5)).foregroundColor(JT.muted)
+            }
+            .padding(.horizontal, 18).padding(.vertical, 16)
+            .frame(maxWidth: .infinity, minHeight: 168, alignment: .topLeading)
+            .background(DoodleRect(seed: seed).fill(hover || picked ? JT.raise : JT.dusk))
+            .overlay(DoodleRect(seed: seed).stroke(picked ? JT.lavender : hover ? JT.lavender.opacity(0.8) : JT.line2, lineWidth: picked ? 2.6 : 1.6))
+            .overlay(alignment: .topTrailing) {
+                Image("jt-sticker\(sticker)").resizable().frame(width: 30, height: 30)
+                    .shadow(color: .black.opacity(0.45), radius: 4, y: 3)
+                    .rotationEffect(.degrees(hover ? -10 : 14)).scaleEffect(hover ? 1.3 : 1)
+                    .offset(x: 9, y: -12)
+            }
+            .shadow(color: JT.lavender.opacity(picked ? 0.35 : hover ? 0.22 : 0), radius: picked ? 18 : 14, y: hover ? 10 : 0)
+            .offset(y: hover ? -3 : 0)
+            .rotationEffect(.degrees(hover ? -0.4 : 0))
+            .animation(.spring(response: 0.3, dampingFraction: 0.55), value: hover)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .onHover { hover = $0 }
     }
 }
 
