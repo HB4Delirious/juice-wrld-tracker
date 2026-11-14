@@ -39,7 +39,8 @@ it loads the catalog, scans and matches the library, writes tags (with its teste
 
 Stages:
 1. Done: window, native sky, sidebar, Collection (scoreboard, eras, song list with search, filters and wishlist, song card).
-2. Timeline, Stats and Credits (read-only screens: the snapshot grows, the views move).
+2. Done: Timeline, Stats (without Plex listening yet) and Credits, in `JuiceTracker/NativeScreens.swift`. The snapshot now
+   sends the catalog's fixed details (dates, years, credits) only when they change; owned, wishlist and the queue go each time.
 3. File health and Duplicates (actions that change files: they stay in the page's tested code, called from Swift).
 4. Tag fixer (review list in SwiftUI; writing stays in the page's core code, or JavaScriptCore without the page).
 5. Trivia, Export & backup, Settings polish; then Download all, File links and the player in SwiftUI.

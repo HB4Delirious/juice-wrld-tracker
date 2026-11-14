@@ -12,15 +12,38 @@ import WebKit
 struct NState: Decodable {
     struct Cat: Decodable, Hashable { let name: String; let have: Int; let total: Int }
     struct Era: Decodable, Hashable, Identifiable { let name: String; let have: Int; let total: Int; let time: String; let desc: String; var id: String { name } }
-    struct Song: Decodable, Hashable, Identifiable { let i: Int; let n: String; let e: String; let c: String; let l: String; let o: Bool; let w: Bool; let f: Bool; var id: Int { i } }
     struct Queue: Decodable, Hashable { let done: Int; let total: Int; let current: String; let waiting: Bool }
+    /// A catalog song's fixed details: sent once, and again only when they change.
+    struct CatSong: Decodable, Hashable {
+        let i: Int; let n: String; let e: String; let c: String; let l: String; let f: Bool
+        let m: Int?             // recording month as year * 12 + month (0-11)
+        let ry: [Int]           // recording years
+        let py: Int?, sy: Int?, rl: Int?  // previewed, surfaced, released years
+        let pr: [String], ar: [String], en: [String], st: [String]  // producers, artists, engineers, studios
+    }
     let total: Int
     let have: Int
     let folder: String
     let queue: Queue?
     let cats: [Cat]
     let eras: [Era]
-    let songs: [Song]
+    let owned: [Int]
+    let wished: [Int]
+    let catalog: [CatSong]?
+}
+
+/// A song as the screens show it: its details plus whether you have it and whether it's on your wishlist.
+struct Song: Hashable, Identifiable {
+    let s: NState.CatSong
+    let o: Bool
+    let w: Bool
+    var id: Int { s.i }
+    var i: Int { s.i }
+    var n: String { s.n }
+    var e: String { s.e }
+    var c: String { s.c }
+    var l: String { s.l }
+    var f: Bool { s.f }
 }
 
 struct SongDetails: Decodable {
@@ -33,14 +56,26 @@ struct SongDetails: Decodable {
 final class NativeStore: NSObject, ObservableObject, WKScriptMessageHandler {
     static let shared = NativeStore()
     @Published var state: NState?
+    @Published var songs: [Song] = []
+    private var catalog: [NState.CatSong] = []
 
     func userContentController(_ controller: WKUserContentController, didReceive message: WKScriptMessage) {
         guard let json = message.body as? String else { return }
         DispatchQueue.global(qos: .userInitiated).async {
-            guard let decoded = try? JSONDecoder().decode(NState.self, from: Data(json.utf8)) else { return }
-            DispatchQueue.main.async { self.state = decoded }
+            let decoded: NState
+            do { decoded = try JSONDecoder().decode(NState.self, from: Data(json.utf8)) }
+            catch { NSLog("Juice Tracker: couldn't read the page's snapshot: \(error)"); return }
+            DispatchQueue.main.async {
+                if let c = decoded.catalog { self.catalog = c }
+                let owned = Set(decoded.owned), wished = Set(decoded.wished)
+                self.songs = self.catalog.map { Song(s: $0, o: owned.contains($0.i), w: wished.contains($0.i)) }
+                self.state = decoded
+            }
         }
     }
+
+    /// The song card opened from any screen.
+    @Published var openSong: Song?
 
     /// Runs an action in the page (wish, download, play, details, refresh) and returns its text result.
     @MainActor @discardableResult func act(_ op: String, _ i: Int = -1) async -> String {
@@ -271,7 +306,7 @@ enum NativePage: String, CaseIterable, Identifiable {
         ["collection": "smallcircle.filled.circle", "fixer": "tag", "dups": "square.on.square", "health": "waveform.path.ecg", "people": "person.2",
          "stats": "chart.bar", "timeline": "point.3.connected.trianglepath.dotted", "trivia": "questionmark.circle", "export": "archivebox"][rawValue] ?? "circle"
     }
-    var isNative: Bool { self == .collection }
+    var isNative: Bool { [.collection, .timeline, .stats, .people].contains(self) }
 }
 
 struct NativeRoot: View {
@@ -284,12 +319,20 @@ struct NativeRoot: View {
             HStack(spacing: 0) {
                 sidebar.frame(width: 210)
                 Group {
-                    if let s = store.state { CollectionScreen(state: s) } else { loading }
+                    if let s = store.state, !store.songs.isEmpty {
+                        switch page {
+                        case .timeline: TimelineScreen(songs: store.songs)
+                        case .stats: StatsScreen(state: s, songs: store.songs)
+                        case .people: CreditsScreen(songs: store.songs)
+                        default: CollectionScreen(state: s, songs: store.songs)
+                        }
+                    } else { loading }
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
         .preferredColorScheme(.dark)
+        .sheet(item: $store.openSong) { s in SongCard(opened: s, close: { store.openSong = nil }) }
         .task { await store.act("refresh") }
     }
 
@@ -346,15 +389,16 @@ struct NativeRoot: View {
 
 struct CollectionScreen: View {
     let state: NState
+    let all: [Song]
     @State private var tab = "all"
     @State private var query = ""
     @State private var era: String?
     @State private var limit = 200
-    @State private var open: NState.Song?
+    init(state: NState, songs: [Song]) { self.state = state; self.all = songs }
 
-    private var songs: [NState.Song] {
+    private var songs: [Song] {
         let q = query.lowercased().trimmingCharacters(in: .whitespaces)
-        return state.songs.filter { s in
+        return all.filter { s in
             (era == nil || s.e == era) &&
             (tab == "all" || (tab == "have" && s.o) || (tab == "missing" && !s.o) || (tab == "wish" && s.w)) &&
             (q.isEmpty || s.n.lowercased().contains(q) || s.e.lowercased().contains(q))
@@ -371,7 +415,6 @@ struct CollectionScreen: View {
             .padding(.horizontal, 34).padding(.top, 40).padding(.bottom, 60)
             .frame(maxWidth: 1080, alignment: .leading)
         }
-        .sheet(item: $open) { s in SongCard(opened: s, close: { open = nil }) }
     }
 
     private var scoreboard: some View {
@@ -437,7 +480,7 @@ struct CollectionScreen: View {
             }
             Text("\(list.count) songs").font(.caption).foregroundColor(JT.muted)
             LazyVStack(spacing: 0) {
-                ForEach(list.prefix(limit)) { s in SongRow(song: s, open: { open = s }) }
+                ForEach(list.prefix(limit)) { s in SongRow(song: s, open: { NativeStore.shared.openSong = s }) }
             }
             .doodled(14)
             if list.count > limit { Button("Show more") { limit += 300 }.buttonStyle(.borderless) }
@@ -465,8 +508,9 @@ struct HoverLift: ButtonStyle {
 }
 
 struct SongRow: View {
-    let song: NState.Song
+    let song: Song
     let open: () -> Void
+    var compact = false // narrow lists (Credits): no category column
     @State private var hover = false
 
     var body: some View {
@@ -479,14 +523,14 @@ struct SongRow: View {
             Button(action: open) {
                 HStack(spacing: 12) {
                     Text(song.n).lineLimit(1).frame(maxWidth: .infinity, alignment: .leading)
-                    Text(song.e).foregroundColor(JT.muted).lineLimit(1).frame(width: 110, alignment: .leading)
-                    Text(song.c).foregroundColor(JT.muted).lineLimit(1).frame(width: 130, alignment: .leading)
+                    Text(song.e).foregroundColor(JT.muted).lineLimit(1).frame(width: compact ? 80 : 110, alignment: .leading)
+                    if !compact { Text(song.c).foregroundColor(JT.muted).lineLimit(1).frame(width: 130, alignment: .leading) }
                     Text(song.l).foregroundColor(JT.muted).frame(width: 44, alignment: .trailing)
                 }
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            status.frame(width: 120, alignment: .leading)
+            status.frame(width: compact ? 100 : 120, alignment: .leading)
         }
         .font(.callout)
         .padding(.vertical, 8).padding(.horizontal, 14)
@@ -508,12 +552,12 @@ struct SongRow: View {
 }
 
 struct SongCard: View {
-    let opened: NState.Song
+    let opened: Song
     let close: () -> Void
     @ObservedObject private var store = NativeStore.shared
     @State private var d: SongDetails?
     /// The latest snapshot of this song (the wishlist star and library status change while the card is open).
-    private var song: NState.Song { store.state?.songs.first { $0.i == opened.i } ?? opened }
+    private var song: Song { store.songs.indices.contains(opened.i) && store.songs[opened.i].i == opened.i ? store.songs[opened.i] : opened }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
