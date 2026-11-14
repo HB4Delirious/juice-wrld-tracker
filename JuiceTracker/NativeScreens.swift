@@ -189,7 +189,7 @@ struct StatsScreen: View {
                 Text("Previews, surfaced songs and releases by year").font(.headline)
                 Legend(items: [("Previewed", Color(red: 1, green: 0.63, blue: 0.29)), ("Surfaced", JT.missing), ("Released", JT.have)])
                 YearBars(years: eventYears, values: events, colors: [Color(red: 1, green: 0.63, blue: 0.29), JT.missing, JT.have])
-                Text("Listening stats from Plex are in the classic window's Stats for now.").font(.caption).foregroundColor(JT.muted)
+                ListeningSection()
             }
             .padding(.horizontal, 34).padding(.top, 40).padding(.bottom, 60)
             .frame(maxWidth: 1080, alignment: .leading)

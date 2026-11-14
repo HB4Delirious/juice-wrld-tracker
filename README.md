@@ -53,6 +53,11 @@ tag writing, downloads). Window > Classic Window (⌘2) shows the original HTML 
 - **Versions:** each song card lists all versions side by side, with a button to download the missing ones. **On this day** on the home page shows songs recorded, previewed, surfaced or released on today's date.
 - **Music:** pick an era to shuffle (or Play this era from its card); songs you've heard today are skipped until everything has played. **Smart playlists:** Plex "most played" and "never played" lists in Export & backup. **Trivia:** Name that song plays a clip from your own files.
 - **Upgrades:** File health also lists songs where the site has a lossless or higher-bitrate copy, with an Upgrade button.
+- **Lyrics and artwork:** song cards show the lyrics from juicewrldapi.com (timed lyrics follow the music while the song plays), the era's artwork, and instrumental notes. The sidebar player shows the line being sung, and songs without their own cover use the era art in Now Playing.
+- **Mini player** (Window > Mini Player, ⌘3): a small window that stays on top, with a visualizer that moves with the music (the sky glows along with it).
+- **Listening (Stats):** your top songs this week and all time from the app's own plays, owned songs you've never played, and Plex play counts.
+- **Spotlight and Shortcuts:** songs you have show up in ⌘Space search; Shortcuts and Siri can play an era, pause, skip, say what's playing, and download your wishlist.
+- **Desktop widget:** your collection count, what's playing and "On this day" (right-click the desktop > Edit Widgets > Juice Tracker; macOS 14 or later).
 - **Timeline:** every song as a dot in the month it was recorded, with yours lit up. **Collection card** (Export & backup): an image of your progress to post or keep.
 - **Settings (⌘,):**
   - Daily new-song and release alerts (macOS notifications), "Keep running when the window is closed", and "Open at login".

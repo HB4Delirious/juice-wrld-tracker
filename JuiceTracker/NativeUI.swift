@@ -18,7 +18,7 @@ struct NState: Decodable {
     struct TodayRow: Decodable, Hashable { let head: String; let songs: [Int]; let more: Int }
     /// A catalog song's fixed details: sent once, and again only when they change.
     struct CatSong: Decodable, Hashable {
-        let i: Int; let n: String; let a: [String]; let rel: Bool; let e: String; let c: String; let l: String; let f: Bool
+        let i: Int; let id: String; let n: String; let a: [String]; let rel: Bool; let e: String; let c: String; let l: String; let f: Bool
         let m: Int?             // recording month as year * 12 + month (0-11)
         let ry: [Int]           // recording years
         let py: Int?, sy: Int?, rl: Int?  // previewed, surfaced, released years
@@ -85,6 +85,9 @@ final class NativeStore: NSObject, ObservableObject, WKScriptMessageHandler {
                 self.songs = self.catalog.map { Song(s: $0, o: owned.contains($0.i), w: wished.contains($0.i)) }
                 self.state = decoded
                 self.version += 1
+                SpotlightIndex.update(self.songs)
+                WidgetFeed.update()
+                if let id = SpotlightIndex.pending, let s = self.songs.first(where: { $0.s.id == id }) { SpotlightIndex.pending = nil; self.openSong = s }
             }
         }
     }
@@ -129,6 +132,16 @@ final class NativeStore: NSObject, ObservableObject, WKScriptMessageHandler {
 
 final class SkyNSView: NSView {
     private var builtFor: CGSize = .zero
+    private let glow = CAGradientLayer()
+    static weak var current: SkyNSView?
+
+    /// Brightens a soft pink glow with the music's loudness (0...1). Called by NowPlaying while music plays.
+    func setGlow(_ level: Float) {
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        glow.opacity = level * 0.55
+        CATransaction.commit()
+    }
 
     override init(frame: NSRect) {
         super.init(frame: frame)
@@ -166,6 +179,7 @@ final class SkyNSView: NSView {
         guard let root = layer else { return }
         root.sublayers?.forEach { $0.removeFromSuperlayer() }
         let b = bounds
+        SkyNSView.current = self
 
         let night = CAGradientLayer()
         night.frame = b
@@ -233,6 +247,15 @@ final class SkyNSView: NSView {
         twinkle.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
         sparkles.add(twinkle, forKey: "twinkle")
         root.addSublayer(sparkles)
+
+        // the glow that pulses with the music
+        glow.type = .radial
+        glow.colors = [NSColor(srgbRed: 1, green: 106 / 255, blue: 213 / 255, alpha: 0.35).cgColor, NSColor(srgbRed: 1, green: 106 / 255, blue: 213 / 255, alpha: 0).cgColor]
+        glow.startPoint = CGPoint(x: 0.5, y: 0.5)
+        glow.endPoint = CGPoint(x: 1, y: 1)
+        glow.frame = CGRect(x: b.width * 0.2, y: -b.height * 0.2, width: b.width * 0.9, height: b.height * 0.9)
+        glow.opacity = 0
+        root.addSublayer(glow)
 
         // a shooting star every 14 seconds
         let streak = CAGradientLayer()
@@ -998,6 +1021,7 @@ struct SongCard: View {
                             Text("Notes").font(.headline).padding(.top, 6)
                             Text([d.notes, d.info].filter { !$0.isEmpty }.joined(separator: "\n\n")).foregroundColor(JT.muted).textSelection(.enabled)
                         }
+                        SongExtrasView(song: song)
                         Text("Your note").font(.headline).padding(.top, 6)
                         TextEditor(text: $note).frame(minHeight: 54).font(.callout)
                             .overlay(RoundedRectangle(cornerRadius: 6).stroke(JT.line))

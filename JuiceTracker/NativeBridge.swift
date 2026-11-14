@@ -386,6 +386,25 @@ final class AmbientPlayer: NSObject, AVAudioPlayerDelegate {
     private(set) var title: String?
     private(set) var isPaused = false
     var hasSongs: Bool { !items.isEmpty }
+    /// The file playing now (lyrics and artwork look up its song), and where in it.
+    private(set) var currentPath: String?
+    var currentTime: TimeInterval { player?.currentTime ?? 0 }
+    private var hasOwnCover = false
+
+    /// Loudness right now, 0...1, for the visualizer (0 when nothing plays).
+    func level() -> Float {
+        guard let player, player.isPlaying else { return 0 }
+        player.updateMeters()
+        let db = (player.averagePower(forChannel: 0) + player.averagePower(forChannel: max(0, player.numberOfChannels - 1))) / 2
+        return max(0, min(1, (db + 50) / 50))
+    }
+
+    /// Artwork for songs whose file has none (the era's art from juicewrldapi.com).
+    func setFallbackArtwork(_ image: NSImage, for path: String) {
+        guard path == currentPath, !hasOwnCover else { return }
+        artwork = MPMediaItemArtwork(boundsSize: image.size) { _ in image }
+        publish()
+    }
     var isPlaying: Bool { player != nil && !isPaused }
     private var items: [(url: URL, title: String)] = []
     private var order: [Int] = []
@@ -426,6 +445,7 @@ final class AmbientPlayer: NSObject, AVAudioPlayerDelegate {
         player?.stop()
         player = nil
         title = nil
+        currentPath = nil
         publish()
     }
 
@@ -444,6 +464,20 @@ final class AmbientPlayer: NSObject, AVAudioPlayerDelegate {
             order = (fresh.isEmpty ? Array(items.indices) : fresh).shuffled()
         }
         start(items[order.removeLast()], failures: failures)
+    }
+
+    /// Every play (path and time), for "your listening" in Stats. The newest 5,000 are kept.
+    static func logPlay(_ path: String) {
+        var log = UserDefaults.standard.array(forKey: "playLog") as? [[Any]] ?? []
+        log.append([path, Date().timeIntervalSince1970])
+        if log.count > 5000 { log.removeFirst(log.count - 5000) }
+        UserDefaults.standard.set(log, forKey: "playLog")
+    }
+    static var playLog: [(path: String, at: Date)] {
+        (UserDefaults.standard.array(forKey: "playLog") as? [[Any]] ?? []).compactMap { e in
+            guard e.count == 2, let p = e[0] as? String, let t = e[1] as? Double else { return nil }
+            return (p, Date(timeIntervalSince1970: t))
+        }
     }
 
     /// Paths played today, kept across launches.
@@ -507,12 +541,16 @@ final class AmbientPlayer: NSObject, AVAudioPlayerDelegate {
                 guard let self, gen == self.generation else { return }
                 guard let loaded else { self.next(failures: failures + 1); return }
                 loaded.delegate = self
+                loaded.isMeteringEnabled = true
                 loaded.volume = 0
                 loaded.play()
                 loaded.setVolume(self.volume, fadeDuration: 3)
                 self.player = loaded
                 self.title = item.title
+                self.currentPath = item.url.path
+                self.hasOwnCover = cover != nil
                 Self.markHeard(item.url.path)
+                Self.logPlay(item.url.path)
                 let image = cover ?? NSApp.applicationIconImage ?? NSImage()
                 self.artwork = MPMediaItemArtwork(boundsSize: image.size) { _ in image }
                 self.publish()

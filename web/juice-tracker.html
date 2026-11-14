@@ -5192,7 +5192,7 @@ function nativeState() {
     const year = v => { const y = yearOf(v); return y ? Number(y) : null; };
     out.catalog = state.catalog.map((s, i) => {
       const d = state.derived[i] || deriveSong(s);
-      return { i, n: s.name, a: s.alt, rel: isReleased(s), e: eraName(s), c: capital(s.category), l: s.length || "", f: Boolean(fileUrl(s)), m: recordMonth(s.recordDates),
+      return { i, id: String(s.id), n: s.name, a: s.alt, rel: isReleased(s), e: eraName(s), c: capital(s.category), l: s.length || "", f: Boolean(fileUrl(s)), m: recordMonth(s.recordDates),
         ry: [...d.recYears], py: year(s.previewDate), sy: year(s.leakDate), rl: isReleased(s) ? year(s.release) : null,
         pr: d.producers, ar: d.artists, en: d.engineers, st: d.studios };
     });
@@ -5242,6 +5242,30 @@ window.jwNativeAction = async a => {
   if (a.op === "setup") return JSON.stringify({ catalog: Boolean(state.catalog), folder: state.rootHandle ? state.rootHandle.name : "",
     catalogStatus: $("catalog-status").textContent, folderStatus: $("folder-status").textContent });
   if (a.op === "loadCatalog") { $("fetch-btn").click(); return ""; }
+  // which catalog song a playing file is (for lyrics and artwork), and lookups for the app's own play history
+  if (a.op === "songForPath") { const f = (state.library || []).find(x => x.handle && x.handle._path === a.path); return f && f.songs && f.songs.length ? String(f.songs[0]) : ""; }
+  if (a.op === "songsForPaths") {
+    const byPath = new Map((state.library || []).filter(f => f.handle && f.handle._path && f.songs && f.songs.length).map(f => [f.handle._path, f.songs[0]]));
+    return JSON.stringify((a.paths || []).map(p => byPath.has(p) ? byPath.get(p) : -1));
+  }
+  if (a.op === "neverPlayed") { // songs you have none of whose files has ever played here
+    const heard = new Set(a.paths || []), out = [];
+    state.owned.forEach((files, i) => { if (!files.some(f => f.handle && heard.has(f.handle._path))) out.push(i); });
+    return JSON.stringify(out);
+  }
+  if (a.op === "downloadWishlist") {
+    const songs = state.catalog.filter((so, i) => isWished(so) && !state.owned.has(i) && fileUrl(so));
+    return String(downloadAll(songs) || 0);
+  }
+  if (a.op === "listening") { // Plex play counts for native Stats
+    if (!state.listen) await fetchListening();
+    const L = listeningLists(), counts = new Map();
+    for (const f of state.library || []) { const c = state.listen.counts.get(f.path); if (c && c.plays && f.songs && f.songs.length) counts.set(f.songs[0], (counts.get(f.songs[0]) || 0) + c.plays); }
+    const eras = new Map();
+    counts.forEach((n, i) => { const e = eraName(state.catalog[i]); eras.set(e, (eras.get(e) || 0) + n); });
+    return JSON.stringify({ total: [...counts.values()].reduce((x, y) => x + y, 0), top: L.most.slice(0, 15).map(i => ({ i, plays: counts.get(i) || 0 })),
+      never: L.never, eras: [...eras].sort((x, y) => y[1] - x[1]).slice(0, 8).map(([name, plays]) => ({ name, plays })), missing: state.listen.missing });
+  }
   if (a.op === "driveCheck") { $("drive-status").click(); return ""; } // reconnects when the drive is down
   if (a.op === "pickFolder") { $("folder-btn").click(); return ""; }
   if (a.op === "rescan") { await rescanFolder(); return ""; }

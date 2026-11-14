@@ -16,10 +16,13 @@
 		D041526374859607182A3B4C /* NativeTools.swift in Sources */ = {isa = PBXBuildFile; fileRef = E15263748596071829304B5D /* NativeTools.swift */; };
 		F26374859607182A3B4C5D6E /* NativeFixer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0374859607182A3B4C5D6E7F /* NativeFixer.swift */; };
 		1485960718293A4B5C6D7E8F /* NativeExtras.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2596071829304B5C6D7E8F90 /* NativeExtras.swift */; };
+		36A7B8C9D0E1F20314253647 /* NativeMore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 47B8C9D0E1F2031425364758 /* NativeMore.swift */; };
 		93AD2DE8F603B24719141ACE /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 2DA6296CA099F01CDF41D14C /* Assets.xcassets */; };
 		C169FD5F3E196738AE889C7D /* juice-tracker.html in Resources */ = {isa = PBXBuildFile; fileRef = ACB23FEBF9072389C24011D1 /* juice-tracker.html */; };
 		C8E648084E7309C1B01150E8 /* JuiceTrackerApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = B11B15543E9C61D2DE5F191E /* JuiceTrackerApp.swift */; };
 		ED549C999B26D36BC005D7A2 /* WebViewStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 33923ED7623C961878FB8F8C /* WebViewStore.swift */; };
+		B2C3D4E5F60718293A4B5C6D /* JuiceTrackerWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60718293A4B5C /* JuiceTrackerWidget.swift */; };
+		F60718293A4B5C6D7E8F9001 /* JuiceTrackerWidget.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = E5F60718293A4B5C6D7E8F90 /* JuiceTrackerWidget.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -37,6 +40,11 @@
 		E15263748596071829304B5D /* NativeTools.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeTools.swift; sourceTree = "<group>"; };
 		0374859607182A3B4C5D6E7F /* NativeFixer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeFixer.swift; sourceTree = "<group>"; };
 		2596071829304B5C6D7E8F90 /* NativeExtras.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeExtras.swift; sourceTree = "<group>"; };
+		47B8C9D0E1F2031425364758 /* NativeMore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeMore.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F60718293A4B5C /* JuiceTrackerWidget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JuiceTrackerWidget.swift; sourceTree = "<group>"; };
+		C3D4E5F60718293A4B5C6D7E /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		D4E5F60718293A4B5C6D7E8F /* JuiceTrackerWidget.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = JuiceTrackerWidget.entitlements; sourceTree = "<group>"; };
+		E5F60718293A4B5C6D7E8F90 /* JuiceTrackerWidget.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = JuiceTrackerWidget.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXGroup section */
@@ -44,6 +52,7 @@
 			isa = PBXGroup;
 			children = (
 				A4FC42C6C8C0E7CF19B40734 /* JuiceTracker */,
+				0718293A4B5C6D7E8F900112 /* JuiceTrackerWidget */,
 				AB1BB21A8F66F01B4E3BFBD8 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -63,6 +72,7 @@
 				E15263748596071829304B5D /* NativeTools.swift */,
 				0374859607182A3B4C5D6E7F /* NativeFixer.swift */,
 				2596071829304B5C6D7E8F90 /* NativeExtras.swift */,
+				47B8C9D0E1F2031425364758 /* NativeMore.swift */,
 				33923ED7623C961878FB8F8C /* WebViewStore.swift */,
 			);
 			path = JuiceTracker;
@@ -72,8 +82,19 @@
 			isa = PBXGroup;
 			children = (
 				CBB29ABC89E055B4458F1CD6 /* JuiceTracker.app */,
+				E5F60718293A4B5C6D7E8F90 /* JuiceTrackerWidget.appex */,
 			);
 			name = Products;
+			sourceTree = "<group>";
+		};
+		0718293A4B5C6D7E8F900112 /* JuiceTrackerWidget */ = {
+			isa = PBXGroup;
+			children = (
+				A1B2C3D4E5F60718293A4B5C /* JuiceTrackerWidget.swift */,
+				C3D4E5F60718293A4B5C6D7E /* Info.plist */,
+				D4E5F60718293A4B5C6D7E8F /* JuiceTrackerWidget.entitlements */,
+			);
+			path = JuiceTrackerWidget;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -85,10 +106,12 @@
 			buildPhases = (
 				55BD58754B1456EE0FBC0B99 /* Sources */,
 				F1EF8B24F114D7509804B825 /* Resources */,
+				4B5C6D7E8F90011223344556 /* Embed Foundation Extensions */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				5C6D7E8F9001122334455667 /* PBXTargetDependency */,
 			);
 			name = JuiceTracker;
 			packageProductDependencies = (
@@ -96,6 +119,22 @@
 			productName = JuiceTracker;
 			productReference = CBB29ABC89E055B4458F1CD6 /* JuiceTracker.app */;
 			productType = "com.apple.product-type.application";
+		};
+		18293A4B5C6D7E8F90011223 /* JuiceTrackerWidget */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 7E8F90011223344556677889 /* Build configuration list for PBXNativeTarget "JuiceTrackerWidget" */;
+			buildPhases = (
+				293A4B5C6D7E8F9001122334 /* Sources */,
+				3A4B5C6D7E8F900112233445 /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = JuiceTrackerWidget;
+			productName = JuiceTrackerWidget;
+			productReference = E5F60718293A4B5C6D7E8F90 /* JuiceTrackerWidget.appex */;
+			productType = "com.apple.product-type.app-extension";
 		};
 /* End PBXNativeTarget section */
 
@@ -107,6 +146,10 @@
 				LastUpgradeCheck = 1430;
 				TargetAttributes = {
 					15EEA874837737ED682DFBED = {
+						DevelopmentTeam = "";
+						ProvisioningStyle = Manual;
+					};
+					18293A4B5C6D7E8F90011223 = {
 						DevelopmentTeam = "";
 						ProvisioningStyle = Manual;
 					};
@@ -127,9 +170,44 @@
 			projectRoot = "";
 			targets = (
 				15EEA874837737ED682DFBED /* JuiceTracker */,
+				18293A4B5C6D7E8F90011223 /* JuiceTrackerWidget */,
 			);
 		};
 /* End PBXProject section */
+
+/* Begin PBXContainerItemProxy section */
+		6D7E8F900112233445566778 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 2E56F7E152331715EA1F87DB /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 18293A4B5C6D7E8F90011223;
+			remoteInfo = JuiceTrackerWidget;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		4B5C6D7E8F90011223344556 /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				F60718293A4B5C6D7E8F9001 /* JuiceTrackerWidget.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		3A4B5C6D7E8F900112233445 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXResourcesBuildPhase section */
 		F1EF8B24F114D7509804B825 /* Resources */ = {
@@ -158,11 +236,28 @@
 				D041526374859607182A3B4C /* NativeTools.swift in Sources */,
 				F26374859607182A3B4C5D6E /* NativeFixer.swift in Sources */,
 				1485960718293A4B5C6D7E8F /* NativeExtras.swift in Sources */,
+				36A7B8C9D0E1F20314253647 /* NativeMore.swift in Sources */,
 				ED549C999B26D36BC005D7A2 /* WebViewStore.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		293A4B5C6D7E8F9001122334 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				B2C3D4E5F60718293A4B5C6D /* JuiceTrackerWidget.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		5C6D7E8F9001122334455667 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 18293A4B5C6D7E8F90011223 /* JuiceTrackerWidget */;
+			targetProxy = 6D7E8F900112233445566778 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
 		1D3C5BCEB12B0E29770BD291 /* Release */ = {
@@ -340,6 +435,62 @@
 			};
 			name = Release;
 		};
+		8F900112233445566778899A /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = JuiceTrackerWidget/JuiceTrackerWidget.entitlements;
+				CODE_SIGN_IDENTITY = "-";
+				CODE_SIGN_STYLE = Manual;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = "";
+				ENABLE_APP_SANDBOX = YES;
+				ENABLE_HARDENED_RUNTIME = NO;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = JuiceTrackerWidget/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = "Juice Tracker";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@executable_path/../../../../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.hb4delirious.JuiceTracker.Widget;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SKIP_INSTALL = YES;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		900112233445566778899AAB /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = JuiceTrackerWidget/JuiceTrackerWidget.entitlements;
+				CODE_SIGN_IDENTITY = "-";
+				CODE_SIGN_STYLE = Manual;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = "";
+				ENABLE_APP_SANDBOX = YES;
+				ENABLE_HARDENED_RUNTIME = NO;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = JuiceTrackerWidget/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = "Juice Tracker";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@executable_path/../../../../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.hb4delirious.JuiceTracker.Widget;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SKIP_INSTALL = YES;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -357,6 +508,15 @@
 			buildConfigurations = (
 				88742550C770AD432DA9D599 /* Debug */,
 				9BA2FE140914CD9C8DBCD71D /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		7E8F90011223344556677889 /* Build configuration list for PBXNativeTarget "JuiceTrackerWidget" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				8F900112233445566778899A /* Debug */,
+				900112233445566778899AAB /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Debug;
