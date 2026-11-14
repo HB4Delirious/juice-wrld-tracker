@@ -69,28 +69,28 @@
   :focus-visible { outline: none; box-shadow: var(--ring); border-radius: 6px; }
   .wrap { max-width: 1060px; margin: 0 auto; padding: 40px 32px 120px; min-width: 0; width: 100%; }
   /* starfield and faint tattoo flash, fixed behind the content */
-  /* the sky: separate fixed layers so each drifts at its own speed (parallax). Each layer is one tile
-     larger than the window on every side and moves exactly one tile per loop, so the repeat never shows.
-     The tiled layers move in 1px steps (a few updates a second): at this speed it looks the same as smooth
-     motion, and repainting their SVG tiles 60 times a second cost ~17% CPU. */
+  /* the sky: separate fixed layers so each drifts at its own speed (parallax). Each layer is the window plus one tile
+     on the two sides it moves toward, and moves exactly one tile per loop, so the loop is seamless. They move in
+     tenth-of-a-pixel steps about 15 times a second: smooth to the eye, at about a quarter of the CPU that 60 updates a
+     second cost (measured: +4% instead of +13%). */
   .sky { position: fixed; inset: 0; z-index: -1; pointer-events: none; overflow: hidden; }
   .sky > div { position: absolute; will-change: transform; }
   .sky-nebula { inset: -12%; background: radial-gradient(38% 30% at 52% 34%, rgba(232, 110, 70, .30), transparent 70%),
       radial-gradient(45% 40% at 6% 70%, rgba(214, 48, 140, .42), transparent 70%),
       radial-gradient(40% 32% at 88% 14%, rgba(80, 130, 255, .32), transparent 70%),
       radial-gradient(30% 26% at 20% 18%, rgba(120, 110, 255, .22), transparent 70%),
-      radial-gradient(60% 50% at 70% 90%, rgba(140, 40, 190, .36), transparent 75%); animation: nebula 48s ease-in-out infinite alternate; }
+      radial-gradient(60% 50% at 70% 90%, rgba(140, 40, 190, .36), transparent 75%); animation: nebula 48s steps(720) infinite alternate; }
   .sky { --stars: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='420' height='420'%3E%3Cg fill='%23fff'%3E%3Ccircle cx='22' cy='38' r='1'/%3E%3Ccircle cx='97' cy='12' r='.8'/%3E%3Ccircle cx='160' cy='70' r='1.2'/%3E%3Ccircle cx='240' cy='28' r='.7'/%3E%3Ccircle cx='318' cy='92' r='1'/%3E%3Ccircle cx='395' cy='40' r='.8'/%3E%3Ccircle cx='60' cy='150' r='.7'/%3E%3Ccircle cx='130' cy='210' r='1'/%3E%3Ccircle cx='205' cy='160' r='.6'/%3E%3Ccircle cx='280' cy='230' r='1.1'/%3E%3Ccircle cx='360' cy='180' r='.7'/%3E%3Ccircle cx='30' cy='280' r='1'/%3E%3Ccircle cx='110' cy='330' r='.7'/%3E%3Ccircle cx='190' cy='300' r='1'/%3E%3Ccircle cx='260' cy='360' r='.8'/%3E%3Ccircle cx='340' cy='310' r='1.2'/%3E%3Ccircle cx='400' cy='390' r='.7'/%3E%3Ccircle cx='70' cy='400' r='.9'/%3E%3Cpath d='M300 140l2 7 7 2-7 2-2 7-2-7-7-2 7-2z'/%3E%3Cpath d='M80 250l1.6 5.4 5.4 1.6-5.4 1.6-1.6 5.4-1.6-5.4-5.4-1.6 5.4-1.6z'/%3E%3Cpath d='M215 390l1.3 4.2 4.2 1.3-4.2 1.3-1.3 4.2-1.3-4.2-4.2-1.3 4.2-1.3z'/%3E%3C/g%3E%3C/svg%3E"); }
-  .sky-far { inset: -420px; background: var(--stars) 0 0 / 420px 420px; animation: drift-420 260s steps(420) infinite; }
-  .sky-near { inset: -690px; background: var(--stars) 157px 263px / 690px 690px; animation: drift-690 190s steps(690) infinite; }
-  .sky-flash { inset: -560px; background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='560' height='560'%3E%3Cg fill='none' stroke='%23ffd6f5' stroke-opacity='.075' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M70 40l12 26 28 3-21 19 6 28-25-14-25 14 6-28-21-19 28-3z'/%3E%3Cpath d='M300 92c-18-16-48-6-48 20 0 26 48 52 48 52s48-26 48-52c0-26-30-36-48-20l-8 18 12 12-8 16'/%3E%3Cpath d='M470 70c-10-24-40-30-44-14-4 16 18 26 44 18zM470 74c-24 2-36 18-28 28 8 10 24-2 28-24zM474 70c10-24 40-30 44-14 4 16-18 26-44 18zM474 74c24 2 36 18 28 28-8 10-24-2-28-24zM472 60v36M470 62c-2-8-6-12-10-14M474 62c2-8 6-12 10-14'/%3E%3Cpath d='M20 300h110M20 300v110M20 300l90 90M20 300l100 46M20 300l46 100M50 300c0 12 6 24 14 30 6 8 4 22 0 30M90 300c0 26 12 50 30 62M20 340c14 0 26 4 34 12M20 380c26 0 50 10 66 26'/%3E%3Cpath d='M300 420c-30-20-26-56 2-80-2 22 12 26 18 16 10 18 22 40 4 64-6 8-16 4-12-6-4 6-8 8-12 6z'/%3E%3Cpath d='M420 260a14 9 -30 1 1 24-14a14 9 -30 1 1-24 14zM440 248a14 9 -30 1 1 24-14a14 9 -30 1 1-24 14zM460 236a14 9 -30 1 1 24-14a14 9 -30 1 1-24 14z'/%3E%3Cpath d='M190 230l-24 44h22l-16 40 40-56h-22l18-28z'/%3E%3Cpath d='M440 470l10-30 18 20 14-28 14 28 18-20 10 30zM440 480h84'/%3E%3Cpath d='M120 500a30 30 0 1 0 34-44 24 24 0 1 1-34 44z'/%3E%3C/g%3E%3C/svg%3E") 40px 20px / 560px 560px; animation: drift-560 150s steps(560) infinite reverse; }
+  .sky-far { inset: 0 -420px -420px 0; background: var(--stars) 0 0 / 420px 420px; animation: drift-420 260s steps(3900) infinite; }
+  .sky-near { inset: 0 -690px -690px 0; background: var(--stars) 157px 263px / 690px 690px; animation: drift-690 190s steps(2850) infinite; }
+  .sky-flash { inset: 0 0 -560px -560px; background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='560' height='560'%3E%3Cg fill='none' stroke='%23ffd6f5' stroke-opacity='.075' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M70 40l12 26 28 3-21 19 6 28-25-14-25 14 6-28-21-19 28-3z'/%3E%3Cpath d='M300 92c-18-16-48-6-48 20 0 26 48 52 48 52s48-26 48-52c0-26-30-36-48-20l-8 18 12 12-8 16'/%3E%3Cpath d='M470 70c-10-24-40-30-44-14-4 16 18 26 44 18zM470 74c-24 2-36 18-28 28 8 10 24-2 28-24zM474 70c10-24 40-30 44-14 4 16-18 26-44 18zM474 74c24 2 36 18 28 28-8 10-24-2-28-24zM472 60v36M470 62c-2-8-6-12-10-14M474 62c2-8 6-12 10-14'/%3E%3Cpath d='M20 300h110M20 300v110M20 300l90 90M20 300l100 46M20 300l46 100M50 300c0 12 6 24 14 30 6 8 4 22 0 30M90 300c0 26 12 50 30 62M20 340c14 0 26 4 34 12M20 380c26 0 50 10 66 26'/%3E%3Cpath d='M300 420c-30-20-26-56 2-80-2 22 12 26 18 16 10 18 22 40 4 64-6 8-16 4-12-6-4 6-8 8-12 6z'/%3E%3Cpath d='M420 260a14 9 -30 1 1 24-14a14 9 -30 1 1-24 14zM440 248a14 9 -30 1 1 24-14a14 9 -30 1 1-24 14zM460 236a14 9 -30 1 1 24-14a14 9 -30 1 1-24 14z'/%3E%3Cpath d='M190 230l-24 44h22l-16 40 40-56h-22l18-28z'/%3E%3Cpath d='M440 470l10-30 18 20 14-28 14 28 18-20 10 30zM440 480h84'/%3E%3Cpath d='M120 500a30 30 0 1 0 34-44 24 24 0 1 1-34 44z'/%3E%3C/g%3E%3C/svg%3E") 40px 20px / 560px 560px; animation: drift-560 150s steps(2250) infinite reverse; }
   @keyframes drift-420 { to { transform: translate3d(-420px, -420px, 0); } }
   @keyframes drift-690 { to { transform: translate3d(-690px, -690px, 0); } }
-  @keyframes drift-560 { to { transform: translate3d(-560px, 560px, 0); } }
+  @keyframes drift-560 { from { transform: translate3d(560px, -560px, 0); } to { transform: translate3d(0, 0, 0); } }
   @keyframes nebula { from { transform: translate3d(0, 0, 0) scale(1) rotate(0); } to { transform: translate3d(-3%, 2%, 0) scale(1.1) rotate(3deg); } }
   .shell { position: relative; z-index: 0; }
   .shell::before { content: ""; position: fixed; inset: 0; z-index: -1; pointer-events: none;
-    background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='520' height='520'%3E%3Cg fill='%23fff'%3E%3Cpath d='M60 90l1.8 6.2 6.2 1.8-6.2 1.8-1.8 6.2-1.8-6.2-6.2-1.8 6.2-1.8z'/%3E%3Cpath d='M380 60l1.4 4.6 4.6 1.4-4.6 1.4-1.4 4.6-1.4-4.6-4.6-1.4 4.6-1.4z'/%3E%3Cpath d='M250 300l2.2 7.8 7.8 2.2-7.8 2.2-2.2 7.8-2.2-7.8-7.8-2.2 7.8-2.2z'/%3E%3Cpath d='M450 420l1.4 4.6 4.6 1.4-4.6 1.4-1.4 4.6-1.4-4.6-4.6-1.4 4.6-1.4z'/%3E%3Cpath d='M120 440l1.6 5.4 5.4 1.6-5.4 1.6-1.6 5.4-1.6-5.4-5.4-1.6 5.4-1.6z'/%3E%3Ccircle cx='200' cy='150' r='1.4'/%3E%3Ccircle cx='330' cy='200' r='1.2'/%3E%3Ccircle cx='30' cy='300' r='1.3'/%3E%3Ccircle cx='480' cy='250' r='1.2'/%3E%3C/g%3E%3C/svg%3E") 90px 140px / 520px 520px; animation: twinkle 3.8s ease-in-out infinite alternate; }
+    background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='520' height='520'%3E%3Cg fill='%23fff'%3E%3Cpath d='M60 90l1.8 6.2 6.2 1.8-6.2 1.8-1.8 6.2-1.8-6.2-6.2-1.8 6.2-1.8z'/%3E%3Cpath d='M380 60l1.4 4.6 4.6 1.4-4.6 1.4-1.4 4.6-1.4-4.6-4.6-1.4 4.6-1.4z'/%3E%3Cpath d='M250 300l2.2 7.8 7.8 2.2-7.8 2.2-2.2 7.8-2.2-7.8-7.8-2.2 7.8-2.2z'/%3E%3Cpath d='M450 420l1.4 4.6 4.6 1.4-4.6 1.4-1.4 4.6-1.4-4.6-4.6-1.4 4.6-1.4z'/%3E%3Cpath d='M120 440l1.6 5.4 5.4 1.6-5.4 1.6-1.6 5.4-1.6-5.4-5.4-1.6 5.4-1.6z'/%3E%3Ccircle cx='200' cy='150' r='1.4'/%3E%3Ccircle cx='330' cy='200' r='1.2'/%3E%3Ccircle cx='30' cy='300' r='1.3'/%3E%3Ccircle cx='480' cy='250' r='1.2'/%3E%3C/g%3E%3C/svg%3E") 90px 140px / 520px 520px; animation: twinkle 3.8s steps(38) infinite alternate; }
   .shell::after { content: ""; position: fixed; top: 10%; left: -12%; width: 170px; height: 2px; z-index: -1; pointer-events: none; opacity: 0; border-radius: 2px;
     background: linear-gradient(90deg, transparent, rgba(255, 255, 255, .95)); filter: drop-shadow(0 0 6px #fff); animation: shoot 14s linear 3s infinite; }
   @keyframes twinkle { from { opacity: .15; } to { opacity: 1; } }
@@ -262,7 +262,7 @@
 
   /* ---------- scoreboard ---------- */
   .scoreboard { position: relative; padding: 30px 0 4px; }
-  .scoreboard::before { content: ""; position: absolute; right: -24px; top: -18px; width: 210px; height: 210px; pointer-events: none; animation: float 6s ease-in-out infinite alternate;
+  .scoreboard::before { content: ""; position: absolute; right: -24px; top: -18px; width: 210px; height: 210px; pointer-events: none; animation: float 6s steps(90) infinite alternate;
     filter: drop-shadow(0 0 30px rgba(106, 168, 255, .35));
     background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 200 200'%3E%3Cdefs%3E%3CradialGradient id='p' cx='.35' cy='.32' r='.75'%3E%3Cstop offset='0' stop-color='%23cfe6ff'/%3E%3Cstop offset='.45' stop-color='%234f86e8'/%3E%3Cstop offset='1' stop-color='%231b2a7a'/%3E%3C/radialGradient%3E%3C/defs%3E%3Cg transform='rotate(-16 100 100)' fill='none' stroke-width='4.5' stroke-linecap='round'%3E%3Cpath d='M22 100a78 22 0 0 1 156 0' stroke='%23ff5d6c'/%3E%3Cpath d='M29 100a71 19 0 0 1 142 0' stroke='%23ffe14a'/%3E%3Cpath d='M36 100a64 16 0 0 1 128 0' stroke='%234fd8ff'/%3E%3Cpath d='M43 100a57 13 0 0 1 114 0' stroke='%23ff6ad5'/%3E%3C/g%3E%3Ccircle cx='100' cy='100' r='50' fill='url(%23p)'/%3E%3Cpath d='M74 76c12-6 26-4 33 5s3 19-9 21-21 9-16 19M118 130c9-4 19-12 21-24' stroke='%23eef6ff' stroke-opacity='.35' stroke-width='5' fill='none' stroke-linecap='round'/%3E%3Cg transform='rotate(-16 100 100)' fill='none' stroke-width='4.5' stroke-linecap='round'%3E%3Cpath d='M22 100a78 22 0 0 0 156 0' stroke='%23ff5d6c'/%3E%3Cpath d='M29 100a71 19 0 0 0 142 0' stroke='%23ffe14a'/%3E%3Cpath d='M36 100a64 16 0 0 0 128 0' stroke='%234fd8ff'/%3E%3Cpath d='M43 100a57 13 0 0 0 114 0' stroke='%23ff6ad5'/%3E%3C/g%3E%3C/svg%3E") no-repeat center / contain; }
   .meter-title { position: relative; font: 400 clamp(34px, 6.4vw, 64px)/1.08 var(--display); letter-spacing: .005em; transform: rotate(-1.2deg); transform-origin: left; max-width: calc(100% - 190px);
@@ -433,6 +433,17 @@
   .notice.released::before { border-left-color: var(--have); }
   /* doodled icons */
   .rail-nav svg { stroke-width: 2; filter: url(#wobble-sm); }
+  /* "boiling" lines, like hand-drawn animation. Icons swap between three slightly different wobbles 5 times a second.
+     Outlines are drawn once and nudged a fraction of a pixel instead: redrawing their wobble filter each time cost far
+     too much CPU (measured +50% and more). The big panel outlines stay still for the same reason. Items start at
+     different points so they don't twitch together. Off with Reduce Motion (the still wobble stays). */
+  @keyframes boil-sm { 0% { filter: url(#wobble-sm); } 33% { filter: url(#wobble-sm-b); } 67% { filter: url(#wobble-sm-c); } }
+  @keyframes jitter { 0% { transform: translate(0, 0) rotate(0); } 33% { transform: translate(.6px, -.4px) rotate(.15deg); } 67% { transform: translate(-.5px, .5px) rotate(-.12deg); } }
+  .rail-nav svg, .brand svg, .player-btn svg, .rail-search svg { animation: boil-sm .6s steps(1) infinite; }
+  .era-card::after, .export-item::after, .choose::after, .notice::before, .step::after, button.ghost::after, .btn.ghost::after {
+    animation: jitter 1.2s steps(1) infinite; will-change: transform; }
+  .era-card:nth-child(3n+1)::after, .rail-nav li:nth-child(3n+1) svg, button.ghost:nth-of-type(3n+1)::after { animation-delay: -.4s; }
+  .era-card:nth-child(3n+2)::after, .rail-nav li:nth-child(3n+2) svg, button.ghost:nth-of-type(3n+2)::after { animation-delay: -.8s; }
   .era-card { transition: transform .18s, box-shadow .18s, border-color .18s; }
   .era-card:hover { background: var(--raise); transform: translateY(-3px) rotate(-.4deg); box-shadow: 0 10px 28px rgba(255, 106, 213, .22); }
   .era-card[aria-pressed="true"] { background: var(--raise); box-shadow: 0 0 26px rgba(255, 106, 213, .35); }
@@ -603,6 +614,50 @@
     .dlg-body { padding: 20px 18px 14px; }
     .dlg-foot { padding: 12px 18px 14px; }
   }
+  /* ---------- flair ----------
+     Slow, endless motion here and in the sky updates about 15 times a second (steps), which looks the same as
+     smooth but costs far less CPU than 60 updates a second. Quick effects (hovers, sparks) stay smooth. */
+  /* stickers: each era card wears a little tattoo-flash doodle that pops on hover */
+  .era-card::before { content: ""; position: absolute; top: -12px; right: -9px; width: 30px; height: 30px; z-index: 1; pointer-events: none;
+    background: center / contain no-repeat; transform: rotate(14deg); transition: transform .35s cubic-bezier(.3, 1.6, .5, 1); filter: drop-shadow(0 3px 6px rgba(0, 0, 0, .45)); }
+  .era-card:nth-child(6n+1)::before { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cg fill='none' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M16 3l3.6 8.2 8.9.8-6.7 5.9 2 8.7L16 22l-7.8 4.6 2-8.7L3.5 12l8.9-.8z' stroke='%23ffe14a' fill='rgba%28255,225,74,.25%29'/%3E%3C/g%3E%3C/svg%3E"); }
+  .era-card:nth-child(6n+2)::before { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cg fill='none' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M16 27S4 19.5 4 11.5A6 6 0 0 1 16 9a6 6 0 0 1 12 2.5C28 19.5 16 27 16 27z' stroke='%23ff6ad5' fill='rgba%28255,106,213,.25%29'/%3E%3Cpath d='M16 9l-2 5 3 3-2 5' stroke='%23ff6ad5'/%3E%3C/g%3E%3C/svg%3E"); }
+  .era-card:nth-child(6n+3)::before { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cg fill='none' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M18 3L7 18h8l-3 11 13-17h-8z' stroke='%234fd8ff' fill='rgba%2879,216,255,.22%29'/%3E%3C/g%3E%3C/svg%3E"); }
+  .era-card:nth-child(6n+4)::before { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cg fill='none' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M15 15c-3-9-11-11-12-6s5 8 12 6zM15 17c-7-1-11 4-9 7s7 0 9-7zM17 15c3-9 11-11 12-6s-5 8-12 6zM17 17c7-1 11 4 9 7s-7 0-9-7z' stroke='%23b77bff' fill='rgba%28183,123,255,.22%29'/%3E%3Cpath d='M16 10v14' stroke='%23b77bff'/%3E%3C/g%3E%3C/svg%3E"); }
+  .era-card:nth-child(6n+5)::before { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cg fill='none' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5 24l2-14 6 6 3-9 3 9 6-6 2 14z' stroke='%23ffa04a' fill='rgba%28255,160,74,.22%29'/%3E%3Cpath d='M5 27h22' stroke='%23ffa04a'/%3E%3C/g%3E%3C/svg%3E"); }
+  .era-card:nth-child(6n+6)::before { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cg fill='none' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M16 29c-7-3-9-10-4-17 0 4 3 5 4 3 3 4 7 8 4 13 4-1 5-5 4-8 3 5 1 8-8 9z' stroke='%23c9f24a' fill='rgba%28201,242,74,.2%29'/%3E%3C/g%3E%3C/svg%3E"); }
+  .era-card:hover::before { transform: rotate(-10deg) scale(1.3); }
+  /* a cracked-heart doodle floats by the big number */
+  .scoreboard::after { content: ""; position: absolute; right: 170px; top: 120px; width: 46px; height: 46px; pointer-events: none;
+    background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cg fill='none' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M16 27S4 19.5 4 11.5A6 6 0 0 1 16 9a6 6 0 0 1 12 2.5C28 19.5 16 27 16 27z' stroke='%23ff94e2' fill='rgba%28255,106,213,.18%29'/%3E%3Cpath d='M16 9l-2 5 3 3-2 5' stroke='%23ff94e2'/%3E%3Cpath d='M27 4l.8 2 2 .8-2 .8L27 9.6l-.8-2-2-.8 2-.8z' stroke='%23ffe14a' stroke-width='1.4'/%3E%3C/g%3E%3C/svg%3E") center / contain no-repeat; animation: float 4.5s steps(68) -2s infinite alternate-reverse; }
+  /* titles draw their marker underline when a page opens, and pages slide in */
+  @keyframes underline-in { from { background-size: 0 11px; } }
+  .panel[open] > summary .title, .section-title { animation: underline-in .9s cubic-bezier(.2, .8, .2, 1) .15s both; }
+  @keyframes page-in { from { opacity: 0; transform: translateY(14px) rotate(.35deg); } }
+  .panel[open] > .panel-body, .collection-view { animation: page-in .45s cubic-bezier(.2, .8, .2, 1) both; }
+  /* a glint runs along the progress bar now and then */
+  .meter > span { position: relative; overflow: hidden; }
+  .meter > span::after { content: ""; position: absolute; inset: 0; background: linear-gradient(100deg, transparent 30%, rgba(255, 255, 255, .6) 50%, transparent 70%);
+    transform: translateX(-100%); animation: glint 5s steps(75) 1.5s infinite; }
+  @keyframes glint { 0% { transform: translateX(-100%); } 35%, 100% { transform: translateX(100%); } }
+  /* buttons and icons feel like stickers you can press */
+  button.primary, .btn:not(.ghost), button.ghost, .btn.ghost { transition: transform .18s cubic-bezier(.3, 1.6, .5, 1), box-shadow .2s, filter .2s; }
+  button.primary:hover:not(:disabled), .btn:not(.ghost):hover, button.ghost:hover:not(:disabled) { transform: translateY(-2px) rotate(-.8deg); }
+  button.primary:active:not(:disabled), button.ghost:active:not(:disabled) { transform: scale(.96); }
+  .rail-nav svg { transition: transform .25s cubic-bezier(.3, 1.6, .5, 1); }
+  .rail-nav button:hover svg, .rail-nav button[aria-current="page"] svg { transform: rotate(-10deg) scale(1.15); }
+  /* sparkle bursts on clicks (made in the script) */
+  .spark { position: fixed; z-index: 60; width: 9px; height: 9px; pointer-events: none; background: var(--c);
+    clip-path: polygon(50% 0, 62% 38%, 100% 50%, 62% 62%, 50% 100%, 38% 62%, 0 50%, 38% 38%); animation: spark .7s cubic-bezier(.2, .8, .3, 1) forwards; }
+  @keyframes spark { from { transform: translate(-50%, -50%) scale(1.2) rotate(0); opacity: 1; }
+    to { transform: translate(calc(-50% + var(--dx)), calc(-50% + var(--dy))) scale(.2) rotate(200deg); opacity: 0; } }
+  @media (max-width: 760px) { .scoreboard::after { display: none; } }
+  /* calm: the endless motion pauses while the window is in the background or untouched for a minute (set in the
+     script), so the app costs almost nothing while music plays; it carries on from where it stopped. */
+  .calm .sky > div, .calm .shell::before, .calm .shell::after, .calm .scoreboard::before, .calm .scoreboard::after,
+  .calm .meter > span::after, .calm .ambient-toggle .eq i, .calm .rail-nav svg, .calm .brand svg, .calm .player-btn svg,
+  .calm .rail-search svg, .calm .era-card::after, .calm .export-item::after, .calm .choose::after, .calm .notice::before,
+  .calm .step::after, .calm button.ghost::after, .calm .btn.ghost::after { animation-play-state: paused; }
   @media (prefers-reduced-motion: reduce) {
     * { transition: none !important; }
     *, *::before, *::after { animation: none !important; }
@@ -663,6 +718,8 @@
 <svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
   <filter id="wobble" x="-5%" y="-5%" width="110%" height="110%"><feTurbulence type="fractalNoise" baseFrequency=".03" numOctaves="2" seed="7"/><feDisplacementMap in="SourceGraphic" scale="4.5"/></filter>
   <filter id="wobble-sm" x="-10%" y="-10%" width="120%" height="120%"><feTurbulence type="fractalNoise" baseFrequency=".09" numOctaves="1" seed="2"/><feDisplacementMap in="SourceGraphic" scale="1.8"/></filter>
+  <filter id="wobble-sm-b" x="-10%" y="-10%" width="120%" height="120%"><feTurbulence type="fractalNoise" baseFrequency=".09" numOctaves="1" seed="17"/><feDisplacementMap in="SourceGraphic" scale="1.8"/></filter>
+  <filter id="wobble-sm-c" x="-10%" y="-10%" width="120%" height="120%"><feTurbulence type="fractalNoise" baseFrequency=".09" numOctaves="1" seed="38"/><feDisplacementMap in="SourceGraphic" scale="1.8"/></filter>
 </svg>
 <div class="sky" aria-hidden="true"><div class="sky-nebula"></div><div class="sky-far"></div><div class="sky-near"></div><div class="sky-flash"></div></div>
 <div class="top-glass" aria-hidden="true"></div>
@@ -2189,6 +2246,17 @@ dropZone.addEventListener("drop", async e => {
 });
 
 /* ---------- results */
+var shownHave = 0; // the number on screen, so changes count up from it
+function countUp(el, from, to) {
+  if (from === to || matchMedia("(prefers-reduced-motion: reduce)").matches) { el.textContent = fmt(to); return; }
+  const start = performance.now();
+  const step = now => {
+    const k = Math.min(1, (now - start) / 1100), eased = 1 - Math.pow(1 - k, 3);
+    el.textContent = fmt(Math.round(from + (to - from) * eased));
+    if (k < 1) requestAnimationFrame(step);
+  };
+  requestAnimationFrame(step);
+}
 function update() {
   if (!state.catalog || !state.library) return;
   const { owned, unmatched } = matchLibrary(state.catalog, state.library, state.personal.matchOverrides);
@@ -2203,7 +2271,9 @@ function update() {
 
   const total = state.catalog.length, have = owned.size;
   const pct = total ? Math.round((have / total) * 1000) / 10 : 0;
-  $("meter-title").innerHTML = `You have ${fmt(have)} <span class="of">of ${fmt(total)} songs</span>`;
+  $("meter-title").innerHTML = `You have <span id="meter-num">${fmt(shownHave)}</span> <span class="of">of ${fmt(total)} songs</span>`;
+  countUp($("meter-num"), shownHave, have);
+  shownHave = have;
   $("meter").setAttribute("aria-valuenow", pct);
   $("meter").setAttribute("aria-label", `${pct}% of the catalog`);
   $("meter-fill").style.setProperty("--pct", Math.max(pct, 1)); // keeps the rainbow spread across the whole track
@@ -4963,6 +5033,35 @@ function playTriviaClip(q) {
   if (q.start === undefined) q.start = 25 + Math.floor(Math.random() * 40);
   window.jwAmbient?.({ clipPath: q.clip, start: q.start, seconds: 15 }).catch(() => {});
 }
+
+/* ---------- calm: pause the endless motion when the window isn't being used (see .calm in the styles) */
+var calmTimer = null, lastWake = 0;
+function wake() {
+  const now = Date.now();
+  if (now - lastWake < 1000 && !document.documentElement.classList.contains("calm")) return; // mousemove fires a lot
+  lastWake = now;
+  document.documentElement.classList.remove("calm");
+  clearTimeout(calmTimer);
+  calmTimer = setTimeout(() => document.documentElement.classList.add("calm"), 60000);
+}
+["mousemove", "keydown", "wheel", "pointerdown", "focus"].forEach(t => window.addEventListener(t, wake, { passive: true }));
+window.addEventListener("blur", () => { clearTimeout(calmTimer); document.documentElement.classList.add("calm"); });
+wake();
+
+/* ---------- sparkle bursts on clicks: buttons, era cards and timeline dots */
+var SPARK_COLORS = ["#ff6ad5", "#ffe14a", "#4fd8ff", "#c9f24a", "#ffa04a", "#b77bff"];
+document.addEventListener("click", e => {
+  const b = e.target.closest("button.primary, .btn:not(.ghost), button.small:not(.ghost), .era-card, .tl-dot");
+  if (!b || b.disabled || matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+  const r = b.getBoundingClientRect(), x = e.clientX || r.left + r.width / 2, y = e.clientY || r.top + r.height / 2;
+  for (let n = 0; n < 9; n++) {
+    const a = (n / 9) * Math.PI * 2 + Math.random() * .6, d = 24 + Math.random() * 26, s = document.createElement("span");
+    s.className = "spark";
+    s.style.cssText = `left:${x}px;top:${y}px;--dx:${(Math.cos(a) * d).toFixed(1)}px;--dy:${(Math.sin(a) * d).toFixed(1)}px;--c:${SPARK_COLORS[n % SPARK_COLORS.length]}`;
+    document.body.appendChild(s);
+    setTimeout(() => s.remove(), 750);
+  }
+}, true);
 
 // Mac app only: reopen the music folder picked last time. The last scan shows right away from the tag cache;
 // then the folder is listed in the background, since a network drive can take minutes to answer.
