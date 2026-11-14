@@ -72,7 +72,8 @@ final class NativeBridge: NSObject, WKScriptMessageHandlerWithReply {
                 replyHandler(nil, "NotAllowedError: Only audio files can be saved there.")
                 return
             }
-            Self.download(url, to: dest, reply: replyHandler)
+            let root = roots.first { dest.path == $0 || dest.path.hasPrefix($0.hasSuffix("/") ? $0 : $0 + "/") } ?? dest.path
+            Self.download(url, to: dest, root: root, reply: replyHandler)
             return
         case "plex":
             // Plex lives in Settings (⌘,); the page only asks for a rescan, the status, or a playlist.
@@ -176,12 +177,17 @@ final class NativeBridge: NSObject, WKScriptMessageHandlerWithReply {
 
     /// Downloads to a temporary file and moves it into place only when complete, so a dropped connection
     /// never leaves half a song in the library. Never overwrites: an existing file is reported, not replaced.
-    private static func download(_ url: URL, to dest: URL, reply: @escaping (Any?, String?) -> Void) {
+    private static func download(_ url: URL, to dest: URL, root: String, reply: @escaping (Any?, String?) -> Void) {
         let finish = { (result: Any?, failure: String?) in DispatchQueue.main.async { reply(result, failure) } }
         let fm = FileManager.default
         // Off the main thread: on a struggling network drive even this existence check can take minutes,
         // and on the main thread it froze the whole window for every download.
         DispatchQueue.global(qos: .userInitiated).async {
+            // A network drive that dropped leaves its path missing; creating folders there fails with a confusing
+            // permission error (or, worse, would write to the local disk), so say what's actually wrong.
+            guard fm.fileExists(atPath: root) else {
+                finish(nil, "NotFoundError: Your music folder (\(root)) isn't available. If it's on a network drive, reconnect it and try again."); return
+            }
             if fm.fileExists(atPath: dest.path) { finish(["path": dest.path, "existed": true], nil); return }
             URLSession.shared.downloadTask(with: url) { temp, response, error in
                 if let error { finish(nil, "NetworkError: \(error.localizedDescription)"); return }

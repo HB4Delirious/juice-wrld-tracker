@@ -4066,6 +4066,8 @@ async function downloadAll(songs) {
       if (!r.existed) job.saved++;
       if (r.note) job.failed.push(`${song.name} (${r.note})`);
     } catch (err) {
+      // The music folder is gone (a network drive dropped): every other song would fail the same way.
+      if (/isn't available/.test(err.message)) { job.offline = err.message; break; }
       job.failed.push(`${song.name} (${err.message})`);
     }
     job.done++;
@@ -4074,9 +4076,9 @@ async function downloadAll(songs) {
   state.bulk = null;
   if (job.saved) plexRefresh();
   if (state.links) renderLinksDialog();
-  const msg = `${job.stop ? "Stopped. " : ""}Downloaded ${plural(job.saved, "song", "songs")}.${job.failed.length ? ` ${plural(job.failed.length, "had a problem", "had problems")}: ${job.failed.slice(0, 3).join("; ")}${job.failed.length > 3 ? "; and more" : ""}.` : ""}`;
-  if ($("links-status")) setStatus("links-status", msg, job.failed.length > 0 && !job.saved);
-  toast(msg, job.failed.length > 0 && !job.saved);
+  const msg = job.offline ? `${job.saved ? `Downloaded ${plural(job.saved, "song", "songs")}, then stopped. ` : ""}${job.offline}` : `${job.stop ? "Stopped. " : ""}Downloaded ${plural(job.saved, "song", "songs")}.${job.failed.length ? ` ${plural(job.failed.length, "had a problem", "had problems")}: ${job.failed.slice(0, 3).join("; ")}${job.failed.length > 3 ? "; and more" : ""}.` : ""}`;
+  if ($("links-status")) setStatus("links-status", msg, Boolean(job.offline) || (job.failed.length > 0 && !job.saved));
+  toast(msg, Boolean(job.offline) || (job.failed.length > 0 && !job.saved));
 }
 function autoTagOn() { return state.personal.autoTag !== false; }
 $("fix-auto").addEventListener("change", e => { state.personal.autoTag = e.target.checked; savePersonal(); });
