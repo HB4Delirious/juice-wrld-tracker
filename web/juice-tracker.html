@@ -2239,6 +2239,7 @@ function update() {
   renderToday();
   renderSnapshotItem();
   window.jwSetWishlist?.(Object.keys(state.personal.wish));
+  if (state.catalog && !queueResumed) window.jwTakePendingDownloads();
   resumeQueue();
   maybeSnapshot();
 }
@@ -3118,7 +3119,9 @@ async function renderPlexItem() {
   try { configured = Boolean(window.jwPlex && (await window.jwPlex({ action: "status" })).configured); } catch (e) { /* not the app */ }
   $("plex-item").hidden = !configured;
   if (!configured) return;
-  if (!state.listen && !state.listenTried) { // play counts add the "most played" and "never played" lists
+  // Play counts add the "most played" and "never played" lists. Only with the panel open: fetching them reads the
+  // Plex token from the Keychain, which can prompt after an update, and must not happen at launch.
+  if (!state.listen && !state.listenTried && $("export").open) {
     state.listenTried = true;
     fetchListening().then(renderPlexItem).catch(() => {});
   }
@@ -4542,12 +4545,17 @@ $("health-list").addEventListener("click", async e => {
     }
     if (b.dataset.health === "replace") {
       const song = state.catalog[f.songs[0]];
-      if (!window.confirm(`Move “${baseName(f.path)}” to the Trash and download “${song.name}” from the site in its place?`)) return;
+      if (!window.confirm(`Download “${song.name}” from the site and move “${baseName(f.path)}” to the Trash?`)) return;
       b.disabled = true;
-      await window.jwTrash(f.handle._path);
-      forget();
-      update(); // the song now counts as missing, so it can be downloaded
-      const r = await downloadSong(song);
+      // Same name: the old file must go first (downloads never overwrite). Otherwise download first, so a failed
+      // download leaves your copy where it was.
+      const samePath = `${saveFolder(song)}/${saveFileName(song)}` === f.path;
+      const retire = async () => { await window.jwTrash(f.handle._path); forget(); update(); };
+      if (samePath) await retire();
+      let r;
+      try { r = await downloadSong(song); }
+      catch (err) { throw new Error(samePath ? `${err.message} Your old copy is in the Trash.` : err.message); }
+      if (!samePath) await retire();
       toast(downloadMessage(song, r), Boolean(r.note));
       if (!r.existed) plexRefresh();
     }
@@ -4718,6 +4726,11 @@ window.jwQueueDownloads = ids => {
   else if (!state.catalog) { const q = loadQueue(); ids.forEach(id => q.push({ id, tries: 0 })); saveQueue(q); } // runs once the catalog loads
   else toast("That song has no file on the site yet.", true);
 };
+// The app keeps a wishlist alert's Download until the page is ready (the alert can start the app).
+window.jwTakePendingDownloads = async () => {
+  const ids = await window.jwPendingDownloads?.().catch(() => null);
+  if (ids && ids.length) window.jwQueueDownloads(ids);
+};
 function resumeQueue() {
   if (queueResumed || !canDownloadToLibrary() || !loadQueue().length) return;
   queueResumed = true;
@@ -4767,7 +4780,7 @@ async function waitForDrive(job, message) {
   job.waiting = message;
   renderQueuePanel();
   while (!job.stop) {
-    await sleep(30000);
+    for (let s = 0; s < 30 && !job.stop; s++) await sleep(1000); // Stop answers within a second
     if (job.stop) break;
     try {
       const dir = await window.jwRestoreFolder("plex-music"); // the folder's bookmark remounts the share
@@ -4805,7 +4818,7 @@ function versionsOf(i) {
 }
 function versionsHtml(i) {
   const list = versionsOf(i);
-  if (list.length < 2) return "";
+  if (list.length < 2 || list.length > 15) return ""; // 86 songs are called "Untitled": that's a common title, not versions
   const missing = list.filter(j => !state.owned.has(j) && fileUrl(state.catalog[j]));
   const month = s => { const m = recordMonth(s.recordDates); return m === null ? "" : `${MONTH_ABBR[m % 12]} ${Math.floor(m / 12)}`; };
   return `<h3 class="section-h">All versions (${list.length})</h3>
@@ -4923,7 +4936,15 @@ $("snapshot-file").addEventListener("change", async e => {
   if (!file || !state.catalog) return;
   const rows = parseCsv(await file.text()), col = rows[0] ? rows[0].indexOf("song_ids") : -1;
   if (col < 0) { setStatus("export-status", "That file isn't a Juice Tracker library snapshot.", true); return; }
-  const ids = new Set(rows.slice(1).flatMap(r => String(r[col] || "").split(" ").filter(Boolean)));
+  // One song per file: the version whose name is the file's title (a file can match all versions of a song).
+  const [nameCol, titleCol, pathCol] = ["song_names", "title", "path"].map(h => rows[0].indexOf(h));
+  const ids = new Set(rows.slice(1).map(r => {
+    const list = String(r[col] || "").split(" ").filter(Boolean), names = String(r[nameCol] || "").split(" / ");
+    const title = r[titleCol] || titleFromFilename(r[pathCol] || "");
+    let k = names.findIndex(n => cmdkKey(n) === cmdkKey(title));
+    if (k < 0) k = names.findIndex(n => normalize(n) === normalize(title));
+    return list[k >= 0 && k < list.length ? k : 0];
+  }).filter(Boolean));
   const lost = state.catalog.map((song, i) => ({ song, i })).filter(r => ids.has(String(r.song.id)) && !state.owned.has(r.i));
   if (!lost.length) { setStatus("export-status", `You still have every song in that snapshot (${plural(ids.size, "song", "songs")}).`); return; }
   openLinks(lost, `Songs in your snapshot that aren't in your library now`, "#snapshot-restore");

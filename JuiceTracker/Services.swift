@@ -221,12 +221,15 @@ enum SongAlerts {
         defaults.set(Date(), forKey: "alertsLastCheck")
         defaults.set("\(songs.count) songs, \(known.isEmpty ? 0 : added.count) new, \(nowReleased.count) newly released", forKey: "alertsLastResult")
         if !known.isEmpty, !wishNews.isEmpty, !defaults.bool(forKey: "alertsDryRun") { notifyWishlist(wishNews) }
+        let wishIds = Set(wishNews.map(\.id)) // already in their own alert
+        let others = added.filter { !wishIds.contains($0.id) }, otherReleases = nowReleased.filter { !wishIds.contains($0.id) }
         guard !known.isEmpty, !added.isEmpty || !nowReleased.isEmpty else { return } // first run only takes a snapshot
         // For the menu bar's "New songs" line.
         defaults.set(added.map(\.name) + nowReleased.map { "\($0.name) (released)" }, forKey: "alertsLastNew")
         defaults.set(Date(), forKey: "alertsLastNewDate")
         if defaults.bool(forKey: "alertsDryRun") { return } // set only when testing, so no notification prompt appears
-        notify(added: added.map(\.name), released: nowReleased.map(\.name))
+        guard !others.isEmpty || !otherReleases.isEmpty else { return }
+        notify(added: others.map(\.name), released: otherReleases.map(\.name))
     }
 
     static let wishCategory = "wishlist"
@@ -248,7 +251,6 @@ enum SongAlerts {
         content.sound = .default
         content.categoryIdentifier = wishCategory
         content.userInfo = ["songIds": news.map(\.id)]
-        if #available(macOS 12.0, *) { content.interruptionLevel = .active }
         let center = UNUserNotificationCenter.current()
         center.requestAuthorization(options: [.alert, .sound]) { ok, _ in
             guard ok else { return }

@@ -97,9 +97,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUs
                                 withCompletionHandler done: @escaping () -> Void) {
         showMainWindow()
         if response.actionIdentifier == SongAlerts.downloadAction,
-           let ids = response.notification.request.content.userInfo["songIds"] as? [String],
-           let data = try? JSONSerialization.data(withJSONObject: ids), let json = String(data: data, encoding: .utf8) {
-            WebViewStore.shared.webView.evaluateJavaScript("window.jwQueueDownloads && window.jwQueueDownloads(\(json))")
+           let ids = response.notification.request.content.userInfo["songIds"] as? [String] {
+            // Kept until the page takes them: if the alert started the app, the page isn't loaded yet.
+            let pending = UserDefaults.standard.stringArray(forKey: "pendingDownloads") ?? []
+            UserDefaults.standard.set(pending + ids, forKey: "pendingDownloads")
+            WebViewStore.shared.webView.evaluateJavaScript("window.jwTakePendingDownloads && window.jwTakePendingDownloads()")
         }
         done()
     }

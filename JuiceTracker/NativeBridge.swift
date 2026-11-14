@@ -140,6 +140,11 @@ final class NativeBridge: NSObject, WKScriptMessageHandlerWithReply {
                 }
             }
             return
+        case "pendingDownloads":
+            let ids = UserDefaults.standard.stringArray(forKey: "pendingDownloads") ?? []
+            UserDefaults.standard.removeObject(forKey: "pendingDownloads")
+            replyHandler(ids, nil)
+            return
         case "snapshotFolder":
             let folder = Snapshots.folder
             try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
@@ -413,6 +418,8 @@ final class AmbientPlayer: NSObject, AVAudioPlayerDelegate {
     }
 
     func stop() {
+        resumeAfterClip = false
+        stopClip() // a trivia clip mustn't keep playing from a closed window
         generation += 1
         isPaused = false
         player?.stop()
