@@ -53,7 +53,7 @@ struct TagFixerScreen: View {
                     Spinner999().frame(maxWidth: .infinity, minHeight: 200)
                 }
             }
-            .padding(.horizontal, 34).padding(.top, 40).padding(.bottom, 60)
+            .padding(.horizontal, JT.compact ? 18 : 34).padding(.top, JT.compact ? 20 : 40).padding(.bottom, 60)
             .frame(maxWidth: 1080, alignment: .leading)
         }
         .task(id: "\(store.version)-\(tick)") { await load() }

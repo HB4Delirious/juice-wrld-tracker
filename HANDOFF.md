@@ -9,7 +9,9 @@ music folder, downloads and tags what's missing, and plays your collection. All 
   `NativeScreens.swift` (Timeline, Stats, Credits), `NativeTools.swift` (Duplicates, File health), `NativeFixer.swift`
   (Tag fixer), `NativeExtras.swift` (setup, player, Trivia, Export & backup), `NativeMore.swift` (lyrics, mini player,
   Spotlight, Shortcuts, widget feed), `NativeJuice.swift` (era stickers and themes, badges, motion), `NativeFeatures.swift` (ratings, rarity, year in review,
-  the lyrics window, drive comparison).
+  the lyrics window, drive comparison, seek bar and sleep timer, versions and A/B, listening calendar, gaps heatmap),
+  `NativeCollection.swift` (Hunt and suggestions, Playlists and M3U, Organize: file organizer, inbox, Fill a drive;
+  wishlist ranking).
 - **Engine:**
   - `Engine.swift`: the pure logic, Foundation only: catalog cleaning, tag reading (ID3v1/v2.2–2.4, FLAC, MP4,
     Ogg/Opus) and writing (MP3, FLAC, M4A, with safety checks), scanning, matching, save folders, the tag fixer
@@ -17,7 +19,8 @@ music folder, downloads and tags what's missing, and plays your collection. All 
   - `EngineState.swift`: the catalog (12-hour cache, new and newly released songs), your saved data (`personal.json`:
     wishlist, notes, hand matches, trivia, fixer settings) and the state every screen shows.
   - `EngineLibrary.swift`: the music folder (bookmark under `lastFolder.plex-music`), tag cache, scan and matching,
-    watching the folder (FSEvents) and comparing with another drive.
+    watching the folder (FSEvents) and comparing with another drive, moving files (the organizer, with Undo from
+    `lastOrganize.json`) and the inbox folder (`inboxFolder` setting, its own FSEvents stream).
   - `EngineDownloads.swift`: the download queue, drive status, background music, weekly snapshot.
   - `EngineTools.swift`: tag fixer writing, auto-tag after downloads, duplicate cleanup, file health.
   - `EngineActions.swift`: backup and restore, the catalog spreadsheet, the collection card.
@@ -27,13 +30,17 @@ music folder, downloads and tags what's missing, and plays your collection. All 
 - `Services.swift`: settings, Plex, daily song alerts, the updater, snapshots folder. `MenuBar.swift`: menu bar player.
 - `JuiceTrackerWidget/`: the widget (reads `widget.json`, written by `WidgetFeed`).
 - Saved data: `~/Library/Application Support/JuiceTracker/<app id>/engine/` (`catalog.json`, `saved.json`,
-  `personal.json`, `tags.json`, `items.json`, `queue.json`, `settings.json`).
+  `personal.json` (also ratings, `wishOrder` and `playlists`, all in backups), `tags.json`, `items.json`, `queue.json`,
+  `settings.json`, `lastOrganize.json`).
 
 ## Safety rules for your files
 
 Tags and cover art are only written after `TagWriter`'s check passes (audio bytes unchanged, every tag reads back); the original
 is backed up first when a backup folder is set; writes are atomic. Files are only removed by moving them to the Trash.
-Downloads never overwrite, and never leave the music folder.
+Downloads never overwrite, and never leave the music folder. The organizer and inbox move files only inside the music
+folder (or from the inbox into it), never onto an existing file; a folder a move empties is removed only if it's empty.
+When a title matches several versions, `Engine.primarySong` settles it (one name among the plain-named versions, and
+the era most of them share) or the file stays put.
 
 ## Tests
 
@@ -41,7 +48,8 @@ Downloads never overwrite, and never leave the music folder.
 checks it against `tests/fixtures`: the old HTML page's own answers for tricky inputs, frozen when the page was
 retired. Tag writes must match the page byte for byte, with the same safety-check results and error text. Two cases
 go beyond the page on purpose: tags after large cover art are read (the page missed them), and adding cover art
-(`TagWriter.addArt`) to each format leaves the tags readable and refuses a second picture.
+(`TagWriter.addArt`) to each format leaves the tags readable and refuses a second picture. The organizer's plan
+and `primarySong` have their own checks.
 
 ## History
 

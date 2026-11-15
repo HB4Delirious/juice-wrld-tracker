@@ -64,7 +64,7 @@ struct SetupView: View {
             Text("Loading the catalog takes about a minute the first time. After that it's saved and loads instantly.")
                 .font(.caption).foregroundColor(JT.muted)
         }
-        .padding(.horizontal, 34).padding(.top, 40)
+        .padding(.horizontal, JT.compact ? 18 : 34).padding(.top, JT.compact ? 20 : 40)
         .frame(maxWidth: 1080, maxHeight: .infinity, alignment: .topLeading)
     }
 
@@ -125,7 +125,9 @@ struct PlayerPanel: View {
                                 .controlSize(.mini)
                             Button { LyricsWindow.show() } label: { Image(systemName: "quote.bubble") }.buttonStyle(.borderless).help("Lyrics").accessibilityLabel("Lyrics")
                             Button { MiniPlayer.show() } label: { Image(systemName: "pip.enter") }.buttonStyle(.borderless).help("Mini player (⌘3)").accessibilityLabel("Mini player")
+                            SleepMenu()
                         }
+                        if title != nil { SeekBar() }
                         // An era with no playable songs plays everything (the page falls back), so say "All eras" then.
                         Menu(info.eras.contains(info.era) ? info.era : "All eras") {
                             Button("All eras") { setEra("") }
@@ -197,7 +199,7 @@ struct TriviaScreen: View {
                 ScreenTitle(text: "Trivia")
                 if round.isEmpty { setup } else if n >= round.count { finished } else { question(round[n]) }
             }
-            .padding(.horizontal, 34).padding(.top, 40).padding(.bottom, 60)
+            .padding(.horizontal, JT.compact ? 18 : 34).padding(.top, JT.compact ? 20 : 40).padding(.bottom, 60)
             .frame(maxWidth: 900, alignment: .leading)
         }
         .task { info = try? JSONDecoder().decode(TriviaInfo.self, from: Data(await store.act("triviaInfo").utf8)) }
@@ -357,7 +359,7 @@ struct ExportScreen: View {
                     }
                 }
             }
-            .padding(.horizontal, 34).padding(.top, 40).padding(.bottom, 60)
+            .padding(.horizontal, JT.compact ? 18 : 34).padding(.top, JT.compact ? 20 : 40).padding(.bottom, 60)
             .frame(maxWidth: 1080, alignment: .leading)
         }
         .task {

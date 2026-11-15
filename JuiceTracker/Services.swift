@@ -447,6 +447,20 @@ struct SettingsView: View {
     @AppStorage(Pref.autoUpdate) private var autoUpdate = true
     @AppStorage(Pref.menuBar) private var menuBar = true
     @AppStorage("eraTheme") private var eraTheme = "cosmic"
+    @AppStorage("matchVolume") private var matchVolume = true
+    @AppStorage("compactMode") private var compactMode = false
+    @AppStorage("animatedDock") private var animatedDock = true
+    @AppStorage("landedChime") private var landedChime = false
+    @AppStorage("customAccent") private var customAccent = "ff6ad5"
+    @AppStorage("customSky1") private var customSky1 = "d6308c"
+    @AppStorage("customSky2") private var customSky2 = "5082ff"
+    @AppStorage("discordOn") private var discordOn = false
+    @AppStorage("discordAppId") private var discordAppId = ""
+
+    /// A color picker's color, kept as hex in the settings.
+    private func hex(_ value: Binding<String>) -> Binding<Color> {
+        Binding(get: { Color(EraTheme.color(value.wrappedValue) ?? .systemPink) }, set: { value.wrappedValue = EraTheme.hex($0) })
+    }
     @AppStorage(Pref.plexServer) private var plexServer = ""
     @State private var plexToken = "" // read when the window opens, never at app launch (see Keychain.write)
     @State private var plexStatus = ""
@@ -472,14 +486,32 @@ struct SettingsView: View {
                 Picker("Crossfade between songs", selection: $crossfade) {
                     Text("Off").tag(0.0); Text("2 seconds").tag(2.0); Text("4 seconds").tag(4.0); Text("6 seconds").tag(6.0); Text("8 seconds").tag(8.0)
                 }
+                Toggle("Match the volume of quiet and loud files", isOn: $matchVolume)
+                Text("Each file's level is measured when it starts and the player evens it out. Your files don't change.").font(.caption).foregroundColor(.secondary)
             } header: { Text("Playback").bold() }
 
             Section {
                 Picker("Era theme", selection: $eraTheme) {
                     ForEach(EraTheme.all) { Text($0.name).tag($0.id) }
+                    Text("Your colors").tag("custom")
                 }
+                if eraTheme == "custom" {
+                    ColorPicker("Accent", selection: hex($customAccent), supportsOpacity: false)
+                    ColorPicker("Sky glow", selection: hex($customSky1), supportsOpacity: false)
+                    ColorPicker("Second sky glow", selection: hex($customSky2), supportsOpacity: false)
+                }
+                Toggle("Compact mode (denser, for smaller windows)", isOn: $compactMode)
+                Toggle("Dock icon glows with the music and shows download progress", isOn: $animatedDock)
+                Toggle("Play a chime when songs land", isOn: $landedChime)
                 Text("Recolors the app's accents and sky after an era's mood.").font(.caption).foregroundColor(.secondary)
             } header: { Text("Look").bold() }
+
+            Section {
+                Toggle("Show what's playing in my Discord status", isOn: $discordOn)
+                TextField("Discord application ID", text: $discordAppId, prompt: Text("123456789012345678"))
+                Text("Discord needs an application ID to show a status: make a free application at discord.com/developers/applications (name it Juice Tracker; the name is what Discord shows), then paste its Application ID here. The Discord app on this Mac must be open.")
+                    .font(.caption).foregroundColor(.secondary).fixedSize(horizontal: false, vertical: true)
+            } header: { Text("Discord").bold() }
 
             Section {
                 Toggle("Check for app updates automatically", isOn: $autoUpdate)
@@ -508,8 +540,113 @@ struct SettingsView: View {
                     .font(.caption).foregroundColor(.secondary).fixedSize(horizontal: false, vertical: true)
             } header: { Text("Plex").bold() }
         }
-        .padding(20)
-        .frame(width: 480)
+        .settingsLayout()
         .onAppear { plexToken = Keychain.read("plex-token") ?? "" }
+    }
+}
+
+// MARK: - Discord status
+
+/// Shows "Listening to …" in your Discord profile while music plays, through the Discord app on this Mac (its local
+/// connection; nothing goes over the network from here). Needs a Discord application ID (Settings > Discord).
+final class DiscordStatus {
+    static let shared = DiscordStatus()
+    private let queue = DispatchQueue(label: "discord")
+    private var fd: Int32 = -1
+    private var connectedId = ""
+    private var startedAt: Date?
+    private var lastTitle: String?
+    private var lastEra = ""
+    /// The playing song's era (NowPlaying finds the song a moment after it starts, then calls `refresh`).
+    var era = ""
+    func refresh() { update() }
+
+    static var on: Bool { UserDefaults.standard.bool(forKey: "discordOn") }
+    static var appId: String { (UserDefaults.standard.string(forKey: "discordAppId") ?? "").trimmingCharacters(in: .whitespaces) }
+
+    func start() {
+        for name in [AmbientPlayer.changed, UserDefaults.didChangeNotification] {
+            NotificationCenter.default.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in self?.update() }
+        }
+    }
+
+    private func update() {
+        let p = AmbientPlayer.shared
+        let id = Self.appId, title = Self.on && p.isPlaying ? p.title : nil
+        if title != lastTitle { startedAt = title == nil ? nil : Date().addingTimeInterval(-p.currentTime) }
+        let era = title == nil ? "" : self.era
+        guard title != lastTitle || era != lastEra || connectedId != id else { return }
+        lastTitle = title; lastEra = era
+        let started = startedAt
+        queue.async { [weak self] in self?.send(id: id, title: title, era: era, started: started) }
+    }
+
+    private func send(id: String, title: String?, era: String, started: Date?) {
+        guard !id.isEmpty, id.allSatisfy(\.isNumber) else { close(); return }
+        if fd < 0 || connectedId != id { close(); connect(id) }
+        guard fd >= 0 else { return }
+        var activity: Any = NSNull()
+        if let title {
+            var a: [String: Any] = ["details": title, "state": era.isEmpty ? "Juice WRLD" : "Juice WRLD · \(era)", "assets": ["large_text": "Juice Tracker"]]
+            if let started { a["timestamps"] = ["start": Int(started.timeIntervalSince1970)] }
+            activity = a
+        }
+        let ok = frame(1, ["cmd": "SET_ACTIVITY", "args": ["pid": Int(getpid()), "activity": activity], "nonce": UUID().uuidString])
+        if !ok { close() } // Discord quit: try again next song
+    }
+
+    /// Discord listens on discord-ipc-0…9 in the temporary folder.
+    private func connect(_ id: String) {
+        let dir = (ProcessInfo.processInfo.environment["TMPDIR"] ?? NSTemporaryDirectory())
+        for n in 0..<10 {
+            let path = (dir as NSString).appendingPathComponent("discord-ipc-\(n)")
+            let s = socket(AF_UNIX, SOCK_STREAM, 0)
+            guard s >= 0 else { continue }
+            var addr = sockaddr_un()
+            addr.sun_family = sa_family_t(AF_UNIX)
+            let bytes = Array(path.utf8.prefix(MemoryLayout.size(ofValue: addr.sun_path) - 1))
+            withUnsafeMutableBytes(of: &addr.sun_path) { raw in for (k, b) in bytes.enumerated() { raw[k] = b } }
+            let r = withUnsafePointer(to: &addr) { $0.withMemoryRebound(to: sockaddr.self, capacity: 1) { Darwin.connect(s, $0, socklen_t(MemoryLayout<sockaddr_un>.size)) } }
+            if r == 0 {
+                var noSigPipe: Int32 = 1
+                setsockopt(s, SOL_SOCKET, SO_NOSIGPIPE, &noSigPipe, socklen_t(MemoryLayout<Int32>.size))
+                var wait = timeval(tv_sec: 2, tv_usec: 0) // never hang waiting for Discord's answer
+                setsockopt(s, SOL_SOCKET, SO_RCVTIMEO, &wait, socklen_t(MemoryLayout<timeval>.size))
+                fd = s; connectedId = id
+                if frame(0, ["v": 1, "client_id": id]) { readReply(); return }
+                close(); return
+            }
+            Darwin.close(s)
+        }
+    }
+
+    private func frame(_ op: UInt32, _ body: [String: Any]) -> Bool {
+        guard fd >= 0, let json = try? JSONSerialization.data(withJSONObject: body) else { return false }
+        var head = Data()
+        var o = op.littleEndian, l = UInt32(json.count).littleEndian
+        head.append(Data(bytes: &o, count: 4)); head.append(Data(bytes: &l, count: 4))
+        let all = head + json
+        let sent = all.withUnsafeBytes { write(fd, $0.baseAddress, all.count) }
+        if sent == all.count { readReply(); return true }
+        return false
+    }
+
+    /// Discord answers each message; read it so its buffer never fills (the content isn't needed).
+    private func readReply() {
+        var head = [UInt8](repeating: 0, count: 8)
+        guard read(fd, &head, 8) == 8 else { return }
+        var left = Int(UInt32(head[4]) | UInt32(head[5]) << 8 | UInt32(head[6]) << 16 | UInt32(head[7]) << 24)
+        var buf = [UInt8](repeating: 0, count: 4096)
+        while left > 0 { let n = read(fd, &buf, min(left, buf.count)); if n <= 0 { break }; left -= n }
+    }
+
+    private func close() { if fd >= 0 { Darwin.close(fd) }; fd = -1; connectedId = "" }
+}
+
+private extension View {
+    /// Grouped sections that wrap and scroll (macOS 13 and later); macOS 12 keeps the column form, scrolling.
+    @ViewBuilder func settingsLayout() -> some View {
+        if #available(macOS 13, *) { formStyle(.grouped).frame(width: 600, height: 660) }
+        else { ScrollView { padding(20) }.frame(width: 560, height: 660) }
     }
 }

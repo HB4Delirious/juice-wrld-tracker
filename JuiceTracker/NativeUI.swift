@@ -67,6 +67,7 @@ final class NativeStore: NSObject, ObservableObject {
     @Published var songs: [Song] = []
     @Published var page: NativePage = .collection // the screen showing in the native window
     @Published var eraFilter: String?            // the era picked on the Collection screen (or from ⌘K)
+    @Published var creditsFocus: (role: String, name: String)? // a name clicked on a song card: Credits opens on it
     @Published var showSetup = false
     @Published var landed: [Int] = [] // songs that just came into the library (for the confetti)
     @Published var version = 0 // bumps with every rebuild, so screens that ask for more can refresh
@@ -75,6 +76,7 @@ final class NativeStore: NSObject, ObservableObject {
 
     /// Rebuilds the screens' state from the engine's catalog, your data and your library.
     @MainActor func rebuild() {
+        defer { DockIcon.shared.update() }
         let engine = EngineState.shared
         guard !engine.catalog.isEmpty, EngineLibrary.shared.loaded else { return }
         let decoded = engine.build(includeCatalog: catalogToken != engine.token)
@@ -123,6 +125,7 @@ final class NativeStore: NSObject, ObservableObject {
 final class SkyNSView: NSView {
     private var builtFor: CGSize = .zero
     private let glow = CAGradientLayer()
+    private let stars = CALayer(), nebula = CALayer()
     static weak var current: SkyNSView?
 
     /// Brightens a soft pink glow with the music's loudness (0...1). Called by NowPlaying while music plays.
@@ -130,6 +133,9 @@ final class SkyNSView: NSView {
         CATransaction.begin()
         CATransaction.setDisableActions(true)
         glow.opacity = level * 0.55
+        // the stars brighten and the nebula swells a little on the beat
+        stars.opacity = 0.7 + level * 0.3
+        nebula.transform = CATransform3DMakeScale(1 + CGFloat(level) * 0.05, 1 + CGFloat(level) * 0.05, 1)
         CATransaction.commit()
     }
 
@@ -184,6 +190,8 @@ final class SkyNSView: NSView {
 
         // nebula glows that breathe slowly
         let theme = EraTheme.current.glows // the nebula takes the era theme's colors
+        nebula.frame = b; nebula.sublayers = nil; nebula.transform = CATransform3DIdentity
+        root.addSublayer(nebula)
         let glows: [(CGFloat, CGFloat, CGFloat, NSColor)] = [
             (0.52, 0.66, 0.42, theme[0]), (0.06, 0.30, 0.50, theme[1]), (0.88, 0.86, 0.45, theme[2]), (0.70, 0.10, 0.60, theme[3]),
         ]
@@ -195,7 +203,7 @@ final class SkyNSView: NSView {
             glow.startPoint = CGPoint(x: 0.5, y: 0.5)
             glow.endPoint = CGPoint(x: 1, y: 1)
             glow.frame = CGRect(x: b.width * g.0 - size / 2, y: b.height * g.1 - size / 2, width: size, height: size)
-            root.addSublayer(glow)
+            nebula.addSublayer(glow)
             let drift = CABasicAnimation(keyPath: "transform")
             drift.toValue = CATransform3DConcat(CATransform3DMakeScale(1.12, 1.12, 1), CATransform3DMakeTranslation(n.isMultiple(of: 2) ? -30 : 30, 18, 0))
             drift.duration = 40 + Double(n) * 6
@@ -206,8 +214,10 @@ final class SkyNSView: NSView {
         }
 
         // two star fields drifting at different speeds; each moves exactly one tile per loop, so it's seamless
-        addStarField(to: root, tile: 420, count: 70, seed: 7, seconds: 260, alpha: 0.8)
-        addStarField(to: root, tile: 690, count: 55, seed: 21, seconds: 190, alpha: 1)
+        stars.frame = b; stars.sublayers = nil
+        root.addSublayer(stars)
+        addStarField(to: stars, tile: 420, count: 70, seed: 7, seconds: 260, alpha: 0.8)
+        addStarField(to: stars, tile: 690, count: 55, seed: 21, seconds: 190, alpha: 1)
 
         // the faint tattoo-flash doodles (hearts, lightning, butterflies, chains, crowns), drifting the other way
         if let flash = NSImage(named: "jt-flash") {
@@ -240,7 +250,8 @@ final class SkyNSView: NSView {
         root.addSublayer(sparkles)
 
         // Juice tattoo flash (race car, halo, 999, roses, chains, a UFO), slower and the other way
-        if let juice = NSImage(named: "jt-juiceflash") {
+        // (an era theme swaps it for its era's sticker, scattered)
+        if let juice = EraTheme.current.skySticker.flatMap({ Self.scattered($0) }) ?? NSImage(named: "jt-juiceflash") {
             let tile: CGFloat = 640
             let layer = Self.tiled(juice, tile: tile, covering: CGSize(width: bounds.width + tile, height: bounds.height + tile))
             layer.frame.origin = CGPoint(x: 0, y: -tile)
@@ -290,6 +301,20 @@ final class SkyNSView: NSView {
         shoot.beginTime = CACurrentMediaTime() + 3
         shoot.repeatCount = .infinity
         streak.add(shoot, forKey: "shoot")
+    }
+
+    /// A 640-point tile with an era sticker scattered on it, faint, for the sky's flash layer.
+    private static func scattered(_ name: String) -> NSImage? {
+        guard let sticker = NSImage(named: name) else { return nil }
+        return NSImage(size: NSSize(width: 640, height: 640), flipped: false) { _ in
+            for (x, y, s, turn) in [(60.0, 420.0, 110.0, -14.0), (380, 500, 80, 18), (250, 160, 130, 8), (520, 70, 70, -22), (480, 300, 95, 30)] {
+                NSGraphicsContext.saveGraphicsState()
+                let t = NSAffineTransform(); t.translateX(by: x + s / 2, yBy: y + s / 2); t.rotate(byDegrees: turn); t.concat()
+                sticker.draw(in: NSRect(x: -s / 2, y: -s / 2, width: s, height: s), from: .zero, operation: .sourceOver, fraction: 0.14)
+                NSGraphicsContext.restoreGraphicsState()
+            }
+            return true
+        }
     }
 
     private func addStarField(to root: CALayer, tile: CGFloat, count: Int, seed: UInt64, seconds: Double, alpha: CGFloat) {
@@ -365,6 +390,8 @@ struct SkyBackground: NSViewRepresentable {
 // MARK: - Look (the classic page's colors, fonts and hand-drawn outlines)
 
 enum JT {
+    /// Compact mode (Settings > Look): tighter spacing and smaller type for small windows.
+    static var compact: Bool { UserDefaults.standard.bool(forKey: "compactMode") }
     static let night = Color(red: 10 / 255, green: 6 / 255, blue: 24 / 255)
     static let dusk = Color(red: 24 / 255, green: 12 / 255, blue: 52 / 255).opacity(0.82)
     static let raise = Color(red: 58 / 255, green: 30 / 255, blue: 108 / 255).opacity(0.82)
@@ -434,7 +461,8 @@ extension View {
 /// A page title: marker lettering, tilted a touch, with the rainbow squiggle underneath.
 struct ScreenTitle: View {
     let text: String
-    var size: CGFloat = 40
+    private var size: CGFloat
+    init(text: String, size: CGFloat = 40) { self.text = text; self.size = JT.compact ? size * 0.72 : size }
     @State private var drawn = false
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
@@ -450,14 +478,14 @@ struct ScreenTitle: View {
 // MARK: - Window
 
 enum NativePage: String, CaseIterable, Identifiable {
-    case collection, fixer, dups, health, people, stats, timeline, badges, trivia, export
+    case collection, hunt, playlists, fixer, dups, health, organize, people, stats, timeline, badges, trivia, export
     var id: String { rawValue }
     var title: String {
-        ["collection": "Collection", "fixer": "Tag fixer", "dups": "Duplicates", "health": "File health", "people": "Credits",
+        ["collection": "Collection", "hunt": "Hunt", "playlists": "Playlists", "organize": "Organize", "fixer": "Tag fixer", "dups": "Duplicates", "health": "File health", "people": "Credits",
          "stats": "Stats", "timeline": "Timeline", "badges": "Badges", "trivia": "Trivia", "export": "Export & backup"][rawValue] ?? rawValue
     }
     var icon: String {
-        ["collection": "smallcircle.filled.circle", "fixer": "tag", "dups": "square.on.square", "health": "waveform.path.ecg", "people": "person.2",
+        ["collection": "smallcircle.filled.circle", "hunt": "scope", "playlists": "music.note.list", "organize": "folder.badge.gearshape", "fixer": "tag", "dups": "square.on.square", "health": "waveform.path.ecg", "people": "person.2",
          "stats": "chart.bar", "timeline": "point.3.connected.trianglepath.dotted", "badges": "rosette", "trivia": "questionmark.circle", "export": "archivebox"][rawValue] ?? "circle"
     }
 }
@@ -473,13 +501,16 @@ struct NativeRoot: View {
         ZStack {
             SkyBackground().ignoresSafeArea()
             HStack(spacing: 0) {
-                Sidebar(searching: $searching).frame(width: 238)
+                Sidebar(searching: $searching).frame(width: JT.compact ? 212 : 238)
                 ZStack {
                     if let s = store.state, !store.songs.isEmpty {
                         switch page {
                         case .timeline: TimelineScreen(songs: store.songs)
                         case .stats: StatsScreen(state: s, songs: store.songs)
                         case .people: CreditsScreen(songs: store.songs)
+                        case .hunt: HuntScreen()
+                        case .playlists: PlaylistsScreen()
+                        case .organize: OrganizeScreen()
                         case .dups: DuplicatesScreen()
                         case .health: HealthScreen()
                         case .fixer: TagFixerScreen()
@@ -495,7 +526,7 @@ struct NativeRoot: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
-        .font(JT.body(15))
+        .font(JT.body(JT.compact ? 13 : 15))
         .foregroundColor(JT.mist)
         .preferredColorScheme(.dark)
         .animation(.spring(response: 0.38, dampingFraction: 0.86), value: page)
@@ -503,14 +534,19 @@ struct NativeRoot: View {
         .overlay(alignment: .top) {
             if let toast { LandedToast(text: toast).padding(.top, 16).transition(.move(edge: .top).combined(with: .opacity)) }
         }
+        .onChange(of: store.state?.have ?? 0) { n in if String(n).contains("999") { NotificationCenter.default.post(name: Confetti.fire999, object: nil) } }
         .onChange(of: store.landed) { ids in
             guard !ids.isEmpty else { return }
             NotificationCenter.default.post(name: Confetti.fire, object: nil)
+            Chime.play()
             let text = ids.count == 1 && store.songs.indices.contains(ids[0]) ? "\u{201C}\(store.songs[ids[0]].n)\u{201D} landed in your library" : "\(ids.count) songs landed in your library"
             withAnimation(.spring(response: 0.42, dampingFraction: 0.7)) { toast = text }
             DispatchQueue.main.asyncAfter(deadline: .now() + 3.8) { withAnimation(.easeIn(duration: 0.3)) { if toast == text { toast = nil } } }
         }
-        .id(theme.id) // a new era theme redraws everything in its colors
+        .id(theme.id) // a new era theme (or compact mode) redraws everything
+        .onChange(of: theme.id) { _ in
+            NSApp.windows.first { $0.title == "Juice Tracker" }?.minSize = JT.compact ? NSSize(width: 720, height: 480) : NSSize(width: 900, height: 600)
+        }
         .sheet(item: $store.openSong) { s in SongCard(opened: s, close: { store.openSong = nil }) }
         .sheet(isPresented: $searching) { QuickSearch(close: { searching = false }) }
     }
@@ -558,8 +594,9 @@ struct Sidebar: View {
             .keyboardShortcut("k", modifiers: .command)
             .padding(.bottom, 22)
 
-            ForEach(NativePage.allCases) { p in navItem(p) }
-            Spacer()
+            // the pages scroll when the window is short (13 of them since v1.26)
+            ScrollView(showsIndicators: false) { VStack(spacing: 0) { ForEach(NativePage.allCases) { p in navItem(p) } } }
+                .frame(maxHeight: .infinity, alignment: .top)
 
             VStack(alignment: .leading, spacing: 10) {
                 if let q = store.state?.queue {
@@ -622,7 +659,7 @@ struct Sidebar: View {
                 Spacer()
             }
             .foregroundColor(current || hovered == p ? JT.mist : JT.muted)
-            .padding(.vertical, 9).padding(.horizontal, 12)
+            .padding(.vertical, JT.compact ? 5 : 8).padding(.horizontal, 12)
             .background(
                 ZStack {
                     if current {
@@ -672,6 +709,7 @@ struct QuickSearch: View {
             TextField("Search songs, eras and pages", text: $query).textFieldStyle(.plain).font(JT.body(20))
                 .padding(12).background(RoundedRectangle(cornerRadius: 12).fill(Color.white.opacity(0.06)))
                 .onSubmit { if let first = hits.first { pick(first) } }
+                .onChange(of: query) { q in if q.trimmingCharacters(in: .whitespaces) == "999" { NotificationCenter.default.post(name: Confetti.fire999, object: nil) } }
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 2) {
                     ForEach(hits) { hit in
@@ -715,6 +753,7 @@ struct CollectionScreen: View {
     @State private var query = ""
     @State private var limit = 200
     @State private var askAll: [Int] = []
+    @State private var ranking = false
     @State private var shownHave = 0.0
     init(state: NState, songs: [Song]) { self.state = state; self.all = songs }
 
@@ -743,7 +782,7 @@ struct CollectionScreen: View {
                     erasSection.padding(.top, 44)
                     songList.padding(.top, 34).id("songs")
                 }
-                .padding(.horizontal, 40).padding(.top, 34).padding(.bottom, 80)
+                .padding(.horizontal, JT.compact ? 18 : 40).padding(.top, JT.compact ? 20 : 34).padding(.bottom, 80)
                 .frame(maxWidth: 1240, alignment: .leading)
                 .frame(maxWidth: .infinity)
             }
@@ -755,6 +794,8 @@ struct CollectionScreen: View {
         HStack(spacing: 22) {
             (Text("\(state.total.formatted())").bold() + Text(" songs in the catalog").foregroundColor(JT.muted))
             (Text("\(state.files.formatted())").bold() + Text(" files in your music folder").foregroundColor(JT.muted))
+            let grails = all.filter { $0.o && EngineState.shared.catalog.indices.contains($0.i) && Engine.rarity(EngineState.shared.catalog[$0.i], owned: true) == "Grail" }.count
+            if grails > 0 { (Text("\(grails.formatted())").bold().foregroundColor(JT.yellowGold) + Text(grails == 1 ? " grail" : " grails").foregroundColor(JT.muted)).help("Unreleased songs with no file on the site that you have") }
             Spacer()
             Button("Setup (show)") { store.showSetup = true }.buttonStyle(.plain).foregroundColor(JT.lavender)
         }
@@ -869,6 +910,7 @@ struct CollectionScreen: View {
             }
             HStack {
                 Text("\(list.count) songs").font(.caption).foregroundColor(JT.muted)
+                if tab == "wish" && !list.isEmpty { Button("Rank wishlist…") { ranking = true }.buttonStyle(.borderless) }
                 Spacer()
                 let missing = list.filter { !$0.o && $0.f }
                 if !missing.isEmpty {
@@ -887,6 +929,7 @@ struct CollectionScreen: View {
             .doodled(14)
             if list.count > limit { Button("Show more") { limit += 300 }.buttonStyle(.borderless) }
         }
+        .sheet(isPresented: $ranking) { WishRankSheet(close: { ranking = false }) }
         .onChange(of: query) { _ in limit = 200 }
         .onChange(of: tab) { _ in limit = 200 }
     }
@@ -902,11 +945,11 @@ private struct Headline: View, Animatable {
     var body: some View {
         let have = Int(value.rounded()).formatted()
         return (Text("You have ") + Text(have).foregroundColor(.clear) + Text(" of \(total.formatted()) songs").foregroundColor(JT.muted.opacity(0.95)))
-            .font(JT.marker(64)).lineSpacing(-6)
+            .font(JT.marker(JT.compact ? 44 : 64)).lineSpacing(-6)
             .overlay(alignment: .topLeading) {
                 (Text("You have ").foregroundColor(.clear) + Text(have).foregroundColor(.white))
-                    .font(JT.marker(64))
-                    .overlay(JT.countGradient.mask((Text("You have ").foregroundColor(.clear) + Text(have)).font(JT.marker(64))))
+                    .font(JT.marker(JT.compact ? 44 : 64))
+                    .overlay(JT.countGradient.mask((Text("You have ").foregroundColor(.clear) + Text(have)).font(JT.marker(JT.compact ? 44 : 64))))
                     .foregroundColor(.clear)
             }
     }
@@ -1061,13 +1104,14 @@ struct SongRow: View {
         }
         .font(.callout)
         .offset(x: hover ? 4 : 0)
-        .padding(.vertical, 8).padding(.horizontal, 14)
+        .padding(.vertical, JT.compact ? 4 : 8).padding(.horizontal, JT.compact ? 10 : 14)
         .background(hover ? Color.white.opacity(0.05) : .clear)
         .overlay(alignment: .leading) { if hover { Capsule().fill(JT.lavender).frame(width: 3).padding(.vertical, 6).transition(.opacity) } }
         .animation(.easeOut(duration: 0.15), value: hover)
         .onHover { hover = $0 }
         .contextMenu {
             if song.o { Button("Play next") { Task { await NativeStore.shared.act("playNext", song.i) } } }
+            AddToPlaylistMenu(ids: [song.s.id])
             Button("Open song card", action: open)
         }
         .overlay(Rectangle().fill(JT.line).frame(height: 0.5), alignment: .bottom)
@@ -1091,6 +1135,7 @@ struct SongCard: View {
     @ObservedObject private var store = NativeStore.shared
     @State private var d: SongDetails?
     @State private var note = ""
+    @State private var keys: Any?
     /// The latest snapshot of this song (the wishlist star and library status change while the card is open).
     private var song: Song { store.songs.indices.contains(opened.i) && store.songs[opened.i].i == opened.i ? store.songs[opened.i] : opened }
 
@@ -1110,7 +1155,13 @@ struct SongCard: View {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 8) {
                         ForEach(facts(d), id: \.0) { k, v in
-                            HStack(alignment: .top) { Text(k).foregroundColor(JT.muted).frame(width: 110, alignment: .leading); Text(v).textSelection(.enabled) }
+                            HStack(alignment: .top) {
+                                Text(k).foregroundColor(JT.muted).frame(width: 110, alignment: .leading)
+                                if let (role, names) = people(k), !names.isEmpty {
+                                    // Names open Credits on that person: everything they're on, what you have and what you're missing.
+                                    FlowNames(names: names) { name in store.openSong = nil; store.creditsFocus = (role, name); store.page = .people }
+                                } else { Text(v).textSelection(.enabled) }
+                            }
                         }
                         if !d.notes.isEmpty || !d.info.isEmpty {
                             Text("Notes").font(.headline).padding(.top, 6)
@@ -1126,6 +1177,7 @@ struct SongCard: View {
                         Text("Your library").font(.headline).padding(.top, 6)
                         if d.files.isEmpty { Text("Not in your library.").foregroundColor(JT.muted) }
                         ForEach(d.files, id: \.self) { Text($0).font(.caption.monospaced()).foregroundColor(JT.muted) }
+                        VersionsList(song: song)
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
                 }
@@ -1136,6 +1188,7 @@ struct SongCard: View {
                         Button { Task { await NativeStore.shared.act("playNext", song.i) } } label: { Label("Play next", systemImage: "text.line.first.and.arrowtriangle.forward") }
                     }
                     if !song.o && song.f { Button { EngineDownloads.shared.add([song.s.id]) } label: { Label("Download", systemImage: "arrow.down.circle") } }
+                    AddToPlaylistMenu(ids: [song.s.id]).fixedSize()
                     Spacer()
                     if let url = URL(string: d.siteUrl), !d.siteUrl.isEmpty { Link("Open the file on the site", destination: url) }
                 }
@@ -1144,10 +1197,31 @@ struct SongCard: View {
             }
         }
         .padding(24)
+        .onAppear { // 1–5 rate the song, 0 clears (not while typing a note)
+            keys = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { e in
+                guard e.modifierFlags.intersection([.command, .option, .control]).isEmpty, !(NSApp.keyWindow?.firstResponder is NSText),
+                      let n = Int(e.charactersIgnoringModifiers ?? ""), (0...5).contains(n), let id = NativeStore.shared.openSong?.s.id else { return e }
+                EngineState.shared.setRating(id, n)
+                return nil
+            }
+            // The note box would take the keyboard as the card opens; it gets it when you click into it.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { NSApp.keyWindow?.makeFirstResponder(nil) }
+        }
+        .onDisappear { if let keys { NSEvent.removeMonitor(keys) } }
         .frame(width: 640, height: 560)
         .background(Color(red: 20 / 255, green: 10 / 255, blue: 44 / 255))
         .preferredColorScheme(.dark)
         .task { note = EngineState.shared.notes[song.s.id] ?? ""; d = await NativeStore.shared.details(song.i) }
+    }
+
+    private func people(_ fact: String) -> (String, [String])? {
+        switch fact {
+        case "Producers": return ("pr", song.s.pr)
+        case "Artists": return ("ar", song.s.ar.filter { $0.lowercased() != "juice wrld" })
+        case "Engineers": return ("en", song.s.en)
+        case "Studios": return ("st", song.s.st)
+        default: return nil
+        }
     }
 
     private func facts(_ d: SongDetails) -> [(String, String)] {

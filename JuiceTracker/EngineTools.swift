@@ -197,8 +197,8 @@ import AVFoundation
     }
 
     /// After a download: tag it with the fixer's settings (when auto-tagging is on). Returns a note if it failed.
-    func autoTag(_ path: String, song: Int) async -> String {
-        guard autoTag, Engine.editableExts.contains(Engine.extOf(path)), let file = EngineLibrary.shared.files.first(where: { $0.path == path }) else { return "" }
+    func autoTag(_ path: String, song: Int, always: Bool = false) async -> String {
+        guard autoTag || always, Engine.editableExts.contains(Engine.extOf(path)), let file = EngineLibrary.shared.files.first(where: { $0.path == path }) else { return "" }
         let it = Engine.fixFor(tags: file.tags, song: EngineState.shared.catalog[song], fields: fields, onlyBlanks: onlyBlanks, genre: genre)
         guard !it.changes.isEmpty else { return "" }
         do { try await write(path, it.desired); return "" } catch { return "Its tags weren't updated: \(error.localizedDescription)." }

@@ -72,6 +72,16 @@ cache, download queue).
 - **Compare with another drive** (Export & backup): scans a second folder, like a backup drive, and lists the songs only on one of them, with a button to download the ones missing here. Nothing on either drive changes.
 - **Loudness and cover art (File health):** files much quieter or louder than the rest of your library, and files with no cover art. **Add artwork** writes the song's picture from the site into the file (one at a time or all at once), with the same safety check and backup as the tag fixer.
 - **Faster first scan:** a network drive is read 16 files at a time.
+- **Hunt:** one song you don't have, picked each day, with its story and where it might turn up, plus "you rated these highly, so try…" suggestions (same song's other versions, the same producer, the same era).
+- **Playlists:** make your own, drag to reorder, play them in order, and export M3U files (also one-click M3Us for an era, top rated, your wishlist and never played).
+- **Player:** a seek bar in the sidebar, mini player and menu bar; a sleep timer (15, 30 or 60 minutes, or the end of the song, fading out); volume matching evens out quiet and loud files without changing them. The menu bar also shows your count.
+- **Versions and A/B:** each song card lists the song's other versions with what you have, and **Compare A/B** plays two versions in step and switches between them instantly (Tab), pausing the background music meanwhile.
+- **Ratings keys and credit links:** on a song card, 1–5 rates and 0 clears; producer, artist, engineer and studio names open Credits on that person, with a button to download what you're missing of theirs.
+- **Stats:** a listening calendar (plays per day, with streaks) and a gaps heatmap of every month from 2014 to 2024 by how much of it you have (click a month for its songs). The home page counts your grails.
+- **Wishlist ranking:** drag your wishlist into order (Collection > Wishlist > Rank wishlist); wishlist downloads go most wanted first.
+- **Organize:** the **file organizer** moves matched files into a pattern like `{era}/{song}` after a preview, never over another file, with Undo; the **inbox folder** files songs you drop in into their era folder (tagging them when it's sure which version); **Fill a drive** copies your best-rated, then rarest, then most played songs to a phone or USB stick up to a size.
+- **Look:** your own accent and sky colors, compact mode for small windows, the sky's flash layer shows your era theme's sticker, and the stars and nebula move with the music; the Dock icon glows while music plays and shows download progress; an optional chime when songs land; earned badges save as image cards; and typing 999 in ⌘K (or a count with 999 in it) fills the window with 999s.
+- **Discord status:** shows what's playing in your Discord profile through the Discord app (Settings > Discord; needs a free Discord application ID).
 - **Settings (⌘,):**
   - Daily new-song and release alerts (macOS notifications), "Keep running when the window is closed", and "Open at login".
   - Automatic app updates from GitHub releases (also Juice Tracker > Check for Updates…).

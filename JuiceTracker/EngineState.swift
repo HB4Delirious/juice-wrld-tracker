@@ -57,6 +57,27 @@ enum EngineFiles {
         setPersonal("ratings", r)
     }
     var notes: [String: String] { personal["notes"] as? [String: String] ?? [:] }
+    /// Wishlist song ids, most wanted first: your drag order, then songs not ranked yet, oldest first.
+    var wishRanked: [String] {
+        let w = wish, order = (personal["wishOrder"] as? [String] ?? []).filter { w[$0] != nil }, ranked = Set(order)
+        return order + w.filter { !ranked.contains($0.key) }.sorted { $0.value < $1.value }.map(\.key)
+    }
+    func setWishOrder(_ ids: [String]) { setPersonal("wishOrder", ids) }
+    /// Your playlists: a name and song ids, in order.
+    struct Playlist: Identifiable, Hashable { var id: String; var name: String; var songs: [String] }
+    var playlists: [Playlist] {
+        (personal["playlists"] as? [[String: Any]] ?? []).compactMap { p in
+            guard let id = p["id"] as? String, let name = p["name"] as? String else { return nil }
+            return Playlist(id: id, name: name, songs: p["songs"] as? [String] ?? [])
+        }
+    }
+    func setPlaylists(_ list: [Playlist]) { setPersonal("playlists", list.map { ["id": $0.id, "name": $0.name, "songs": $0.songs] as [String: Any] }) }
+    func addToPlaylist(_ playlistId: String, _ songIds: [String]) {
+        var list = playlists
+        guard let n = list.firstIndex(where: { $0.id == playlistId }) else { return }
+        list[n].songs += songIds.filter { !list[n].songs.contains($0) }
+        setPlaylists(list)
+    }
 
     // MARK: Starting up
 

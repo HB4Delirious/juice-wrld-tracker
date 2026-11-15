@@ -1,4 +1,5 @@
 import AppKit
+import AVFoundation
 import SwiftUI
 
 // Ratings, rarity, the year in review, the lyrics window and the drive comparison.
@@ -221,5 +222,296 @@ struct DriveCompareCard: View {
             let r = await EngineLibrary.shared.compare(with: url) { done, total in status = "Reading \(done.formatted()) of \(total.formatted())…" }
             result = r; running = false; status = ""
         }
+    }
+}
+
+// MARK: - Seek bar and sleep timer
+
+/// Where the playing song is, with a slider to move in it (sidebar and mini player).
+struct SeekBar: View {
+    @State private var dragging: Double?
+    var body: some View {
+        TimelineView(.periodic(from: .now, by: 0.5)) { _ in
+            let p = AmbientPlayer.shared, length = max(p.duration, 1)
+            HStack(spacing: 6) {
+                Text(Engine.fmtTime(dragging ?? p.currentTime)).monospacedDigit()
+                Slider(value: Binding(get: { dragging ?? p.currentTime }, set: { dragging = $0 }), in: 0...length) { editing in
+                    if !editing, let t = dragging { p.seek(to: t); dragging = nil }
+                }
+                .controlSize(.mini)
+                .accessibilityLabel("Position in the song")
+                Text(Engine.fmtTime(p.duration)).monospacedDigit()
+            }
+            .font(.caption2).foregroundColor(JT.muted)
+            .disabled(p.duration == 0)
+        }
+    }
+}
+
+/// Stop the music after a while, or when this song ends (it fades out over 8 seconds).
+struct SleepMenu: View {
+    var body: some View {
+        let p = AmbientPlayer.shared
+        Menu {
+            ForEach([15, 30, 60], id: \.self) { m in Button("In \(m) minutes") { p.sleep(minutes: m) } }
+            Button("At the end of this song") { p.sleep(minutes: nil, atEnd: true) }
+            if p.sleepAt != nil || p.sleepAtEnd { Divider(); Button("Turn off the sleep timer") { p.sleep(minutes: nil) } }
+        } label: {
+            Image(systemName: p.sleepAt != nil || p.sleepAtEnd ? "moon.zzz.fill" : "moon.zzz")
+        }
+        .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
+        .help(p.sleepAt.map { "Sleep timer: stops at \($0.formatted(date: .omitted, time: .shortened))" } ?? (p.sleepAtEnd ? "Sleep timer: stops after this song" : "Sleep timer"))
+        .accessibilityLabel("Sleep timer")
+    }
+}
+
+// MARK: - Versions and A/B compare
+
+/// The other versions of a song (same name once version marks and brackets are dropped), side by side, with
+/// whether you have each, and a button to compare two you have.
+struct VersionsList: View {
+    let song: Song
+    @ObservedObject private var store = NativeStore.shared
+
+    var body: some View {
+        let key = Engine.normalize(song.n)
+        let others = store.songs.filter { $0.i != song.i && Engine.normalize($0.n) == key }
+        if !others.isEmpty {
+            VStack(alignment: .leading, spacing: 4) {
+                HStack {
+                    Text("Other versions (\(others.count))").font(.headline)
+                    Spacer()
+                    let owned = ([song] + others).filter(\.o)
+                    if owned.count >= 2 { Button("Compare A/B") { ABWindow.show(owned, start: song.o ? song : owned[0]) } }
+                    let missing = others.filter { !$0.o && $0.f }
+                    if !missing.isEmpty { Button("Download \(missing.count) missing") { EngineDownloads.shared.add(missing.map(\.s.id)) } }
+                }
+                ForEach(others) { v in
+                    HStack {
+                        Button(v.n) { store.openSong = v }.buttonStyle(.link)
+                        Text(v.c).foregroundColor(JT.muted)
+                        Spacer()
+                        Text(v.o ? "In library" : v.f ? "On the site" : "No file").foregroundColor(v.o ? JT.have : JT.muted)
+                    }
+                    .font(.callout)
+                }
+            }
+            .padding(.top, 6)
+        }
+    }
+}
+
+/// Plays two versions together, in step, and switches between them instantly. The background music pauses meanwhile.
+final class ABCompare: ObservableObject {
+    @Published var a: Song
+    @Published var b: Song
+    @Published private(set) var onB = false
+    @Published private(set) var playing = false
+    private var pa: AVAudioPlayer?, pb: AVAudioPlayer?
+    private var musicWasPlaying = false
+
+    init(a: Song, b: Song) { self.a = a; self.b = b }
+
+    var position: TimeInterval { (onB ? pb : pa)?.currentTime ?? 0 }
+    var length: TimeInterval { max(pa?.duration ?? 0, pb?.duration ?? 0) }
+
+    @MainActor func load() {
+        stop()
+        let library = EngineLibrary.shared
+        pa = library.playableURL(a.i).flatMap { try? AVAudioPlayer(contentsOf: $0) }
+        pb = library.playableURL(b.i).flatMap { try? AVAudioPlayer(contentsOf: $0) }
+        pa?.prepareToPlay(); pb?.prepareToPlay()
+        apply()
+    }
+    func toggle() {
+        guard let pa, let pb else { return }
+        if playing { pa.pause(); pb.pause(); playing = false; return }
+        if !musicWasPlaying && AmbientPlayer.shared.isPlaying { musicWasPlaying = true; AmbientPlayer.shared.pause() }
+        let t = pa.deviceCurrentTime + 0.05 // start both on the same audio clock tick, so they stay in step
+        pa.play(atTime: t); pb.play(atTime: t)
+        playing = true
+    }
+    func flip() { onB.toggle(); apply() }
+    func seek(_ t: TimeInterval) {
+        pa?.currentTime = min(t, pa?.duration ?? 0); pb?.currentTime = min(t, pb?.duration ?? 0)
+        if playing { playing = false; toggle() }
+    }
+    private func apply() { pa?.volume = onB ? 0 : 0.8; pb?.volume = onB ? 0.8 : 0 }
+    func stop() {
+        pa?.stop(); pb?.stop(); playing = false
+        if musicWasPlaying { musicWasPlaying = false; AmbientPlayer.shared.resume() }
+    }
+}
+
+enum ABWindow {
+    private static var window: NSWindow?
+    @MainActor static func show(_ versions: [Song], start: Song) {
+        window?.close()
+        let other = versions.first { $0.i != start.i } ?? start
+        let w = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 520, height: 300), styleMask: [.titled, .closable], backing: .buffered, defer: false)
+        w.title = "Compare versions"
+        w.isReleasedWhenClosed = false
+        w.contentView = NSHostingView(rootView: ABView(versions: versions, ab: ABCompare(a: start, b: other)))
+        w.center()
+        w.makeKeyAndOrderFront(nil)
+        window = w
+    }
+}
+
+private struct ABView: View {
+    let versions: [Song]
+    @StateObject var ab: ABCompare
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            HStack(spacing: 12) {
+                side("A", $ab.a, on: !ab.onB)
+                side("B", $ab.b, on: ab.onB)
+            }
+            Button { ab.flip() } label: {
+                Text("Switch to \(ab.onB ? "A" : "B")").frame(maxWidth: .infinity)
+            }
+            .controlSize(.large).keyboardShortcut(.tab, modifiers: [])
+            HStack {
+                Button { ab.toggle() } label: { Image(systemName: ab.playing ? "pause.fill" : "play.fill").frame(width: 24) }
+                    .keyboardShortcut(.space, modifiers: []).accessibilityLabel(ab.playing ? "Pause" : "Play")
+                TimelineView(.periodic(from: .now, by: 0.5)) { _ in
+                    Slider(value: Binding(get: { ab.position }, set: { ab.seek($0) }), in: 0...max(ab.length, 1))
+                        .accessibilityLabel("Position")
+                }
+            }
+            Text("Space plays and pauses; Tab switches. Both play together from the same point, so you hear the difference right away.")
+                .font(.caption).foregroundColor(JT.muted)
+        }
+        .padding(20)
+        .frame(width: 520)
+        .preferredColorScheme(.dark)
+        .task { ab.load() }
+        .onChange(of: ab.a) { _ in ab.load() }
+        .onChange(of: ab.b) { _ in ab.load() }
+        .onDisappear { ab.stop() }
+    }
+
+    private func side(_ label: String, _ pick: Binding<Song>, on: Bool) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(label).font(JT.marker(28)).foregroundColor(on ? JT.lavender : JT.muted)
+            Picker("", selection: pick) { ForEach(versions) { Text($0.n).tag($0) } }.labelsHidden()
+        }
+        .padding(12).frame(maxWidth: .infinity, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: 12).stroke(on ? JT.lavender : JT.line, lineWidth: on ? 2 : 1))
+    }
+}
+
+/// Names as links, a few to a line (the song card's credits).
+struct FlowNames: View {
+    let names: [String]
+    let open: (String) -> Void
+    var body: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            ForEach(Array(stride(from: 0, to: names.count, by: 3)), id: \.self) { start in
+                HStack(spacing: 10) {
+                    ForEach(names[start..<min(start + 3, names.count)], id: \.self) { n in Button(n) { open(n) }.buttonStyle(.link).help("See all of \(n)'s songs") }
+                }
+            }
+        }
+    }
+}
+
+// MARK: - Listening calendar and collection gaps
+
+/// Plays per day over the last year, GitHub style, with your current and longest streaks.
+struct ListeningCalendar: View {
+    @ObservedObject private var store = NativeStore.shared
+
+    var body: some View {
+        let cal = Calendar.current, today = cal.startOfDay(for: Date())
+        var perDay: [Date: Int] = [:]
+        for e in AmbientPlayer.playLog { perDay[cal.startOfDay(for: e.at), default: 0] += 1 }
+        // 53 weeks, ending with this week; columns are weeks, rows Sunday to Saturday
+        let weekday = cal.component(.weekday, from: today) - 1
+        let start = cal.date(byAdding: .day, value: -(52 * 7 + weekday), to: today)!
+        let top = max(perDay.values.max() ?? 1, 1)
+        let (current, longest) = streaks(perDay, today: today)
+        return VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Text("Listening calendar").font(.headline)
+                Spacer()
+                Text("Streak: \(current) \(current == 1 ? "day" : "days") · longest \(longest)").font(.caption).foregroundColor(JT.muted)
+            }
+            HStack(alignment: .top, spacing: 3) {
+                ForEach(0..<53, id: \.self) { w in
+                    VStack(spacing: 3) {
+                        ForEach(0..<7, id: \.self) { d in
+                            let day = cal.date(byAdding: .day, value: w * 7 + d, to: start)!
+                            let n = perDay[day] ?? 0
+                            RoundedRectangle(cornerRadius: 2)
+                                .fill(day > today ? Color.clear : n == 0 ? JT.raise.opacity(0.6) : JT.lavender.opacity(0.25 + 0.75 * Double(n) / Double(top)))
+                                .frame(width: 11, height: 11)
+                                .help("\(day.formatted(date: .abbreviated, time: .omitted)): \(n) \(n == 1 ? "play" : "plays")")
+                        }
+                    }
+                }
+            }
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("Listening calendar: \(perDay.count) days with plays in the last year, current streak \(current) days")
+        }
+        .padding(16).frame(maxWidth: .infinity, alignment: .leading).doodled(14)
+    }
+
+    private func streaks(_ days: [Date: Int], today: Date) -> (Int, Int) {
+        let cal = Calendar.current, sorted = days.keys.sorted()
+        var longest = 0, run = 0, prev: Date?
+        for d in sorted {
+            run = prev.flatMap { cal.dateComponents([.day], from: $0, to: d).day } == 1 ? run + 1 : 1
+            longest = max(longest, run); prev = d
+        }
+        var current = 0, d = days[today] != nil ? today : cal.date(byAdding: .day, value: -1, to: today)! // today can still come
+        while days[d] != nil { current += 1; d = cal.date(byAdding: .day, value: -1, to: d)! }
+        return (current, longest)
+    }
+}
+
+/// Every month from 2014 to 2024: how much of what was recorded then you have. Pale cells are where to dig.
+struct GapsHeatmap: View {
+    let songs: [Song]
+    @State private var picked: Int?
+
+    var body: some View {
+        var total: [Int: Int] = [:], have: [Int: Int] = [:]
+        for s in songs { if let m = s.s.m { total[m, default: 0] += 1; if s.o { have[m, default: 0] += 1 } } }
+        let months = Calendar.current.shortMonthSymbols
+        return VStack(alignment: .leading, spacing: 8) {
+            Text("Gaps by month recorded").font(.headline)
+            Text("Each square is a month; the brighter it is, the more of that month's recordings you have. Click one to see its songs.").font(.caption).foregroundColor(JT.muted)
+            VStack(alignment: .leading, spacing: 3) {
+                HStack(spacing: 3) {
+                    Text("").frame(width: 38)
+                    ForEach(months, id: \.self) { Text($0).font(.system(size: 9)).foregroundColor(JT.muted).frame(width: 30) }
+                }
+                ForEach(2014...2024, id: \.self) { y in
+                    HStack(spacing: 3) {
+                        Text(String(y)).font(.caption.monospacedDigit()).foregroundColor(JT.muted).frame(width: 38, alignment: .leading)
+                        ForEach(0..<12, id: \.self) { m in
+                            let key = y * 12 + m, t = total[key] ?? 0, h = have[key] ?? 0
+                            Button { picked = picked == key ? nil : key } label: {
+                                RoundedRectangle(cornerRadius: 3)
+                                    .fill(t == 0 ? Color.clear : h == 0 ? JT.missing.opacity(0.35) : JT.have.opacity(0.2 + 0.8 * Double(h) / Double(t)))
+                                    .overlay(RoundedRectangle(cornerRadius: 3).stroke(picked == key ? JT.mist : JT.line, lineWidth: picked == key ? 2 : t == 0 ? 0.5 : 0))
+                                    .frame(width: 30, height: 16)
+                            }
+                            .buttonStyle(.plain).disabled(t == 0)
+                            .help(t == 0 ? "\(months[m]) \(y): nothing recorded" : "\(months[m]) \(y): \(h) of \(t)")
+                            .accessibilityLabel(t == 0 ? "\(months[m]) \(y), nothing recorded" : "\(months[m]) \(y), \(h) of \(t)")
+                        }
+                    }
+                }
+            }
+            if let picked {
+                let list = songs.filter { $0.s.m == picked }.sorted { $0.o == $1.o ? $0.n < $1.n : !$0.o }
+                Text("\(months[picked % 12]) \(picked / 12): \(list.filter(\.o).count) of \(list.count)").font(.subheadline.bold()).padding(.top, 6)
+                LazyVStack(spacing: 0) { ForEach(list) { s in SongRow(song: s, open: { NativeStore.shared.openSong = s }, compact: true) } }.doodled(12)
+            }
+        }
+        .padding(16).frame(maxWidth: .infinity, alignment: .leading).doodled(14)
     }
 }

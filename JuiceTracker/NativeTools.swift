@@ -7,7 +7,7 @@ private func size(_ bytes: Int) -> String { ByteCountFormatter.string(fromByteCo
 private func fileName(_ path: String) -> String { (path as NSString).lastPathComponent }
 
 /// A question to confirm before a fix runs.
-private struct Pending: Identifiable {
+struct Pending: Identifiable {
     let id = UUID()
     let title: String
     let message: String
@@ -16,7 +16,7 @@ private struct Pending: Identifiable {
 }
 
 /// The result of the last fix, shown at the top of the screen.
-private struct Banner: View {
+struct Banner: View {
     let text: String
     let error: Bool
     var body: some View {
@@ -27,7 +27,7 @@ private struct Banner: View {
     }
 }
 
-private extension View {
+extension View {
     /// Asks before running `pending`, then shows what happened.
     func confirming(_ pending: Binding<Pending?>, result: Binding<(String, Bool)?>) -> some View {
         alert(pending.wrappedValue?.title ?? "", isPresented: Binding(get: { pending.wrappedValue != nil }, set: { if !$0 { pending.wrappedValue = nil } }),
@@ -81,7 +81,7 @@ struct DuplicatesScreen: View {
                     Spinner999().frame(maxWidth: .infinity, minHeight: 200)
                 }
             }
-            .padding(.horizontal, 34).padding(.top, 40).padding(.bottom, 60)
+            .padding(.horizontal, JT.compact ? 18 : 34).padding(.top, JT.compact ? 20 : 40).padding(.bottom, 60)
             .frame(maxWidth: 1080, alignment: .leading)
         }
         .task(id: store.version) { await load() }
@@ -183,7 +183,7 @@ struct HealthScreen: View {
                     ForEach(d.groups, id: \.self) { g in group(g) }
                 }
             }
-            .padding(.horizontal, 34).padding(.top, 40).padding(.bottom, 60)
+            .padding(.horizontal, JT.compact ? 18 : 34).padding(.top, JT.compact ? 20 : 40).padding(.bottom, 60)
             .frame(maxWidth: 1080, alignment: .leading)
         }
         .task(id: "\(store.version)-\(tick)") { await load() }
