@@ -155,7 +155,8 @@ public sealed class CollectionPage : ScrollViewer, IRefresh
 
         // the song list's header
         var header = new StackPanel { Margin = new Thickness(0, 34, 0, 12) };
-        var tabsBox = new Border { Background = JT.Brush(Color.FromArgb(30, 255, 255, 255)), CornerRadius = new CornerRadius(8), Padding = new Thickness(2), Child = tabs };
+        // the tabs and search box are kept across redraws (their state lives in them): out of the old row first
+        var tabsBox = new Border { Background = JT.Brush(Color.FromArgb(30, 255, 255, 255)), CornerRadius = new CornerRadius(8), Padding = new Thickness(2) };
         if (tabs.Parent is Border old) old.Child = null;
         tabsBox.Child = tabs;
         if (search.Parent is Panel sp) sp.Children.Remove(search);
