@@ -18,6 +18,9 @@
 		1485960718293A4B5C6D7E8F /* NativeExtras.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2596071829304B5C6D7E8F90 /* NativeExtras.swift */; };
 		36A7B8C9D0E1F20314253647 /* NativeMore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 47B8C9D0E1F2031425364758 /* NativeMore.swift */; };
 		58C9D0E1F203142536475869 /* NativeJuice.swift in Sources */ = {isa = PBXBuildFile; fileRef = 69D0E1F20314253647586970 /* NativeJuice.swift */; };
+		58C9D0E1F203142536475A07 /* EngineTools.swift in Sources */ = {isa = PBXBuildFile; fileRef = 69D0E1F20314253647586A07 /* EngineTools.swift */; };
+		58C9D0E1F203142536475A06 /* EngineDownloads.swift in Sources */ = {isa = PBXBuildFile; fileRef = 69D0E1F20314253647586A06 /* EngineDownloads.swift */; };
+		58C9D0E1F203142536475A05 /* EngineLibrary.swift in Sources */ = {isa = PBXBuildFile; fileRef = 69D0E1F20314253647586A05 /* EngineLibrary.swift */; };
 		58C9D0E1F203142536475A04 /* EngineActions.swift in Sources */ = {isa = PBXBuildFile; fileRef = 69D0E1F20314253647586A04 /* EngineActions.swift */; };
 		58C9D0E1F203142536475A03 /* EngineState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 69D0E1F20314253647586A03 /* EngineState.swift */; };
 		58C9D0E1F203142536475A02 /* EngineCheck.swift in Sources */ = {isa = PBXBuildFile; fileRef = 69D0E1F20314253647586A02 /* EngineCheck.swift */; };
@@ -47,6 +50,9 @@
 		2596071829304B5C6D7E8F90 /* NativeExtras.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeExtras.swift; sourceTree = "<group>"; };
 		47B8C9D0E1F2031425364758 /* NativeMore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeMore.swift; sourceTree = "<group>"; };
 		69D0E1F20314253647586970 /* NativeJuice.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeJuice.swift; sourceTree = "<group>"; };
+		69D0E1F20314253647586A07 /* EngineTools.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EngineTools.swift; sourceTree = "<group>"; };
+		69D0E1F20314253647586A06 /* EngineDownloads.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EngineDownloads.swift; sourceTree = "<group>"; };
+		69D0E1F20314253647586A05 /* EngineLibrary.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EngineLibrary.swift; sourceTree = "<group>"; };
 		69D0E1F20314253647586A04 /* EngineActions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EngineActions.swift; sourceTree = "<group>"; };
 		69D0E1F20314253647586A03 /* EngineState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EngineState.swift; sourceTree = "<group>"; };
 		69D0E1F20314253647586A02 /* EngineCheck.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EngineCheck.swift; sourceTree = "<group>"; };
@@ -84,6 +90,9 @@
 				2596071829304B5C6D7E8F90 /* NativeExtras.swift */,
 				47B8C9D0E1F2031425364758 /* NativeMore.swift */,
 				69D0E1F20314253647586970 /* NativeJuice.swift */,
+				69D0E1F20314253647586A07 /* EngineTools.swift */,
+				69D0E1F20314253647586A06 /* EngineDownloads.swift */,
+				69D0E1F20314253647586A05 /* EngineLibrary.swift */,
 				69D0E1F20314253647586A04 /* EngineActions.swift */,
 				69D0E1F20314253647586A03 /* EngineState.swift */,
 				69D0E1F20314253647586A02 /* EngineCheck.swift */,
@@ -253,6 +262,9 @@
 				1485960718293A4B5C6D7E8F /* NativeExtras.swift in Sources */,
 				36A7B8C9D0E1F20314253647 /* NativeMore.swift in Sources */,
 				58C9D0E1F203142536475869 /* NativeJuice.swift in Sources */,
+				58C9D0E1F203142536475A07 /* EngineTools.swift in Sources */,
+				58C9D0E1F203142536475A06 /* EngineDownloads.swift in Sources */,
+				58C9D0E1F203142536475A05 /* EngineLibrary.swift in Sources */,
 				58C9D0E1F203142536475A04 /* EngineActions.swift in Sources */,
 				58C9D0E1F203142536475A03 /* EngineState.swift in Sources */,
 				58C9D0E1F203142536475A02 /* EngineCheck.swift in Sources */,

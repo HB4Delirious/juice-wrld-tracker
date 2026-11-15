@@ -129,7 +129,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUs
             // Kept until the page takes them: if the alert started the app, the page isn't loaded yet.
             let pending = UserDefaults.standard.stringArray(forKey: "pendingDownloads") ?? []
             UserDefaults.standard.set(pending + ids, forKey: "pendingDownloads")
-            WebViewStore.shared.webView.evaluateJavaScript("window.jwTakePendingDownloads && window.jwTakePendingDownloads()")
+            Task { @MainActor in EngineDownloads.shared.takePending() } // if the library isn't up yet, it takes them when it is
         }
         done()
     }

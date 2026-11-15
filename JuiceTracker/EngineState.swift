@@ -5,15 +5,6 @@ import Foundation
 // downloads and plays; Swift hands it the same catalog, so a song's number means the same song on both sides, and
 // takes from it only what you own, the file count, the drive status and the download queue.
 
-/// What the page still reports (its snapshot); the rest of its snapshot is ignored now.
-struct PageLive: Decodable {
-    let cv: Int?          // the catalog it's using (EngineState.token); other snapshots are from before Swift's catalog arrived
-    let owned: [Int]
-    let files: Int
-    let folder: String
-    let queue: NState.Queue?
-    let drive: NState.Drive?
-}
 
 @MainActor final class EngineState: ObservableObject {
     static let shared = EngineState()
@@ -62,6 +53,7 @@ struct PageLive: Decodable {
         }
         await pushPersonal()
         if !catalog.isEmpty { await pushCatalog() }
+        await EngineLibrary.shared.start() // the folder and your files (it needs the catalog to match against)
         if let fetchedAt, Date().timeIntervalSince(fetchedAt) > Self.cacheHours * 3600 { await reload() }
     }
 
@@ -120,6 +112,7 @@ struct PageLive: Decodable {
             if let data = try? Self.encoder.encode(CatalogFile(fetchedAt: now, songs: songs, eras: fetched.eras)) { try? EngineFiles.write("catalog.json", data) }
             status = "\(songs.count.formatted()) songs loaded."
             await pushCatalog()
+            EngineLibrary.shared.rematch()
         } catch {
             status = "\(error.localizedDescription) Try again in a minute."
         }
@@ -133,9 +126,19 @@ struct PageLive: Decodable {
         await NativeStore.shared.act("useCatalog", -1, ["token": token, "songs": songs, "eras": eraDict])
     }
 
-    /// Gives the page your wishlist and notes (its downloads, exports and the daily check's alerts use them).
+    /// Gives the page your wishlist, notes, hand matches and fixer settings (what it still does uses them).
     private func pushPersonal() async {
-        await NativeStore.shared.act("setPersonal", -1, ["wish": wish, "notes": notes])
+        var p: [String: Any] = ["wish": wish, "notes": notes]
+        for k in ["matchOverrides", "fixGenre", "autoTag"] { if let v = personal[k] { p[k] = v } }
+        await NativeStore.shared.act("setPersonal", -1, p)
+    }
+
+    func personalString(_ key: String) -> String { personal[key] as? String ?? "" }
+    func personalBool(_ key: String, default d: Bool) -> Bool { personal[key] as? Bool ?? d }
+    /// Changes one of your saved settings (hand matches, fixer genre, auto-tag) and saves it.
+    func setPersonal(_ key: String, _ value: Any) {
+        personal[key] = value
+        savePersonal()
     }
 
     private func save(_ s: Saved) {
@@ -185,8 +188,8 @@ struct PageLive: Decodable {
     // MARK: What the screens show
 
     /// The screens' state: Swift's catalog and data, with what you own from the page.
-    func build(_ live: PageLive, includeCatalog: Bool) -> NState {
-        let owned = Set(live.owned), wished = wish
+    func build(includeCatalog: Bool) -> NState {
+        let library = EngineLibrary.shared, owned = library.owned, wished = wish
         var catOrder: [String] = [], cats: [String: (have: Int, total: Int)] = [:]
         for (i, s) in catalog.enumerated() {
             if cats[s.category] == nil { catOrder.append(s.category); cats[s.category] = (0, 0) }
@@ -208,12 +211,12 @@ struct PageLive: Decodable {
         }
         let newIds = Set(saved.newIds), releasedIds = Set(saved.releasedIds)
         return NState(
-            total: catalog.count, have: owned.count, folder: live.folder, queue: live.queue, cats: catList, eras: eraList,
-            owned: live.owned,
+            total: catalog.count, have: owned.count, folder: library.root?.lastPathComponent ?? "", queue: EngineDownloads.shared.queueState, cats: catList, eras: eraList,
+            owned: owned.sorted(),
             wished: catalog.indices.filter { wished[catalog[$0].id] != nil },
             fresh: catalog.indices.filter { newIds.contains(catalog[$0].id) },
             released: catalog.indices.filter { releasedIds.contains(catalog[$0].id) },
-            files: live.files, drive: live.drive, notices: notices(), today: today(),
+            files: library.files.count, drive: library.drive, notices: notices(), today: today(),
             catalog: includeCatalog ? catalog.enumerated().map { Self.catSong($0.offset, $0.element) } : nil)
     }
 

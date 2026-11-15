@@ -86,8 +86,27 @@ five stages, each shippable; the page stays in charge until the Swift side match
      checks. `scripts/test-engine.sh` runs the page's writers and Swift's on 24 inputs (new tags, retags, Unicode,
      64-bit offsets, moov before and after the audio, and every refusal) and requires the same bytes, the same
      safety-check result and the same error text. Not wired into the app yet.
-   - 4b: the folder scan and matching (stage 1 code) become the source of truth; the page is handed the library
-     (paths and tags, with `jwFileHandle` handles) instead of scanning, and tells Swift about files it adds or retags.
-   - 4c: downloads and the queue, rescan, drive status, ambient music and snapshots.
-   - 4d: the tag fixer, auto-tagging after downloads, duplicates and file health fixes, writing with `TagWriter`.
+   - 4b (done): `JuiceTracker/EngineLibrary.swift` owns the music folder (same saved path and bookmark as before)
+     and the library: it shows the last scan from its own tag cache (`tags.json`, `items.json`, copied from the
+     page the first time), lists the folder in the background, matches, and hands the page the library (the
+     `useLibrary` action; bridge.js sets `jwSwiftLibrary` so the page doesn't scan). The page reports what it
+     changes through `jwLibraryChanged`: tag cache writes (downloads, the tag fixer), its file list (files moved to
+     the Trash) and hand matches. Rescan and Choose folder are Swift's (setup sheet); reconnecting the drive asks
+     Swift (`jwSwiftReload`). What you own now comes from Swift's matching.
+   - 4c (done): `JuiceTracker/EngineDownloads.swift`. The download queue (`queue.json`, carried over from the
+     page; 3 tries each, back of the line after a failure, waits and reconnects when the drive drops) saves each
+     song where `Engine.layout`/`saveFolder` say (ported, parity-tested), then the page's `afterDownload` adds it to
+     the library and auto-tags it. Drive status, the background music (settings in UserDefaults, carried over) and
+     the weekly snapshot (`Engine.snapshotCSV`, parity-tested) are Swift's; the page's versions stand down when
+     `jwSwiftLibrary` is set. The page's own snapshot message to the window is ignored now.
+   - 4d (done): `JuiceTracker/EngineTools.swift`. The tag fixer (plan, picks, hand matches, backup folder, writing),
+     auto-tagging after downloads, duplicate cleanup and the file health check are Swift's, writing with `TagWriter`
+     (safety check first, original backed up when a backup folder is set, atomic write, tags read back) and removing
+     only by moving to the Trash. The rules (`plannedTags`, `buildPlan`, `duplicateGroups`, `bestCopy`,
+     `healthIssues`) are parity-tested against the page. `NativeStore.tryAct` answers the screens' fixer, dups and
+     health requests in Swift with the page's data shapes, so the screens didn't change. Hand matches, the fixer genre
+     and auto-tag live in Swift's `personal.json` and are handed to the page.
+   - Fixed beyond the page: the tag reader read only the first 256 KB of an ID3 tag once it found the title, so
+     frames after large cover art (album, year) were missed and the fixer kept offering them. Swift now reads the
+     whole tag (up to 4 MB) when a frame runs past the first part. Rescan folder re-reads tags cached before this.
 5. **Removal:** Plex, trivia, listening stats; then delete the page, the web view, the Classic window and `web/`.

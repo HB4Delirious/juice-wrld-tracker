@@ -2000,6 +2000,8 @@ const tagCache = {
     });
   },
   async put(entries) {
+    // Tags read or written here (downloads, the tag fixer): Swift's library follows.
+    if (window.jwLibraryChanged && entries.size && !entries.has(this.ITEMS)) window.jwLibraryChanged({ put: Object.fromEntries(entries) });
     const db = await this.open();
     if (!db || !entries.size) return;
     const store = db.transaction("tags", "readwrite").objectStore("tags");
@@ -2008,7 +2010,7 @@ const tagCache = {
   // The audio files of the last folder scan (library paths), so the app can show the library before the drive answers.
   ITEMS: "\u0000items",
   async items() { return ((await this.all()).get(this.ITEMS)) || []; },
-  setItems(paths) { return this.put(new Map([[this.ITEMS, paths]])); },
+  setItems(paths) { window.jwLibraryChanged?.({ items: paths }); return this.put(new Map([[this.ITEMS, paths]])); }, // files moved to the Trash drop out
 };
 async function scanFiles(items, onlyJuice, onProgress, { reread = false } = {}) {
   const audio = items.filter(it => AUDIO_EXTS.has(extOf(it.path)));
@@ -3070,6 +3072,7 @@ function readPersonal() {
 state.personal = readPersonal();
 function savePersonal() {
   window.jwSetWishlist?.(Object.keys(state.personal.wish)); // the app's daily check gives wishlist songs their own alert
+  window.jwLibraryChanged?.({ overrides: state.personal.matchOverrides }); // Swift matches with your hand matches too
   const data = JSON.stringify(state.personal);
   try { localStorage.setItem(PERSONAL_KEY, data); return true; } catch (e) { /* storage full: make room below */ }
   // The cached catalog shares this storage. Swap it for the slim copy (details load when a song card opens), then retry,
@@ -4333,8 +4336,12 @@ async function downloadSong(song) {
   const root = state.rootHandle, folder = saveFolder(song);
   const rel = `${folder}/${saveFileName(song)}`;     // library-style path: starts with the music folder's own name
   const inner = rel.split("/").slice(1);              // the same path inside the music folder
-  const where = inner.slice(0, -1).join("/") || root.name;
   const r = await window.jwDownload(fileUrl(song), `${root._path.replace(/\/+$/, "")}/${inner.join("/")}`);
+  return afterDownload(song, rel, r);
+}
+/** After a song file is saved (here, or by the Mac app's Swift queue): remember it, add it to the library, auto-tag it. */
+async function afterDownload(song, rel, r) {
+  const root = state.rootHandle, inner = rel.split("/").slice(1), where = inner.slice(0, -1).join("/") || root.name;
   state.personal.opened[song.id] = new Date().toISOString();
   if (!r.existed) {
     state.lastDownloadAt = Date.now();
@@ -4359,7 +4366,7 @@ async function downloadSong(song) {
     if (f) f.songs = [state.catalog.indexOf(song)];
     out.counted = Boolean(f);
     // Auto-tag: same tags and safety checks as the tag fixer.
-    if (!out.existed && autoTagOn() && f && EDITABLE_EXTS.has(f.ext)) {
+    if (!out.existed && !r.noTag && autoTagOn() && f && EDITABLE_EXTS.has(f.ext)) { // the Mac app's Swift side tags it instead
       const it = fixFor(f);
       if (it.changes.length) {
         try { await writeTags(it); out.tagged = true; } catch (err) { out.note = `Its tags weren't updated: ${err.message}.`; }
@@ -4433,7 +4440,7 @@ function ambientItems() {
     .map(f => ({ path: f.handle._path, title: (state.catalog && state.catalog[f.songs[0]]?.name) || baseName(f.path) }));
 }
 function syncAmbient() {
-  if (!window.jwAmbient) return;
+  if (!window.jwAmbient || window.jwSwiftLibrary) return; // the Mac app's Swift side feeds the player
   const items = ambientItems(), on = ambientOn();
   $("ambient-btn").hidden = !items.length;
   const eras = [...new Set((state.library || []).filter(f => f.songs && f.songs.length && canPlay(f)).map(f => eraName(state.catalog[f.songs[0]])))].sort();
@@ -4725,6 +4732,7 @@ async function healthFix(op, path) {
 /* ---------- music drive status (Mac app): is the folder answering, slowly, or not at all? */
 var driveBusy = false;
 async function checkDrive() {
+  if (window.jwSwiftLibrary) return; // Swift watches the drive
   const root = state.rootHandle && state.rootHandle._path;
   if (!window.jwStat || !root || driveBusy) return;
   driveBusy = true;
@@ -4751,7 +4759,7 @@ $("drive-status").addEventListener("click", async () => {
   try {
     // The app's bookmark of the folder reconnects the share, and finds it if it came back under a new name.
     const dir = await window.jwRestoreFolder("plex-music");
-    if (dir && state.rootHandle && dir._path !== state.rootHandle._path) await loadFromHandle(dir);
+    if (dir && state.rootHandle && dir._path !== state.rootHandle._path) await (window.jwSwiftLibrary ? window.jwSwiftReload() : loadFromHandle(dir));
   } catch (e) { /* the check below says how it went */ }
   checkDrive();
 });
@@ -4868,6 +4876,7 @@ function loadQueue() { try { const q = JSON.parse(localStorage.getItem(DLQ_KEY))
 function saveQueue(q) { try { localStorage.setItem(DLQ_KEY, JSON.stringify(q)); } catch (e) { /* storage full: the queue lives for this session */ } }
 /** Adds songs to the queue (once each) and starts it. */
 function downloadAll(songs) {
+  if (window.jwSwiftDownload) { window.jwSwiftDownload(songs.map(s => String(s.id))); return songs.length; } // the Mac app's queue is Swift's
   const q = loadQueue(), have = new Set(q.map(x => String(x.id)));
   let added = 0;
   for (const s of songs) if (!have.has(String(s.id))) { q.push({ id: s.id, tries: 0 }); added++; }
@@ -4892,10 +4901,12 @@ window.jwQueueDownloads = async ids => {
 };
 // The app keeps a wishlist alert's Download until the page is ready (the alert can start the app).
 window.jwTakePendingDownloads = async () => {
+  if (window.jwSwiftDownload) return; // Swift takes wishlist alerts' downloads itself
   const ids = await window.jwPendingDownloads?.().catch(() => null);
   if (ids && ids.length) window.jwQueueDownloads(ids);
 };
 function resumeQueue() {
+  if (window.jwSwiftDownload) return;
   if (queueResumed || !canDownloadToLibrary() || !loadQueue().length) return;
   queueResumed = true;
   runQueue();
@@ -4948,7 +4959,7 @@ async function waitForDrive(job, message) {
     if (job.stop) break;
     try {
       const dir = await window.jwRestoreFolder("plex-music"); // the folder's bookmark remounts the share
-      if (dir && state.rootHandle && dir._path !== state.rootHandle._path) await loadFromHandle(dir);
+      if (dir && state.rootHandle && dir._path !== state.rootHandle._path) await (window.jwSwiftLibrary ? window.jwSwiftReload() : loadFromHandle(dir));
       const st = await Promise.race([window.jwStat(state.rootHandle._path), sleep(10000).then(() => null)]);
       if (st && st.kind === "directory") break;
     } catch (e) { /* still down */ }
@@ -5089,6 +5100,7 @@ function renderSnapshotItem() {
 }
 var snapshotTimer = null;
 function maybeSnapshot() {
+  if (window.jwSwiftLibrary) return; // Swift saves the weekly snapshot
   if (snapshotTimer || !window.jwSnapshot || Date.now() - lastSnapshot() < 7 * 864e5) return;
   snapshotTimer = setTimeout(() => saveSnapshot(true), 60000); // after launch settles, once per session
 }
@@ -5188,11 +5200,42 @@ window.jwNativeAction = async a => {
     state.eras = a.eras || {};
     return "";
   }
-  if (a.op === "setPersonal") { state.personal.wish = a.wish || {}; state.personal.notes = a.notes || {}; savePersonal(); return ""; }
+  if (a.op === "setPersonal") {
+    state.personal.wish = a.wish || {}; state.personal.notes = a.notes || {};
+    if (a.matchOverrides && JSON.stringify(a.matchOverrides) !== JSON.stringify(state.personal.matchOverrides)) { // Swift's hand matches (stage 4d)
+      state.personal.matchOverrides = a.matchOverrides;
+      queueUpdate();
+    }
+    if (a.fixGenre !== undefined) { state.personal.fixGenre = a.fixGenre; $("fix-genre").value = a.fixGenre; }
+    if (a.autoTag !== undefined) state.personal.autoTag = a.autoTag;
+    savePersonal();
+    return "";
+  }
   // The Swift engine (stage 1): your saved data and tag cache to copy, and the page's answers to compare with. Read only.
   if (a.op === "engineExport") {
     const root = state.rootHandle;
     return JSON.stringify({ store: readStore(), personal: state.personal, onlyJuice: $("only-juice").checked, root: root ? root._path || "" : "", rootName: root ? root.name : "" });
+  }
+  if (a.op === "engineItems") return JSON.stringify(await tagCache.items());
+  // stage 4c: the queue and player settings move to Swift (read once); the steps after Swift saves a song
+  if (a.op === "engineQueue") { const q = loadQueue(); saveQueue([]); return JSON.stringify(q); }
+  if (a.op === "engineSettings") {
+    const get = k => { try { return localStorage.getItem(k); } catch (e) { return null; } };
+    return JSON.stringify({ ambient: get("jw-ambient"), era: get("jw-ambient-era"), volume: get("jw-ambient-volume"), lastSnapshot: get("jw-last-snapshot") });
+  }
+  if (a.op === "afterDownload") { const so = state.catalog[a.i]; if (!so) throw new Error("That song isn't in the catalog"); return JSON.stringify(await afterDownload(so, a.rel, { existed: Boolean(a.existed), noTag: Boolean(a.noTag) })); }
+  // Swift's library (stage 4b): the page uses it as if it had scanned the folder itself.
+  if (a.op === "useLibrary") {
+    state.rootHandle = window.jwDirHandle(a.root, a.rootName);
+    state.library = JSON.parse(a.files).map(f => ({ ...f, handle: window.jwFileHandle(f.abs, baseName(f.path)) }));
+    state.lastItems = state.library.map(f => ({ path: f.path, handle: f.handle }));
+    state.fixSel.clear();
+    $("step-folder").classList.add("done");
+    setStatus("folder-status", a.status || "");
+    renderSetup();
+    update();
+    checkDrive();
+    return "";
   }
   if (a.op === "engineTagCache") {
     const out = {};
@@ -5450,7 +5493,7 @@ document.addEventListener("click", e => {
 
 // Mac app only: reopen the music folder picked last time. The last scan shows right away from the tag cache;
 // then the folder is listed in the background, since a network drive can take minutes to answer.
-if (window.jwRestoreFolder) {
+if (window.jwRestoreFolder && !window.jwSwiftLibrary) { // the Mac app's Swift side opens and scans the folder now
   (async () => {
     const dir = await window.jwRestoreFolder("plex-music");
     if (!dir || state.rootHandle) return;

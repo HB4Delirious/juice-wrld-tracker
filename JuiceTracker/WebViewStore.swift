@@ -48,6 +48,8 @@ final class WebViewStore: NSObject {
     }
 
     func stopAmbient() { bridge.stopAmbient() }
+    /// Lets the page read and write inside the music folder Swift opened.
+    func allowFolder(_ path: String) { bridge.allow(path) }
 
     private static func isWeb(_ url: URL?) -> Bool {
         guard let scheme = url?.scheme?.lowercased() else { return false }

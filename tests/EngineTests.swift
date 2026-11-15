@@ -118,6 +118,78 @@ import Foundation
             }
         }
 
+        // where missing songs are saved (stage 4c)
+        let layoutSongs = try JSONDecoder().decode([EngineSong].self, from: JSONSerialization.data(withJSONObject: fx["layoutSongs"]!))
+        for l in fx["layouts"] as! [[String: Any]] {
+            let name = l["name"] as! String
+            let files = (l["files"] as! [[String: Any]]).map {
+                LibraryFile(path: $0["path"] as! String, ext: Engine.extOf($0["path"] as! String), tags: $0["tags"] as! [String: String], title: $0["title"] as! String,
+                            key: $0["key"] as! String, stem: $0["stem"] as! String, fromTags: false, size: $0["size"] as! Int)
+            }
+            let m = Engine.match(catalog: layoutSongs, files: files, overrides: [:])
+            let layout = Engine.layout(catalog: layoutSongs, files: files, match: m)
+            let snap = String(Engine.snapshotCSV(files: files, match: m, catalog: layoutSongs).unicodeScalars.dropFirst())
+            expect(snap == l["snapshot"] as! String, "\(name): snapshot CSV differs:\n\(snap.debugDescription)\nvs page\n\((l["snapshot"] as! String).debugDescription)")
+            for (n, s) in layoutSongs.enumerated() {
+                let want = (l["folders"] as! [String])[n], got = Engine.saveFolder(s, layout)
+                expect(got == want, "\(name): save folder for \(s.name) (\(s.era)) = \(got), page \(want)")
+                expect(Engine.saveFileName(s) == (l["fileNames"] as! [String])[n], "\(name): file name for \(s.name) = \(Engine.saveFileName(s))")
+            }
+        }
+
+        // the tag fixer, duplicates and file health (stage 4d)
+        let t = fx["tools"] as! [String: Any]
+        let toolSongs = try JSONDecoder().decode([EngineSong].self, from: JSONSerialization.data(withJSONObject: t["songs"]!))
+        let toolLib = (t["lib"] as! [[String: Any]]).map {
+            LibraryFile(path: $0["path"] as! String, ext: $0["ext"] as! String, tags: $0["tags"] as! [String: String], title: $0["title"] as! String,
+                        key: $0["key"] as! String, stem: $0["stem"] as! String, fromTags: $0["fromTags"] as! Bool, size: $0["size"] as! Int)
+        }
+        let tm = Engine.match(catalog: toolSongs, files: toolLib, overrides: t["overrides"] as! [String: String])
+        for (n, want) in (t["planned"] as! [[String: String]]).enumerated() {
+            let got = Engine.plannedTags(toolSongs[n]).filter { !$0.value.isEmpty }, page = want.filter { !$0.value.isEmpty }
+            expect(got == page, "plannedTags(\(toolSongs[n].name)) = \(got), page \(page)")
+        }
+        for p in t["plans"] as! [[String: Any]] {
+            let plan = Engine.buildPlan(files: toolLib, match: tm, catalog: toolSongs, fields: p["fields"] as! [String], onlyBlanks: p["blanks"] as! Bool, genre: p["genre"] as! String)
+            let label = "plan \(p["fields"]!) blanks=\(p["blanks"]!)"
+            expect(plan.same == p["same"] as! Int, "\(label): \(plan.same) the same, page \(p["same"]!)")
+            expect(plan.skipped.map { [$0.path, $0.reason] } == p["skipped"] as! [[String]], "\(label): skipped \(plan.skipped)")
+            let pageChanges = (p["changes"] as! [[String: Any]]).map { c in "\(c["path"]!) #\(c["song"]!) " + (c["changes"] as! [[String]]).map { $0.joined(separator: "→") }.joined(separator: "; ") }
+            let mine = plan.changes.map { c in "\(c.path) #\(c.song) " + c.changes.map { [$0.key, $0.from, $0.to].joined(separator: "→") }.joined(separator: "; ") }
+            expect(mine == pageChanges, "\(label): changes\n\(mine)\nvs page\n\(pageChanges)")
+        }
+        let groups = Engine.duplicateGroups(files: toolLib, match: tm, catalog: toolSongs)
+        let pageGroups = t["dupGroups"] as! [[String: Any]]
+        expect(groups.count == pageGroups.count, "duplicate groups: \(groups.count), page \(pageGroups.count)")
+        for (gr, pg) in zip(groups, pageGroups) {
+            expect(gr.song == pg["song"] as? Int && gr.title == pg["title"] as! String && gr.files.map(\.path) == pg["files"] as! [String] && gr.extra == pg["extra"] as! Int,
+                   "duplicate group \(gr.title) \(gr.files.map(\.path)) extra \(gr.extra) vs page \(pg)")
+            expect(Engine.isExactDuplicate(gr) == pg["exact"] as! Bool && Engine.bestCopy(gr.files).path == pg["keep"] as! String, "duplicate group \(gr.title): exact/keep")
+        }
+        let probes = try JSONDecoder().decode([String: Engine.Probe].self, from: JSONSerialization.data(withJSONObject: t["probes"]!))
+        let issues = Engine.healthIssues(files: toolLib, match: tm, catalog: toolSongs, probes: probes).map { [$0.path, $0.group, $0.text] }
+        expect(issues == t["health"] as! [[String]], "health issues\n\(issues)\nvs page\n\(t["health"]!)")
+        for c in t["sizes"] as! [[Any]] { let n = (c[0] as! NSNumber).intValue; expect(Engine.formatSize(n) == c[1] as! String, "formatSize(\(n)) = \(Engine.formatSize(n)), page \(c[1])") }
+        for c in t["times"] as! [[Any]] { let n = (c[0] as! NSNumber).doubleValue; expect(Engine.fmtTime(n) == c[1] as! String, "fmtTime(\(n)) = \(Engine.fmtTime(n)), page \(c[1])") }
+        for c in t["kbps"] as! [[Any]] { expect(Engine.siteKbps(c[0] as! String, c[1] as! String) == (c[2] as! NSNumber).intValue, "siteKbps(\(c[0]))") }
+        for c in t["lengths"] as! [[Any]] { expect(Engine.lengthSeconds(c[0] as! String) == (c[1] as? NSNumber)?.doubleValue, "lengthSeconds(\(c[0]))") }
+        for c in t["keys"] as! [[String]] { expect(Engine.cmdkKey(c[0]) == c[1], "cmdkKey(\(c[0])) = \(Engine.cmdkKey(c[0])), page \(c[1])") }
+
+        // Beyond the page: text frames after big cover art are read (the page missed them once the title was found).
+        do {
+            func frame(_ id: String, _ body: [UInt8]) -> [UInt8] { Array(id.utf8) + TagWriter.u32be(body.count) + [0, 0] + body }
+            let art = [UInt8](repeating: 0x55, count: 300 * 1024)
+            let frames = frame("TIT2", [0] + Array("Big Art".utf8)) + frame("APIC", [0] + Array("image/jpeg".utf8) + [0, 3, 0] + art)
+                + frame("TALB", [0] + Array("Mainstream".utf8)) + frame("TYER", [0] + Array("2019".utf8))
+            let n = frames.count
+            let tag = Array("ID3".utf8) + [3, 0, 0, UInt8(n >> 21 & 0x7f), UInt8(n >> 14 & 0x7f), UInt8(n >> 7 & 0x7f), UInt8(n & 0x7f)] + frames
+            let url = dir.appendingPathComponent("big-art.mp3")
+            try Data(tag + [0xff, 0xfb] + [UInt8](repeating: 1, count: 1000)).write(to: url)
+            let got = TagReader.read(url, ext: "mp3")
+            checks += 1
+            if got != ["title": "Big Art", "album": "Mainstream", "year": "2019"] { failures += 1; print("FAIL: tags after big cover art: \(got)") }
+        }
+
         print("\(checks - failures) of \(checks) engine checks match the page")
         if failures > 0 { exit(1) }
     }
