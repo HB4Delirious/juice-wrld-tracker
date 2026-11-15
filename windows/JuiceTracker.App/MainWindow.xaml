@@ -3,7 +3,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:local="clr-namespace:JuiceTracker.App"
         Title="Juice Tracker" Width="1180" Height="820" MinWidth="900" MinHeight="600"
-        WindowStartupLocation="CenterScreen" Background="#0A0618" Icon="Assets/app.ico">
+        WindowStartupLocation="CenterScreen" Background="#0A0618">
   <Grid>
     <local:Sky x:Name="SkyLayer" />
     <Grid>
