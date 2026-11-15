@@ -37,16 +37,27 @@ music folder, downloads and tags what's missing, and plays your collection. All 
 
 - `JuiceTracker.Core` (net10.0, any OS): a line-for-line C# port of `Engine.swift`: catalog cleaning, tag reading
   and writing (byte for byte the same as the page, same safety checks), scanning, matching, save folders, the fixer
-  plan, duplicates, health, the organizer and the newer rules. Cover art writing isn't ported yet.
+  plan, duplicates, health, the organizer and the newer rules, and cover art (`EngineArt.cs`).
 - `JuiceTracker.Tests`: a plain console program (no test framework) running the same fixture checks as
-  `tests/EngineTests.swift` (all but the cover-art ones). CI runs it on Windows.
+  `tests/EngineTests.swift`, cover art included. CI runs it on Windows.
 - `JuiceTracker.App` (WPF, net10.0-windows; builds anywhere with `EnableWindowsTargeting`): `Store.cs` (catalog,
-  personal data, library, downloads, tag writes), `Player.cs` (WPF MediaPlayer), `Theme.cs` (palette, fonts,
-  `DoodleBorder`, the animated `Sky`), `MainWindow` + `Sidebar`, `CollectionPage`, `SongCard`, `FixerPage`,
-  `SettingsWindow`, `PlayerPanel`/`SetupPage`. Screens are built in C# with small helpers (`UI.cs`), mirroring the
-  SwiftUI code. Art and fonts are copied from `Assets.xcassets` into `Assets/`.
+  personal data, library, downloads, tag writes), `StoreMore.cs` (Recycle Bin, moves and organize/undo, inbox,
+  probes and loudness via NAudio, cover art, play log, playlists, backup/restore in the Mac format, CSV compare),
+  `Player.cs` (two WPF MediaPlayers for crossfade, Up next, era radio, sleep, volume matching), `Theme.cs` (palette,
+  fonts, `DoodleBorder`, the animated `Sky`; accent and glows are set by `Themes.Apply`), `MainWindow` + `Sidebar`,
+  `CollectionPage`, `SongCard`, `FixerPage`, `ToolPages.cs` (Health, Duplicates, Organize, Export), `ListenPages.cs`
+  (Playlists, Stats, Hunt, lyrics, mini player, A/B), `MorePages2.cs` (Credits, Timeline, Badges, Trivia; registered
+  in `MorePages.Extra`), `Extras.cs` (themes, confetti/chime/999, notification-area icon, updater, Discord over its
+  local pipe, Plex with the token DPAPI-encrypted in `plex.token`), `SettingsWindow`, `PlayerPanel`/`SetupPage`.
+  Screens are built in C# with small helpers (`UI.cs`), mirroring the SwiftUI code. Art and fonts are copied from
+  `Assets.xcassets` into `Assets/`.
+- `JuiceTracker.exe --smoke-test` (run by CI) opens every page with a made-up library, redraws each twice, opens song
+  cards and Settings, switches every theme and compact mode, and draws the celebrations; it exits 1 with the error
+  in `%TEMP%\juicetracker-smoke.txt`.
+- Updates: the app checks the latest GitHub release daily for `JuiceTracker.exe`, renames itself to `.old`, moves
+  the new exe in and restarts (the `.old` file is deleted on the next launch). The exe version comes from the tag.
 - Data: `%LOCALAPPDATA%\JuiceTracker` (`catalog.json`, `saved.json`, `personal.json`, `tags.json`, `items.json`,
-  `queue.json`, `heard.txt`, `plays.tsv`). Library paths use the Mac form, "<folder name>/<path inside>", with `/`.
+  `queue.json`, `heard.txt`, `plays.tsv`, `lastOrganize.json`, `plex.token`, `error.log`). Library paths use the Mac form, "<folder name>/<path inside>", with `/`.
 - Release: CI's `windows` job publishes a compressed, self-contained single `JuiceTracker.exe`; the release job
   attaches it next to the DMG. Not code-signed (SmartScreen warns).
 

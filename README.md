@@ -39,11 +39,16 @@ The sidebar's **Ambient music** toggle plays your matched songs, shuffled, at ve
 
 ## Windows app
 
-Stage 1 has the Collection screen (counts, "You have N of M", categories, notices, On this day, era cards, the song
-list with tabs and search), the song card (details, hearts, rarity, lyrics shown live from the site, your note, your
-files, other versions), downloads (queued, never overwriting, auto-tagged), the Tag fixer (safety check, backups),
-the background music player (era picker, seek bar) and Settings (Ctrl+,). Ctrl+K searches. The other screens
-(Hunt, Playlists, Organize, File health, Duplicates, Stats, Timeline, Badges, Trivia, Export) come in later stages.
+It has every screen the Mac app has: Collection, Hunt, Playlists, Tag fixer, Duplicates, File health, Organize,
+Credits, Stats, Timeline, Badges, Trivia and Export & backup, plus the song card (details, credit links, lyrics shown
+live from the site, versions with A/B compare), downloads (taskbar progress, confetti and an optional chime when
+songs land), the inbox folder, the music player (crossfade, Up next, era radio, sleep timer, volume matching, a mini
+player and a lyrics window), era themes or your own colors, compact mode, a notification-area icon with new-song and
+wishlist alerts, daily update checks, Discord status and Plex. Ctrl+K searches, Ctrl+, opens Settings, and typing 999
+does what it does on the Mac.
+
+Mac-only, with no Windows equivalent built: Spotlight, Siri/Shortcuts, the widget and the Dock icon glow. Discord
+status needs your own Discord application ID (Settings explains how).
 
 ```bash
 dotnet run --project windows/JuiceTracker.Tests      # engine checks (any OS)
