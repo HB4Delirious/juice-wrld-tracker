@@ -19,7 +19,7 @@ public sealed record Song(int I, EngineSong S, bool Owned, bool Wished)
 /// Everything the app knows and does: the catalog (12-hour cache), your saved data, the music folder (scan, tag
 /// cache, matching), downloads and tag writes. Ported from the Mac app's EngineState, EngineLibrary, EngineDownloads
 /// and EngineFixer. Lives on the UI thread; slow work runs on the thread pool and comes back here.
-public sealed class Store
+public sealed partial class Store
 {
     public static Store Shared { get; } = new();
     public event Action? Changed;
@@ -66,7 +66,31 @@ public sealed class Store
         public bool AmbientOn { get; set; }
         public string AmbientEra { get; set; } = "";
         public double Volume { get; set; } = 6;
+        // later stages
+        public List<Playlist> Playlists { get; set; } = [];
+        public List<string> WishOrder { get; set; } = [];
+        public Dictionary<string, int> Trivia { get; set; } = [];
+        public Dictionary<string, string> Opened { get; set; } = [];
+        public Dictionary<string, string> Downloaded { get; set; } = [];
+        public string? Inbox { get; set; }
+        public string OrganizePattern { get; set; } = "{era}/{song}";
+        public double Crossfade { get; set; } = 4;
+        public bool MatchVolume { get; set; } = true;
+        public bool InOrder { get; set; }
+        public bool DailyCheck { get; set; } = true;
+        public bool AutoUpdate { get; set; } = true;
+        public string? SkippedVersion { get; set; }
+        public string Theme { get; set; } = "cosmic";
+        public string CustomAccent { get; set; } = "ff6ad5";
+        public string CustomSky1 { get; set; } = "d6308c";
+        public string CustomSky2 { get; set; } = "5082ff";
+        public bool Compact { get; set; }
+        public bool Chime { get; set; }
+        public bool TaskbarProgress { get; set; } = true;
+        public bool DiscordOn { get; set; }
+        public string DiscordAppId { get; set; } = "";
     }
+    public sealed record Playlist(string Id, string Name, List<string> Songs);
     public Personal Me { get; private set; } = new();
     public List<string> FixFields => Me.FixFields ?? ["title", "artist", "albumartist", "album", "year", "producer"];
     public string Genre => Me.FixGenre.Trim().Length > 0 ? Me.FixGenre.Trim() : Engine.DefaultGenre;
@@ -138,6 +162,7 @@ public sealed class Store
         if (Catalog.Count > 0 && (FetchedAt is null || (DateTime.UtcNow - FetchedAt.Value).TotalHours > CacheHours)) _ = ReloadCatalogAsync();
         if (Root is not null) await ScanAsync(reread: false);
         RunQueue();
+        WatchInbox();
     }
 
     T? Read<T>(string name) where T : class
@@ -467,10 +492,14 @@ public sealed class Store
     // MARK: The tag fixer
 
     /// After a download: tag it with the fixer's settings (when auto-tagging is on). Returns a note if it failed.
-    public async Task<string> AutoTagAsync(string path, int song)
+    /// `inbox`: a file from the inbox folder, tagged even when auto-tag is off and before the library lists it (with
+    /// the artist always, so the library counts it as a Juice WRLD file).
+    public async Task<string> AutoTagAsync(string path, int song, Dictionary<string, string>? inbox = null)
     {
-        if (!Me.AutoTag || !Engine.EditableExts.Contains(Engine.ExtOf(path)) || Files.FirstOrDefault(f => f.Path == path) is not { } file) return "";
-        var it = Engine.FixFor(file.Tags, Catalog[song], FixFields, Me.FixBlanks, Genre);
+        if ((!Me.AutoTag && inbox is null) || !Engine.EditableExts.Contains(Engine.ExtOf(path))) return "";
+        if ((inbox ?? Files.FirstOrDefault(f => f.Path == path)?.Tags) is not { } current) return "";
+        var fields = inbox is null || FixFields.Contains("artist") ? FixFields : [.. FixFields, "artist"];
+        var it = Engine.FixFor(current, Catalog[song], fields, Me.FixBlanks, Genre);
         if (it.Changes.Count == 0) return "";
         try { await WriteTagsAsync(path, it.Desired); return ""; }
         catch (Exception e) { return $"Its tags weren't updated: {e.Message}."; }

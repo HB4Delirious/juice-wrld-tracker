@@ -7,7 +7,7 @@ using System.Windows.Shapes;
 
 namespace JuiceTracker.App;
 
-public enum Page { Collection, Fixer }
+public enum Page { Collection, Hunt, Playlists, Fixer, Duplicates, Health, Organize, Credits, Stats, Timeline, Badges, Trivia, Export }
 
 public partial class MainWindow : Window
 {
@@ -37,6 +37,9 @@ public partial class MainWindow : Window
         else if (e.Key == Key.OemComma && Keyboard.Modifiers == ModifierKeys.Control) { SettingsWindow.Open(); e.Handled = true; }
     }
 
+    public FrameworkElement? CurrentPage => shownPage;
+    public static IEnumerable<Page> AvailablePages => Sidebar.Available;
+
     public void Show(Page p)
     {
         if (p == page && shownPage is not null) return;
@@ -62,7 +65,11 @@ public partial class MainWindow : Window
         if (shownPage is null || pageNeedsSetup || shownPage is SetupPage)
         {
             pageNeedsSetup = false;
-            shownPage = page switch { Page.Fixer => new FixerPage(), _ => new CollectionPage() };
+            shownPage = page switch
+            {
+                Page.Fixer => new FixerPage(), Page.Duplicates => new DuplicatesPage(), Page.Health => new HealthPage(), Page.Organize => new OrganizePage(),
+                Page.Export => new ExportPage(), _ => MorePages.Make(page) ?? new CollectionPage(),
+            };
             PageHost.Content = shownPage;
             UI.FadeIn(shownPage);
         }
@@ -146,7 +153,15 @@ public sealed class Sidebar : Grid
         sc.BeginAnimation(ScaleTransform.ScaleYProperty, new DoubleAnimation(on ? 1.12 : 1, dur) { EasingFunction = ease });
     }
 
-    static readonly (Page Page, string Title, string Icon)[] Pages = [(Page.Collection, "Collection", ""), (Page.Fixer, "Tag fixer", "")];
+    static readonly (Page Page, string Title, string Icon)[] AllPages =
+    [
+        (Page.Collection, "Collection", "\uE8D6"), (Page.Hunt, "Hunt", "\uE7B3"), (Page.Playlists, "Playlists", "\uE90B"), (Page.Fixer, "Tag fixer", "\uE8EC"),
+        (Page.Duplicates, "Duplicates", "\uE8C8"), (Page.Health, "File health", "\uE9D9"), (Page.Organize, "Organize", "\uE8B7"), (Page.Credits, "Credits", "\uE716"),
+        (Page.Stats, "Stats", "\uE9D2"), (Page.Timeline, "Timeline", "\uE81C"), (Page.Badges, "Badges", "\uE7C1"), (Page.Trivia, "Trivia", "\uE9CE"), (Page.Export, "Export & backup", "\uE7B8"),
+    ];
+    public static IEnumerable<Page> Available => Pages.Select(p => p.Page);
+    /// The pages this build has (each stage adds its own).
+    static IEnumerable<(Page Page, string Title, string Icon)> Pages => AllPages.Where(p => p.Page is Page.Collection or Page.Fixer or Page.Duplicates or Page.Health or Page.Organize or Page.Export || MorePages.Has(p.Page));
 
     public void Update(Page current)
     {

@@ -64,7 +64,14 @@ public partial class App : Application
                     // screens redraw in place whenever something changes: do that twice, like a download finishing
                     foreach (var s in screens.OfType<IRefresh>()) { s.Refresh(); s.Refresh(); }
                     Store.Shared.Notify(); Store.Shared.Notify();
-                    window.Show(Page.Fixer); window.Show(Page.Collection);
+                    // every page in the sidebar, each drawn and then redrawn twice
+                    foreach (var p in JuiceTracker.App.MainWindow.AvailablePages)
+                    {
+                        window.Show(p);
+                        window.CurrentPage?.Measure(new Size(1000, 800)); window.CurrentPage?.Arrange(new Rect(0, 0, 1000, 800));
+                        (window.CurrentPage as IRefresh)?.Refresh(); (window.CurrentPage as IRefresh)?.Refresh();
+                    }
+                    window.Show(Page.Collection);
                     window.ShowOverlay(new SongCard(song));
                     window.ShowOverlay(new SongCard(Store.Shared.Songs.First(s => !s.Owned && s.HasFile)));
                     SettingsWindow.Open();
