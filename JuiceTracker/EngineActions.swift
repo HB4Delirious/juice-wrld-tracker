@@ -13,7 +13,7 @@ extension EngineState {
             "app": "juice-wrld-collection-tracker", "version": 1, "exportedAt": Self.isoString(Date()),
             "wishlist": wish.sorted { $0.value < $1.value }.map { ["id": $0.key, "name": names[$0.key] ?? "", "added": $0.value] },
             "notes": notes.sorted { $0.key < $1.key }.map { ["id": $0.key, "name": names[$0.key] ?? "", "text": $0.value] },
-            "ratings": ratings, "trivia": personalAny("trivia") ?? [:], "linkTemplate": personalAny("linkTemplate") ?? "",
+            "ratings": ratings, "wishOrder": wishRanked, "playlists": personalAny("playlists") ?? [], "trivia": personalAny("trivia") ?? [:], "linkTemplate": personalAny("linkTemplate") ?? "",
             "matchOverrides": personalAny("matchOverrides") ?? [:], "opened": personalAny("opened") ?? [:], "fixGenre": personalAny("fixGenre") ?? "",
         ]
         let data = (try? JSONSerialization.data(withJSONObject: backup, options: [.prettyPrinted, .sortedKeys])) ?? Data()
@@ -28,6 +28,10 @@ extension EngineState {
         var r = ratings
         for (k, v) in data["ratings"] as? [String: Any] ?? [:] where r[k] == nil { r[k] = (v as? NSNumber)?.intValue }
         setPersonal("ratings", r)
+        if personalAny("wishOrder") == nil, let order = data["wishOrder"] as? [String] { setWishOrder(order) }
+        let mine = Set(playlists.map(\.id))
+        let theirs = (data["playlists"] as? [[String: Any]] ?? []).filter { ($0["id"] as? String).map { !mine.contains($0) } ?? false }
+        if !theirs.isEmpty { setPersonal("playlists", (personalAny("playlists") as? [[String: Any]] ?? []) + theirs) }
         var trivia = personalAny("trivia") as? [String: Any] ?? [:]
         for (k, v) in data["trivia"] as? [String: Any] ?? [:] { trivia[k] = max((trivia[k] as? NSNumber)?.intValue ?? 0, (v as? NSNumber)?.intValue ?? 0) }
         setPersonal("trivia", trivia)

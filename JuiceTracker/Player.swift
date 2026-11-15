@@ -76,7 +76,44 @@ final class AmbientPlayer: NSObject, AVAudioPlayerDelegate {
     static let shared = AmbientPlayer()
     static let changed = Notification.Name("AmbientPlayerChanged")
 
-    var volume: Float = 0.06 { didSet { player?.volume = volume; publish() } }
+    var volume: Float = 0.06 { didSet { player?.volume = loud; publish() } }
+    /// Volume matching (Settings > Playback): each file's measured level brings it to the same loudness.
+    private var gain: Float = 1
+    private var loud: Float { min(1, volume * gain) }
+    static var matchVolume: Bool { UserDefaults.standard.object(forKey: "matchVolume") as? Bool ?? true }
+    private static var levels: [String: Double] = [:] // measured once per file per launch
+    /// How much to scale a file to reach a typical level (-20 dBFS), at most 9 dB either way.
+    private static func gain(for url: URL) -> Float {
+        guard matchVolume else { return 1 }
+        if levels[url.path] == nil, let l = EngineHealth.loudness(url) { levels[url.path] = l }
+        guard let l = levels[url.path] else { return 1 }
+        return Float(pow(10, max(-9, min(9, -20 - l)) / 20))
+    }
+    /// The song's length, and moving within it (the seek bars).
+    var duration: TimeInterval { player?.duration ?? 0 }
+    func seek(to t: TimeInterval) {
+        guard let player else { return }
+        player.currentTime = max(0, min(t, player.duration - 0.5))
+        publish()
+    }
+    /// Sleep timer: fades out and pauses at this time, or (`sleepAtEnd`) when the current song ends.
+    private(set) var sleepAt: Date?
+    private(set) var sleepAtEnd = false
+    func sleep(minutes: Int?, atEnd: Bool = false) {
+        sleepAt = minutes.map { Date().addingTimeInterval(Double($0) * 60) }
+        sleepAtEnd = atEnd
+        publish()
+    }
+    private func sleepIfDue() {
+        guard let at = sleepAt, Date() >= at, let p = player, !isPaused else { return }
+        sleepAt = nil
+        p.setVolume(0, fadeDuration: 8)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 8) { [weak self] in
+            guard let self, self.player === p else { return }
+            self.pause(); p.volume = self.loud
+        }
+        publish()
+    }
     private(set) var title: String?
     private(set) var isPaused = false
     var hasSongs: Bool { !items.isEmpty }
@@ -122,8 +159,12 @@ final class AmbientPlayer: NSObject, AVAudioPlayerDelegate {
         c.togglePlayPauseCommand.addTarget { [weak self] _ in self?.togglePause(); return .success }
         c.nextTrackCommand.addTarget { [weak self] _ in self?.skip(); return .success }
         c.previousTrackCommand.isEnabled = false
+        c.changePlaybackPositionCommand.addTarget { [weak self] e in
+            guard let e = e as? MPChangePlaybackPositionCommandEvent else { return .commandFailed }
+            self?.seek(to: e.positionTime); return .success
+        }
         // Crossfade: a few seconds before a song ends, start the next one fading in over it.
-        Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in self?.crossfadeIfDue() }
+        Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in self?.crossfadeIfDue(); self?.sleepIfDue() }
     }
 
     /// The songs to play from. `inOrder` plays them as given (era radio) instead of shuffled.
@@ -145,7 +186,7 @@ final class AmbientPlayer: NSObject, AVAudioPlayerDelegate {
 
     private func crossfadeIfDue() {
         let fade = Self.crossfade
-        guard fade > 0, !crossfading, clip == nil, let p = player, p.isPlaying, p.duration > fade * 3, p.duration - p.currentTime <= fade else { return }
+        guard fade > 0, !crossfading, !sleepAtEnd, clip == nil, let p = player, p.isPlaying, p.duration > fade * 3, p.duration - p.currentTime <= fade else { return }
         crossfading = true
         next(fade: fade)
     }
@@ -264,6 +305,7 @@ final class AmbientPlayer: NSObject, AVAudioPlayerDelegate {
             let loaded = try? AVAudioPlayer(contentsOf: item.url)
             loaded?.prepareToPlay() // reads the first buffers here, not on the main thread (slow network drives)
             let cover = loaded == nil ? nil : Self.cover(of: item.url)
+            let gain = loaded == nil ? 1 : Self.gain(for: item.url)
             DispatchQueue.main.async { [weak self] in
                 guard let self, gen == self.generation else { return }
                 guard let loaded else { self.next(failures: failures + 1); return }
@@ -271,7 +313,8 @@ final class AmbientPlayer: NSObject, AVAudioPlayerDelegate {
                 loaded.isMeteringEnabled = true
                 loaded.volume = 0
                 loaded.play()
-                loaded.setVolume(self.volume, fadeDuration: fade > 0 ? fade : 3)
+                self.gain = gain
+                loaded.setVolume(self.loud, fadeDuration: fade > 0 ? fade : 3)
                 self.player = loaded
                 self.crossfading = false
                 self.title = item.title
@@ -315,6 +358,7 @@ final class AmbientPlayer: NSObject, AVAudioPlayerDelegate {
 
     func audioPlayerDidFinishPlaying(_ finished: AVAudioPlayer, successfully flag: Bool) {
         guard finished === player else { return }
+        if sleepAtEnd { sleepAtEnd = false; isPaused = true; publish(); return } // paused; Play starts the song again
         player = nil
         if !items.isEmpty || !upNext.isEmpty { next() } else { title = nil; publish() }
     }

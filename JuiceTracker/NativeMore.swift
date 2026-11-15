@@ -91,6 +91,7 @@ struct SongExtras {
                 if let i = Int(raw), NativeStore.shared.songs.indices.contains(i) {
                     let s = NativeStore.shared.songs[i]
                     song = s
+                    DiscordStatus.shared.era = s.e; DiscordStatus.shared.refresh()
                     extras = await Extras.shared.extras(for: s.s.id)
                     if let url = extras?.image, let img = await Extras.shared.image(url) { p.setFallbackArtwork(img, for: path) }
                 }
@@ -225,6 +226,7 @@ struct MiniPlayerView: View {
                     Button { AmbientPlayer.shared.togglePause() } label: { Image(systemName: paused || title == nil ? "play.fill" : "pause.fill") }
                     Button { AmbientPlayer.shared.skip() } label: { Image(systemName: "forward.fill") }
                     Button { AppDelegate.shared?.showMainWindow() } label: { Image(systemName: "macwindow") }.help("Open Juice Tracker")
+                    SeekBar()
                 }
                 .buttonStyle(.borderless)
             }

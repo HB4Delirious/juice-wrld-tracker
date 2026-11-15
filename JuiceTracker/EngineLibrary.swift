@@ -102,7 +102,7 @@ import AppKit
         await checkDrive()
     }
 
-    private func use(_ url: URL) { root = url; watch(url) }
+    private func use(_ url: URL) { root = url; watch(url); watchInbox() }
 
     private func scan(reread: Bool) async {
         guard let root, !scanning else { return }
@@ -146,6 +146,11 @@ import AppKit
     }
 
     // MARK: Changes made here (stage 4d)
+
+    /// A file of this song the player can play, if you have one.
+    func playableURL(_ i: Int) -> URL? {
+        (match.owned[i] ?? []).first { EngineAmbient.playable.contains(Engine.extOf($0)) }.flatMap { url(of: $0) }
+    }
 
     /// Where a library file is on disk.
     func url(of path: String) -> URL? {
@@ -281,5 +286,123 @@ extension EngineLibrary {
         let there = Set(Engine.match(catalog: catalog, files: scan.files, overrides: [:]).owned.keys), here = owned
         return Comparison(drive: other.lastPathComponent, onlyHere: here.subtracting(there).sorted(), onlyThere: there.subtracting(here).sorted(),
                           both: here.intersection(there).count)
+    }
+}
+
+// MARK: - Moving files: the organizer (with undo) and the inbox folder
+
+extension EngineLibrary {
+    /// Moves files inside the music folder. Never overwrites: a move whose place is taken on disk is skipped. Tag
+    /// cache, hand matches and the file list follow each file. Returns the moves made and what was skipped.
+    func move(_ moves: [(from: String, to: String)]) async -> (done: [(from: String, to: String)], failed: [String]) {
+        var done: [(from: String, to: String)] = [], failed: [String] = []
+        for m in moves {
+            guard let src = url(of: m.from), let dst = url(of: m.to) else { failed.append("\(Engine.baseName(m.from)): outside the music folder"); continue }
+            let error = await Task.detached { () -> String? in
+                let fm = FileManager.default
+                guard fm.fileExists(atPath: src.path) else { return "isn't there any more" }
+                guard !fm.fileExists(atPath: dst.path) else { return "a file is already at \(dst.lastPathComponent)" }
+                do {
+                    try fm.createDirectory(at: dst.deletingLastPathComponent(), withIntermediateDirectories: true)
+                    try fm.moveItem(at: src, to: dst)
+                    _ = rmdir(src.deletingLastPathComponent().path) // the folder it left, only if that's now empty
+                    return nil
+                } catch { return error.localizedDescription }
+            }.value
+            if let error { failed.append("\(Engine.baseName(m.from)): \(error)"); continue }
+            done.append(m)
+            cache[m.to] = cache.removeValue(forKey: m.from)
+            if let o = overrides.removeValue(forKey: m.from) { overrides[m.to] = o }
+            if let n = files.firstIndex(where: { $0.path == m.from }), let f = libraryFile(m.to, cache[m.to]) { files[n] = f }
+        }
+        guard !done.isEmpty else { return (done, failed) }
+        files.sort { $0.path.localizedCompare($1.path) == .orderedAscending }
+        let renamed = Dictionary(done.map { ($0.from, $0.to) }, uniquingKeysWith: { a, _ in a })
+        let items = (EngineFiles.read("items.json").flatMap { try? JSONDecoder().decode([String].self, from: $0) } ?? []).map { renamed[$0] ?? $0 }
+        saveItems(items)
+        saveCache()
+        rematch()
+        Plex.scheduleRefresh()
+        return (done, failed)
+    }
+
+    /// The organizer's last run, kept so it can be undone (even after a relaunch).
+    var lastOrganize: [(from: String, to: String)] {
+        (EngineFiles.read("lastOrganize.json").flatMap { try? JSONDecoder().decode([[String]].self, from: $0) } ?? [])
+            .compactMap { $0.count == 2 ? ($0[0], $0[1]) : nil }
+    }
+    func organize(_ plan: [(from: String, to: String)]) async -> String {
+        let r = await move(plan)
+        try? EngineFiles.write("lastOrganize.json", JSONEncoder().encode(r.done.map { [$0.from, $0.to] }))
+        return "Moved \(EngineTools.plural(r.done.count, "file", "files")).\(r.failed.isEmpty ? "" : " Left \(r.failed.count) where they were: \(r.failed.prefix(3).joined(separator: "; ")).")"
+    }
+    func undoOrganize() async -> String {
+        let r = await move(lastOrganize.reversed().map { ($0.to, $0.from) })
+        try? EngineFiles.write("lastOrganize.json", Data("[]".utf8))
+        return "Put \(EngineTools.plural(r.done.count, "file", "files")) back.\(r.failed.isEmpty ? "" : " Couldn't move \(r.failed.count): \(r.failed.prefix(3).joined(separator: "; ")).")"
+    }
+
+    // MARK: Inbox
+
+    /// A folder outside the library: audio files dropped there are matched, moved into the folder the tracker picks
+    /// for their era, and tagged when they match exactly one song. Files it can't place stay in the inbox.
+    static var inbox: URL? {
+        get { UserDefaults.standard.string(forKey: "inboxFolder").map { URL(fileURLWithPath: $0) } }
+        set { UserDefaults.standard.set(newValue?.path, forKey: "inboxFolder") }
+    }
+    static var inboxNote = ""
+    private static var inboxStream: FSEventStreamRef?
+
+    func watchInbox() {
+        if let s = Self.inboxStream { FSEventStreamStop(s); FSEventStreamInvalidate(s); FSEventStreamRelease(s); Self.inboxStream = nil }
+        guard let inbox = Self.inbox else { return }
+        let callback: FSEventStreamCallback = { _, _, _, _, _, _ in
+            Task { @MainActor in try? await Task.sleep(nanoseconds: 2_000_000_000); await EngineLibrary.shared.sortInbox() } // let a copy finish
+        }
+        var context = FSEventStreamContext(version: 0, info: nil, retain: nil, release: nil, copyDescription: nil)
+        guard let s = FSEventStreamCreate(nil, callback, &context, [inbox.path] as CFArray, FSEventStreamEventId(kFSEventStreamEventIdSinceNow), 3,
+                                          UInt32(kFSEventStreamCreateFlagFileEvents | kFSEventStreamCreateFlagUseCFTypes)) else { return }
+        FSEventStreamSetDispatchQueue(s, DispatchQueue.global(qos: .utility))
+        FSEventStreamStart(s)
+        Self.inboxStream = s
+        Task { await sortInbox() } // what's there already
+    }
+
+    func sortInbox() async {
+        guard let inbox = Self.inbox, root != nil, !EngineState.shared.catalog.isEmpty else { return }
+        let found = await Task.detached { () -> [(URL, Tags, Int)] in
+            let urls = (try? FileManager.default.contentsOfDirectory(at: inbox, includingPropertiesForKeys: [.fileSizeKey], options: [.skipsHiddenFiles])) ?? []
+            return urls.filter { Engine.audioExts.contains(Engine.extOf($0.path)) }.compactMap { u in
+                guard let size = (try? u.resourceValues(forKeys: [.fileSizeKey]))?.fileSize, size > 0 else { return nil }
+                return (u, TagReader.read(u, ext: Engine.extOf(u.path)), size)
+            }
+        }.value
+        guard !found.isEmpty else { return }
+        let catalog = EngineState.shared.catalog
+        var moved = 0, left: [String] = []
+        for (u, tags, size) in found {
+            let name = u.lastPathComponent, tmp = "inbox/\(name)"
+            let title = (tags["title"] ?? "").isEmpty ? Engine.titleFromFilename(tmp) : tags["title"]!
+            let lf = LibraryFile(path: tmp, ext: Engine.extOf(name), tags: tags, title: title, key: Engine.normalize(title), stem: Engine.stemOf(tmp),
+                                 fromTags: !(tags["title"] ?? "").isEmpty, size: size)
+            let m = Engine.match(catalog: catalog, files: [lf], overrides: [:])
+            // Several versions can match one title; primarySong settles which one it is, or leaves it in the inbox.
+            guard let songs = m.songsFor[tmp], m.how[tmp] != "close", let primary = Engine.primarySong(songs, catalog: catalog) else { left.append(name); continue }
+            let rel = "\(Engine.saveFolder(catalog[primary], layout))/\(name)"
+            guard let dst = url(of: rel) else { left.append(name); continue }
+            let ok = await Task.detached { () -> Bool in
+                let fm = FileManager.default
+                guard !fm.fileExists(atPath: dst.path) else { return false }
+                do { try fm.createDirectory(at: dst.deletingLastPathComponent(), withIntermediateDirectories: true); try fm.moveItem(at: u, to: dst); return true }
+                catch { return false }
+            }.value
+            guard ok else { left.append(name); continue }
+            updateFile(rel, tags: tags, size: size)
+            if songs.count == 1 { _ = await EngineFixer.shared.autoTag(rel, song: songs[0], always: true) } // tags only when it's sure which version
+            moved += 1
+        }
+        Self.inboxNote = "Inbox: moved \(EngineTools.plural(moved, "song", "songs")) into your library\(left.isEmpty ? "" : "; \(left.count) left in the inbox (not recognized, or already in the library)")."
+        if moved > 0 { Plex.scheduleRefresh() }
+        NativeStore.shared.rebuild()
     }
 }

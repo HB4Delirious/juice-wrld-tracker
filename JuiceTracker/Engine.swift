@@ -1465,3 +1465,42 @@ extension TagWriter {
         return r.out
     }
 }
+
+// MARK: - File organizer (beyond the page)
+
+extension Engine {
+    /// The song a file most likely is when its title matches several versions: one match is that song; otherwise the
+    /// plain-named versions (no "(Live)", "[v1]"…) must share one name, and the era most of them are from wins. A tie,
+    /// or different names, gives nil.
+    static func primarySong(_ songs: [Int], catalog: [EngineSong]) -> Int? {
+        let valid = songs.filter(catalog.indices.contains)
+        if valid.count == 1 { return valid[0] }
+        let plain = valid.filter { !catalog[$0].name.contains("(") && !catalog[$0].name.contains("[") }
+        guard !plain.isEmpty, Set(plain.map { catalog[$0].name.lowercased() }).count == 1 else { return nil }
+        let votes = Dictionary(grouping: plain) { eraName(catalog[$0]) }.sorted { $0.value.count != $1.value.count ? $0.value.count > $1.value.count : $0.key < $1.key }
+        guard votes.count == 1 || votes[0].value.count > votes[1].value.count else { return nil }
+        return votes[0].value.min()
+    }
+
+    /// Where each matched file would go under a pattern like "{era}/{song}" (also {category}, {year}). Only files
+    /// matched by title, file name or hand (not a close title) to one song, or to versions `primarySong` can settle, move. A file never moves onto
+    /// another file's place: the first one wins and the rest stay where they are.
+    static func organizePlan(files: [LibraryFile], match: Match, catalog: [EngineSong], pattern: String) -> [(from: String, to: String)] {
+        var taken = Set(files.map { $0.path.lowercased() }), out: [(String, String)] = []
+        for f in files {
+            guard let songs = match.songsFor[f.path], match.how[f.path] != "close", let primary = primarySong(songs, catalog: catalog) else { continue }
+            let s = catalog[primary], root = f.path.split(separator: "/").first.map(String.init) ?? ""
+            var rel = pattern
+            for (k, v) in ["{era}": eraName(s), "{song}": s.name, "{category}": s.category, "{year}": yearOf(s.recordDates)] {
+                rel = rel.replacingOccurrences(of: k, with: safeName(v.isEmpty ? "Unknown" : v))
+            }
+            let parts = rel.split(separator: "/").map { safeName(String($0)) }
+            guard !parts.isEmpty else { continue }
+            let to = ([root] + parts).joined(separator: "/") + "." + f.ext
+            guard to != f.path, !taken.contains(to.lowercased()) else { continue }
+            taken.remove(f.path.lowercased()); taken.insert(to.lowercased())
+            out.append((f.path, to))
+        }
+        return out
+    }
+}

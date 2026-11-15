@@ -51,6 +51,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUs
         SongAlerts.start()
         Updater.startDailyChecks()
         menuBar.start()
+        DiscordStatus.shared.start()
     }
 
     /// The app's window: the SwiftUI interface.
@@ -65,7 +66,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUs
             w.title = "Juice Tracker"
             w.titlebarAppearsTransparent = true
             w.titleVisibility = .hidden
-            w.minSize = NSSize(width: 900, height: 600)
+            w.minSize = JT.compact ? NSSize(width: 720, height: 480) : NSSize(width: 900, height: 600)
             w.isReleasedWhenClosed = false
             w.delegate = self
             let root = NSView()

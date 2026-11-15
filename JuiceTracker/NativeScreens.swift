@@ -50,7 +50,7 @@ struct TimelineScreen: View {
                         .font(.caption).foregroundColor(JT.muted)
                 }
             }
-            .padding(.horizontal, 34).padding(.top, 40).padding(.bottom, 60)
+            .padding(.horizontal, JT.compact ? 18 : 34).padding(.top, JT.compact ? 20 : 40).padding(.bottom, 60)
             .frame(maxWidth: 1080, alignment: .leading)
         }
     }
@@ -190,8 +190,10 @@ struct StatsScreen: View {
                 YearBars(years: eventYears, values: events, colors: [Color(red: 1, green: 0.63, blue: 0.29), JT.missing, JT.have])
                 ListeningSection()
                 YearInReviewSection()
+                ListeningCalendar()
+                GapsHeatmap(songs: songs)
             }
-            .padding(.horizontal, 34).padding(.top, 40).padding(.bottom, 60)
+            .padding(.horizontal, JT.compact ? 18 : 34).padding(.top, JT.compact ? 20 : 40).padding(.bottom, 60)
             .frame(maxWidth: 1080, alignment: .leading)
         }
     }
@@ -224,6 +226,7 @@ struct CreditsScreen: View {
     @State private var query = ""
     @State private var picked: String?
     @State private var limit = 150
+    @ObservedObject private var store = NativeStore.shared
 
     private struct Person: Identifiable { let id: String; let name: String; var songs: [Song] }
 
@@ -280,7 +283,11 @@ struct CreditsScreen: View {
                 VStack(alignment: .leading, spacing: 10) {
                     if let p = selected {
                         Text(p.name).font(JT.marker(28))
-                        Text("\(p.songs.count) songs, \(p.songs.filter(\.o).count) in your library").foregroundColor(JT.muted)
+                        HStack {
+                            Text("\(p.songs.count) songs, \(p.songs.filter(\.o).count) in your library").foregroundColor(JT.muted)
+                            let missing = p.songs.filter { !$0.o && $0.f }
+                            if !missing.isEmpty { Button("Download \(missing.count) missing") { EngineDownloads.shared.add(missing.map(\.s.id)) } }
+                        }
                         ScrollView {
                             LazyVStack(spacing: 0) {
                                 ForEach(p.songs.sorted { $0.n < $1.n }) { s in SongRow(song: s, open: { NativeStore.shared.openSong = s }, compact: true) }
@@ -295,8 +302,12 @@ struct CreditsScreen: View {
                 .frame(maxWidth: .infinity, alignment: .topLeading)
             }
         }
-        .padding(.horizontal, 34).padding(.top, 40).padding(.bottom, 24)
+        .padding(.horizontal, JT.compact ? 18 : 34).padding(.top, JT.compact ? 20 : 40).padding(.bottom, 24)
         .frame(maxWidth: 1180, alignment: .topLeading)
+        .onAppear {
+            guard let f = store.creditsFocus else { return }
+            role = f.role; query = ""; picked = f.name.lowercased(); store.creditsFocus = nil
+        }
         .onChange(of: role) { _ in picked = nil; limit = 150 }
     }
 }

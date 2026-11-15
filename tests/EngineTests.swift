@@ -193,6 +193,33 @@ import Foundation
         // reading snapshots back (stage 5)
         for c in fx["csvCases"] as! [[Any]] { let t = c[0] as! String; expect(Engine.parseCsv(t) == c[1] as! [[String]], "parseCsv(\(t.debugDescription)) = \(Engine.parseCsv(t))") }
 
+        // File organizer (beyond the page)
+        do {
+            func song(_ id: String, _ name: String, _ era: String) -> EngineSong {
+                EngineSong(id: id, publicId: id, name: name, alt: [], era: era, category: "Unreleased", length: "", release: "", artists: "", producers: "",
+                           recordDates: "2018", engineers: "", locations: "", key: "", info: "", notes: "", previewDate: "", leakDate: "", leakType: "",
+                           sessions: "", dates: "", bitrate: "", filePath: "", hasDetails: false)
+            }
+            func file(_ path: String) -> LibraryFile {
+                LibraryFile(path: path, ext: Engine.extOf(path), tags: [:], title: "", key: "", stem: "", fromTags: false, size: 1)
+            }
+            let cat = [song("1", "Lucid Dreams", "GB&GR"), song("2", "What?/Why", "DRFL")]
+            let files = [file("M/a.mp3"), file("M/b.flac"), file("M/c.mp3"), file("M/GB&GR/Lucid Dreams.mp3")]
+            var m = Engine.Match()
+            m.songsFor = ["M/a.mp3": [0], "M/b.flac": [1], "M/c.mp3": [0, 1], "M/GB&GR/Lucid Dreams.mp3": [0]]
+            m.how = ["M/a.mp3": "title", "M/b.flac": "close", "M/c.mp3": "title", "M/GB&GR/Lucid Dreams.mp3": "title"]
+            let plan = Engine.organizePlan(files: files, match: m, catalog: cat, pattern: "{era}/{song}")
+            expect(plan.isEmpty, "organizer: a file already in place is never overwritten, close and unsettled matches stay (\(plan))")
+            expect(Engine.primarySong([0, 1], catalog: cat) == nil, "primary song: different names stay unsettled")
+            let versions = [song("3", "Lean Wit' Me", "GB&GR"), song("4", "Lean Wit' Me", "GB&GR"), song("5", "Lean Wit' Me (Live)", "WOD"), song("6", "Lean Wit' Me", "Mainstream")]
+            expect(Engine.primarySong([0, 1, 2, 3], catalog: versions) == 0, "primary song: the era most plain-named versions share")
+            expect(Engine.primarySong([0, 3], catalog: versions) == nil, "primary song: a tie stays unsettled")
+            m.how["M/b.flac"] = "title"
+            let p2 = Engine.organizePlan(files: files, match: m, catalog: cat, pattern: "{year}/{song} ({era})")
+            expect(p2.map(\.to) == ["M/2018/Lucid Dreams (GB&GR).mp3", "M/2018/WhatWhy (DRFL).flac"], "organizer: pattern fields and safe names (\(p2))")
+            expect(Set(p2.map(\.to)).count == p2.count, "organizer: no two files go to the same place")
+        }
+
         // Cover art (beyond the page): added to each format, tags and audio untouched, and refused the second time.
         let jpeg: [UInt8] = [0xFF, 0xD8, 0xFF, 0xE0] + [UInt8](repeating: 0x42, count: 5000) + [0xFF, 0xD9]
         for name in ["written.mp3", "written.flac", "written.m4a"] {

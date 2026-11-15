@@ -50,8 +50,34 @@ struct EraTheme: Identifiable, Hashable {
 
     static var current: EraTheme {
         let id = UserDefaults.standard.string(forKey: "eraTheme") ?? "cosmic"
-        return all.first { $0.id == id } ?? all[0]
+        return id == "custom" ? custom : all.first { $0.id == id } ?? all[0]
     }
+
+    /// Your own colors (Settings > Look): an accent and two sky colors, kept as hex.
+    static var custom: EraTheme {
+        let d = UserDefaults.standard
+        let accent = color(d.string(forKey: "customAccent")) ?? rgb(255, 106, 213, 1)
+        let a = color(d.string(forKey: "customSky1")) ?? rgb(214, 48, 140, 1), b = color(d.string(forKey: "customSky2")) ?? rgb(80, 130, 255, 1)
+        let hi = accent.blended(withFraction: 0.35, of: .white) ?? accent
+        return EraTheme(id: "custom", name: "Your colors", accent: Color(accent), accentHi: Color(hi), accentNS: accent,
+                        glows: [a.withAlphaComponent(0.32), b.withAlphaComponent(0.4), a.withAlphaComponent(0.26), b.withAlphaComponent(0.36)])
+    }
+    static func color(_ hex: String?) -> NSColor? {
+        guard let hex, hex.count == 6, let v = UInt32(hex, radix: 16) else { return nil }
+        return rgb(CGFloat(v >> 16 & 0xff), CGFloat(v >> 8 & 0xff), CGFloat(v & 0xff), 1)
+    }
+    static func hex(_ c: Color) -> String {
+        guard let s = NSColor(c).usingColorSpace(.sRGB) else { return "ff6ad5" }
+        return String(format: "%02x%02x%02x", Int(s.redComponent * 255), Int(s.greenComponent * 255), Int(s.blueComponent * 255))
+    }
+    /// The theme and, for your own colors, the colors themselves: the window redraws when this changes.
+    static var signature: String {
+        let d = UserDefaults.standard
+        return [current.id, d.string(forKey: "customAccent") ?? "", d.string(forKey: "customSky1") ?? "", d.string(forKey: "customSky2") ?? "",
+                d.bool(forKey: "compactMode") ? "compact" : ""].joined(separator: "|")
+    }
+    /// The sticker the sky's tattoo-flash layer shows for this theme (its era's sticker), or nil for the original mix.
+    var skySticker: String? { ["gbgr": "jt-sticker2", "drfl": "jt-era-race", "lnd": "jt-era-halo", "fd": "jt-era-demon", "wod": "jt-era-globe"][id] }
     static let changed = Notification.Name("EraThemeChanged")
 
     private static func rgb(_ r: CGFloat, _ g: CGFloat, _ b: CGFloat, _ a: CGFloat) -> NSColor { NSColor(srgbRed: r / 255, green: g / 255, blue: b / 255, alpha: a) }
@@ -60,10 +86,10 @@ struct EraTheme: Identifiable, Hashable {
 /// Watches the theme setting, so the window redraws in the new colors when it changes.
 final class ThemeWatcher: ObservableObject {
     static let shared = ThemeWatcher()
-    @Published private(set) var id = EraTheme.current.id
+    @Published private(set) var id = EraTheme.signature
     private init() {
         NotificationCenter.default.addObserver(forName: UserDefaults.didChangeNotification, object: nil, queue: .main) { [weak self] _ in
-            let now = EraTheme.current.id
+            let now = EraTheme.signature
             if now != self?.id { self?.id = now; NotificationCenter.default.post(name: EraTheme.changed, object: nil) }
         }
     }
@@ -87,7 +113,7 @@ struct Spinner999: View {
 
 // MARK: - Badges
 
-private struct Badge: Identifiable {
+struct Badge: Identifiable {
     let id: String
     let image: String
     let title: String
@@ -135,7 +161,7 @@ struct BadgesScreen: View {
                     ForEach(Array(list.enumerated()), id: \.element.id) { n, b in card(b, seed: n) }
                 }
             }
-            .padding(.horizontal, 40).padding(.top, 40).padding(.bottom, 60)
+            .padding(.horizontal, JT.compact ? 18 : 40).padding(.top, JT.compact ? 20 : 40).padding(.bottom, 60)
             .frame(maxWidth: 1180, alignment: .leading)
         }
     }
@@ -150,6 +176,12 @@ struct BadgesScreen: View {
             Text(b.detail).font(JT.body(12)).foregroundColor(JT.muted).multilineTextAlignment(.center).lineLimit(2)
             if b.earned {
                 Label("Earned", systemImage: "checkmark.seal.fill").font(JT.body(12, .semibold)).foregroundColor(JT.have)
+                Button("Save card…") {
+                    if let img = badgeCard(b), let tiff = img.tiffRepresentation, let png = NSBitmapImageRep(data: tiff)?.representation(using: .png, properties: [:]) {
+                        _ = Files.save(png, name: "juice-wrld-badge-\(b.id).png", type: .png)
+                    }
+                }
+                .buttonStyle(.borderless).font(JT.body(12))
             } else {
                 FillBar(fraction: CGFloat(b.have) / CGFloat(max(b.need, 1)), fill: JT.lavender, delay: 0.15 + min(Double(seed) * 0.03, 0.4)).frame(height: 4)
                 Text("\(min(b.have, b.need).formatted()) of \(b.need.formatted())").font(JT.body(12)).foregroundColor(JT.muted)
@@ -201,6 +233,7 @@ struct EQBars: NSViewRepresentable {
 /// The emitter lives for a few seconds per burst, so it costs nothing the rest of the time.
 struct Confetti: NSViewRepresentable {
     static let fire = Notification.Name("JTConfetti")
+    static let fire999 = Notification.Name("JTConfetti999") // the 999 easter egg: a sky full of 999s
     func makeNSView(context: Context) -> ConfettiView { ConfettiView() }
     func updateNSView(_ v: ConfettiView, context: Context) {}
 
@@ -209,22 +242,25 @@ struct Confetti: NSViewRepresentable {
             super.init(frame: frame)
             wantsLayer = true
             NotificationCenter.default.addObserver(self, selector: #selector(burst), name: Confetti.fire, object: nil)
+            NotificationCenter.default.addObserver(self, selector: #selector(burst999), name: Confetti.fire999, object: nil)
         }
         required init?(coder: NSCoder) { fatalError("init(coder:) is not used") }
         override func hitTest(_ point: NSPoint) -> NSView? { nil }
 
-        @objc private func burst() {
+        @objc private func burst() { emit(Self.cells) }
+        @objc private func burst999() { emit(Self.cells999, fromBottom: true) }
+        private func emit(_ cells: [CAEmitterCell], fromBottom: Bool = false) {
             guard let root = layer, bounds.width > 0 else { return }
             let e = CAEmitterLayer()
             e.frame = bounds
-            e.emitterPosition = CGPoint(x: bounds.midX, y: bounds.maxY + 20)
+            e.emitterPosition = CGPoint(x: bounds.midX, y: fromBottom ? -20 : bounds.maxY + 20)
             e.emitterShape = .line
             e.emitterSize = CGSize(width: bounds.width * 0.8, height: 1)
             e.beginTime = CACurrentMediaTime()
-            e.emitterCells = Self.cells
+            e.emitterCells = cells
             root.addSublayer(e)
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { e.birthRate = 0 }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 7) { e.removeFromSuperlayer() }
+            DispatchQueue.main.asyncAfter(deadline: .now() + (fromBottom ? 1.6 : 0.3)) { e.birthRate = 0 }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 9) { e.removeFromSuperlayer() }
         }
 
         private static let cells: [CAEmitterCell] = {
@@ -251,6 +287,28 @@ struct Confetti: NSViewRepresentable {
             }
             let stickers = ["jt-heart", "jt-era-999", "jt-fly"].compactMap { NSImage(named: $0)?.cgImage(forProposedRect: nil, context: nil, hints: nil) }
             return bits.map { cell($0, size: 8, rate: 26) } + stickers.map { cell($0, size: 26, rate: 6) }
+        }()
+
+        /// "999"s and sparkles drifting up slowly, glowing.
+        private static let cells999: [CAEmitterCell] = {
+            let text = NSImage(size: NSSize(width: 90, height: 44), flipped: false) { r in
+                let shadow = NSShadow(); shadow.shadowColor = EraTheme.current.accentNS; shadow.shadowBlurRadius = 8
+                ("999" as NSString).draw(in: r, withAttributes: [.font: NSFont(name: "PermanentMarker-Regular", size: 34) ?? NSFont.boldSystemFont(ofSize: 32),
+                                                                 .foregroundColor: NSColor.white, .shadow: shadow])
+                return true
+            }.cgImage(forProposedRect: nil, context: nil, hints: nil)!
+            let spark = NSImage(named: "jt-sparkles")?.cgImage(forProposedRect: nil, context: nil, hints: nil)
+            func cell(_ image: CGImage, scale: CGFloat, rate: Float) -> CAEmitterCell {
+                let c = CAEmitterCell()
+                c.contents = image; c.birthRate = rate; c.lifetime = 7
+                c.velocity = 110; c.velocityRange = 50
+                c.emissionLongitude = .pi / 2; c.emissionRange = .pi / 5 // upward
+                c.scale = scale; c.scaleRange = scale * 0.4
+                c.spinRange = 0.8
+                c.alphaSpeed = -0.13
+                return c
+            }
+            return [cell(text, scale: 0.7, rate: 22)] + (spark.map { [cell($0, scale: 0.12, rate: 10)] } ?? [])
         }()
     }
 }
@@ -421,5 +479,139 @@ struct NoteDrift: NSViewRepresentable {
             c.alphaSpeed = -0.25
             return c
         }
+    }
+}
+
+// MARK: - Dock icon
+
+/// While the app runs, the Dock icon glows softly with the music and shows a ring while downloads run
+/// (Settings > Look). It redraws five times a second only while music plays; otherwise only when something changes.
+@MainActor final class DockIcon {
+    static let shared = DockIcon()
+    private let view = DockView()
+    private var timer: Timer?
+    static var on: Bool { UserDefaults.standard.object(forKey: "animatedDock") as? Bool ?? true }
+
+    private init() {
+        for name in [AmbientPlayer.changed, UserDefaults.didChangeNotification] {
+            NotificationCenter.default.addObserver(forName: name, object: nil, queue: .main) { _ in Task { @MainActor in DockIcon.shared.update() } }
+        }
+    }
+
+    func update() {
+        let tile = NSApp.dockTile
+        guard Self.on else {
+            timer?.invalidate(); timer = nil
+            if tile.contentView != nil { tile.contentView = nil; tile.display() }
+            return
+        }
+        if tile.contentView !== view { view.frame = NSRect(origin: .zero, size: tile.size); tile.contentView = view }
+        view.progress = NativeStore.shared.state?.queue.map { Double($0.done) / Double(max($0.total, 1)) }
+        if AmbientPlayer.shared.isPlaying {
+            if timer == nil {
+                timer = Timer.scheduledTimer(withTimeInterval: 0.2, repeats: true) { _ in
+                    Task { @MainActor in
+                        DockIcon.shared.view.glow = (sin(Date().timeIntervalSinceReferenceDate * 1.4) + 1) / 2
+                        NSApp.dockTile.display()
+                    }
+                }
+            }
+        } else { timer?.invalidate(); timer = nil; view.glow = 0 }
+        tile.display()
+    }
+}
+
+final class DockView: NSView {
+    var progress: Double?
+    var glow = 0.0
+
+    override func draw(_ dirtyRect: NSRect) {
+        let b = bounds, accent = EraTheme.current.accentNS
+        if glow > 0, let g = NSGradient(colors: [accent.withAlphaComponent(0.55 * glow), accent.withAlphaComponent(0)]) {
+            g.draw(in: NSBezierPath(ovalIn: b), relativeCenterPosition: .zero)
+        }
+        NSApp.applicationIconImage?.draw(in: b.insetBy(dx: b.width * 0.06, dy: b.height * 0.06))
+        if let p = progress {
+            let lw = b.width * 0.07, r = b.width / 2 - lw / 2 - 1, c = NSPoint(x: b.midX, y: b.midY)
+            let track = NSBezierPath(); track.appendArc(withCenter: c, radius: r, startAngle: 0, endAngle: 360)
+            track.lineWidth = lw; NSColor.black.withAlphaComponent(0.45).setStroke(); track.stroke()
+            let arc = NSBezierPath(); arc.appendArc(withCenter: c, radius: r, startAngle: 90, endAngle: 90 - 360 * max(0.02, p), clockwise: true)
+            arc.lineWidth = lw; arc.lineCapStyle = .round; accent.setStroke(); arc.stroke()
+        }
+    }
+}
+
+// MARK: - The "song landed" chime
+
+/// A short bell (three rising notes), made in code, so it's ours. Off unless turned on in Settings > Look.
+enum Chime {
+    static var on: Bool { UserDefaults.standard.bool(forKey: "landedChime") }
+    private static let sound: NSSound? = NSSound(data: wav())
+    static func play() { guard on, let sound else { return }; sound.stop(); sound.volume = 0.5; sound.play() }
+
+    static func wav() -> Data {
+        let rate = 44_100, seconds = 1.2, n = Int(Double(rate) * seconds)
+        let notes: [(Double, Double)] = [(1318.51, 0), (1975.53, 0.09), (2637.02, 0.18)] // E6, B6, E7
+        var pcm = Data(capacity: n * 2)
+        for k in 0..<n {
+            let t = Double(k) / Double(rate)
+            var v = 0.0
+            for (f, start) in notes where t >= start {
+                let u = t - start
+                v += (sin(2 * .pi * f * u) + 0.3 * sin(4 * .pi * f * u)) * exp(-5 * u) * min(1, u * 400) // soft attack, bell decay
+            }
+            var s = Int16(max(-1, min(1, v * 0.22)) * Double(Int16.max)).littleEndian
+            withUnsafeBytes(of: &s) { pcm.append(contentsOf: $0) }
+        }
+        func le<T: FixedWidthInteger>(_ x: T) -> Data { var v = x.littleEndian; return withUnsafeBytes(of: &v) { Data($0) } }
+        var out = Data("RIFF".utf8) + le(UInt32(36 + pcm.count)) + Data("WAVEfmt ".utf8)
+        out += le(UInt32(16)) + le(UInt16(1)) + le(UInt16(1)) + le(UInt32(rate)) + le(UInt32(rate * 2)) + le(UInt16(2)) + le(UInt16(16))
+        return out + Data("data".utf8) + le(UInt32(pcm.count)) + pcm
+    }
+}
+
+// MARK: - Milestone cards
+
+/// A picture of a badge you earned (1200 × 630, like the collection card), to post or keep.
+@MainActor func badgeCard(_ b: Badge) -> NSImage? {
+    let host = NSHostingView(rootView: BadgeCardView(badge: b, have: NativeStore.shared.state?.have ?? 0))
+    host.frame = NSRect(x: 0, y: 0, width: 1200, height: 630)
+    host.layoutSubtreeIfNeeded()
+    guard let rep = host.bitmapImageRepForCachingDisplay(in: host.bounds) else { return nil }
+    host.cacheDisplay(in: host.bounds, to: rep)
+    let image = NSImage(size: host.bounds.size)
+    image.addRepresentation(rep)
+    return image
+}
+
+private struct BadgeCardView: View {
+    let badge: Badge
+    let have: Int
+    var body: some View {
+        ZStack {
+            LinearGradient(colors: [Color(red: 7 / 255, green: 4 / 255, blue: 15 / 255), Color(red: 29 / 255, green: 11 / 255, blue: 64 / 255), Color(red: 74 / 255, green: 18 / 255, blue: 80 / 255)],
+                           startPoint: .topLeading, endPoint: .bottomTrailing)
+            Canvas { g, size in
+                var seed = 999.0
+                func rand() -> Double { seed = (seed * 16807).truncatingRemainder(dividingBy: 2147483647); return seed / 2147483647 }
+                for _ in 0..<150 {
+                    let r = rand() * 1.5 + 0.3
+                    g.fill(Path(ellipseIn: CGRect(x: rand() * size.width, y: rand() * size.height, width: 2 * r, height: 2 * r)), with: .color(.white.opacity(0.25 + rand() * 0.6)))
+                }
+            }
+            HStack(spacing: 60) {
+                Image(badge.image).resizable().aspectRatio(contentMode: .fit).frame(width: 300, height: 300)
+                    .rotationEffect(.degrees(-8)).shadow(color: EraTheme.current.accent.opacity(0.7), radius: 30)
+                VStack(alignment: .leading, spacing: 14) {
+                    Text("BADGE EARNED").font(JT.body(26, .semibold)).foregroundColor(EraTheme.current.accentHi)
+                    Text(badge.title).font(JT.marker(80)).foregroundColor(.white).lineLimit(2).minimumScaleFactor(0.5)
+                    Text(badge.detail).font(JT.body(30)).foregroundColor(Color(red: 195 / 255, green: 178 / 255, blue: 227 / 255))
+                    Text("\(have.formatted()) Juice WRLD songs · \(Date().formatted(date: .long, time: .omitted))").font(JT.body(22)).foregroundColor(.white.opacity(0.7)).padding(.top, 20)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .padding(70)
+        }
+        .frame(width: 1200, height: 630)
     }
 }

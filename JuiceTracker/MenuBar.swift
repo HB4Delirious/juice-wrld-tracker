@@ -5,11 +5,15 @@ import AppKit
 final class MenuBar: NSObject, NSMenuDelegate {
     private var item: NSStatusItem?
     private let volume = NSSlider(value: 6, minValue: 0, maxValue: 100, target: nil, action: nil)
+    private let position = NSSlider(value: 0, minValue: 0, maxValue: 1, target: nil, action: nil)
 
     func start() {
         volume.target = self
         volume.action = #selector(setVolume)
         volume.isContinuous = true
+        position.target = self
+        position.action = #selector(seek)
+        position.isContinuous = false
         update()
         NotificationCenter.default.addObserver(self, selector: #selector(update), name: UserDefaults.didChangeNotification, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(playerChanged), name: AmbientPlayer.changed, object: nil)
@@ -43,6 +47,11 @@ final class MenuBar: NSObject, NSMenuDelegate {
         let now = NSMenuItem(title: p.title.map { "♪ \($0)" } ?? (p.hasSongs ? "Not playing" : "Open your music folder in Juice Tracker to play songs"),
                              action: nil, keyEquivalent: "")
         now.isEnabled = false
+        if let s = NativeStore.shared.state {
+            let count = NSMenuItem(title: "You have \(s.have.formatted()) of \(s.total.formatted()) songs", action: nil, keyEquivalent: "")
+            count.isEnabled = false
+            menu.addItem(count)
+        }
         menu.addItem(now)
         if p.hasSongs {
             menu.addItem(action(p.isPlaying ? "Pause" : "Play", #selector(togglePause)))
@@ -54,6 +63,24 @@ final class MenuBar: NSObject, NSMenuDelegate {
             let slider = NSMenuItem()
             slider.view = row
             menu.addItem(slider)
+            if p.duration > 0 {
+                position.maxValue = p.duration
+                position.doubleValue = p.currentTime
+                position.frame = NSRect(x: 18, y: 4, width: 190, height: 22)
+                position.toolTip = "Position in the song"
+                let seekRow = NSView(frame: NSRect(x: 0, y: 0, width: 224, height: 30))
+                seekRow.addSubview(position)
+                let seekItem = NSMenuItem()
+                seekItem.view = seekRow
+                menu.addItem(seekItem)
+            }
+            let sleep = NSMenuItem(title: p.sleepAt != nil || p.sleepAtEnd ? "Sleep Timer (on)" : "Sleep Timer", action: nil, keyEquivalent: "")
+            let sub = NSMenu()
+            for m in [15, 30, 60] { let it = action("In \(m) minutes", #selector(sleepFor(_:))); it.tag = m; sub.addItem(it) }
+            let end = action("At the end of this song", #selector(sleepFor(_:))); end.tag = -1; sub.addItem(end)
+            if p.sleepAt != nil || p.sleepAtEnd { let off = action("Off", #selector(sleepFor(_:))); off.tag = 0; sub.addItem(off) }
+            sleep.submenu = sub
+            menu.addItem(sleep)
         }
         menu.addItem(.separator())
         let defaults = UserDefaults.standard
@@ -86,6 +113,10 @@ final class MenuBar: NSObject, NSMenuDelegate {
     @objc private func togglePause() { AmbientPlayer.shared.togglePause() }
     @objc private func skip() { AmbientPlayer.shared.skip() }
     @objc private func setVolume() { AmbientPlayer.shared.volume = volume.floatValue / 100 }
+    @objc private func seek() { AmbientPlayer.shared.seek(to: position.doubleValue) }
+    @objc private func sleepFor(_ sender: NSMenuItem) {
+        AmbientPlayer.shared.sleep(minutes: sender.tag > 0 ? sender.tag : nil, atEnd: sender.tag == -1)
+    }
     @objc private func open() { AppDelegate.shared?.showMainWindow() }
     @objc private func settings() {
         NSApp.activate(ignoringOtherApps: true)

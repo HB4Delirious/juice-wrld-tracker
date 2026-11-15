@@ -50,8 +50,8 @@ import AppKit
     /// The songs on your wishlist that you don't have and that have a file on the site. Returns how many.
     func downloadWishlist() -> Int {
         let engine = EngineState.shared, owned = EngineLibrary.shared.owned, wish = engine.wish
-        let ids = engine.catalog.enumerated().filter { wish[$0.element.id] != nil && !owned.contains($0.offset) && !$0.element.filePath.isEmpty }.map(\.element.id)
-        return add(ids)
+        let wanted = Set(engine.catalog.enumerated().filter { wish[$0.element.id] != nil && !owned.contains($0.offset) && !$0.element.filePath.isEmpty }.map(\.element.id))
+        return add(engine.wishRanked.filter { wanted.contains($0) }) // most wanted first
     }
 
     private func run() {
