@@ -17,6 +17,7 @@
 		1485960718293A4B5C6D7E8F /* NativeExtras.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2596071829304B5C6D7E8F90 /* NativeExtras.swift */; };
 		36A7B8C9D0E1F20314253647 /* NativeMore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 47B8C9D0E1F2031425364758 /* NativeMore.swift */; };
 		58C9D0E1F203142536475869 /* NativeJuice.swift in Sources */ = {isa = PBXBuildFile; fileRef = 69D0E1F20314253647586970 /* NativeJuice.swift */; };
+		58C9D0E1F203142536475A09 /* NativeFeatures.swift in Sources */ = {isa = PBXBuildFile; fileRef = 69D0E1F20314253647586A09 /* NativeFeatures.swift */; };
 		58C9D0E1F203142536475A08 /* EngineRest.swift in Sources */ = {isa = PBXBuildFile; fileRef = 69D0E1F20314253647586A08 /* EngineRest.swift */; };
 		58C9D0E1F203142536475A07 /* EngineTools.swift in Sources */ = {isa = PBXBuildFile; fileRef = 69D0E1F20314253647586A07 /* EngineTools.swift */; };
 		58C9D0E1F203142536475A06 /* EngineDownloads.swift in Sources */ = {isa = PBXBuildFile; fileRef = 69D0E1F20314253647586A06 /* EngineDownloads.swift */; };
@@ -44,6 +45,7 @@
 		2596071829304B5C6D7E8F90 /* NativeExtras.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeExtras.swift; sourceTree = "<group>"; };
 		47B8C9D0E1F2031425364758 /* NativeMore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeMore.swift; sourceTree = "<group>"; };
 		69D0E1F20314253647586970 /* NativeJuice.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeJuice.swift; sourceTree = "<group>"; };
+		69D0E1F20314253647586A09 /* NativeFeatures.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeFeatures.swift; sourceTree = "<group>"; };
 		69D0E1F20314253647586A08 /* EngineRest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EngineRest.swift; sourceTree = "<group>"; };
 		69D0E1F20314253647586A07 /* EngineTools.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EngineTools.swift; sourceTree = "<group>"; };
 		69D0E1F20314253647586A06 /* EngineDownloads.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EngineDownloads.swift; sourceTree = "<group>"; };
@@ -82,6 +84,7 @@
 				2596071829304B5C6D7E8F90 /* NativeExtras.swift */,
 				47B8C9D0E1F2031425364758 /* NativeMore.swift */,
 				69D0E1F20314253647586970 /* NativeJuice.swift */,
+				69D0E1F20314253647586A09 /* NativeFeatures.swift */,
 				69D0E1F20314253647586A08 /* EngineRest.swift */,
 				69D0E1F20314253647586A07 /* EngineTools.swift */,
 				69D0E1F20314253647586A06 /* EngineDownloads.swift */,
@@ -251,6 +254,7 @@
 				1485960718293A4B5C6D7E8F /* NativeExtras.swift in Sources */,
 				36A7B8C9D0E1F20314253647 /* NativeMore.swift in Sources */,
 				58C9D0E1F203142536475869 /* NativeJuice.swift in Sources */,
+				58C9D0E1F203142536475A09 /* NativeFeatures.swift in Sources */,
 				58C9D0E1F203142536475A08 /* EngineRest.swift in Sources */,
 				58C9D0E1F203142536475A07 /* EngineTools.swift in Sources */,
 				58C9D0E1F203142536475A06 /* EngineDownloads.swift in Sources */,

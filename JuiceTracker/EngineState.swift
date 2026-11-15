@@ -49,6 +49,13 @@ enum EngineFiles {
     private var todayCache: (token: Int, day: String, groups: [(key: String, songs: [Int])])?
 
     var wish: [String: String] { personal["wish"] as? [String: String] ?? [:] }
+    /// Your 1–5 heart ratings, by song id.
+    var ratings: [String: Int] { (personal["ratings"] as? [String: Any] ?? [:]).compactMapValues { ($0 as? NSNumber)?.intValue } }
+    func setRating(_ id: String, _ hearts: Int) {
+        var r = ratings
+        r[id] = hearts > 0 ? min(hearts, 5) : nil
+        setPersonal("ratings", r)
+    }
     var notes: [String: String] { personal["notes"] as? [String: String] ?? [:] }
 
     // MARK: Starting up
@@ -67,6 +74,13 @@ enum EngineFiles {
         if !catalog.isEmpty { pushCatalog() }
         await EngineLibrary.shared.start() // the folder and your files (it needs the catalog to match against)
         if let fetchedAt, Date().timeIntervalSince(fetchedAt) > Self.cacheHours * 3600 { await reload() }
+        // Kept fresh while the app runs (it can stay open for days with "Keep running").
+        Timer.scheduledTimer(withTimeInterval: 3600, repeats: true) { _ in
+            Task { @MainActor in
+                let s = EngineState.shared
+                if let f = s.fetchedAt, Date().timeIntervalSince(f) > Self.cacheHours * 3600 { await s.reload() }
+            }
+        }
     }
 
     // MARK: The catalog

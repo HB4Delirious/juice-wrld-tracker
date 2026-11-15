@@ -8,14 +8,16 @@ music folder, downloads and tags what's missing, and plays your collection. All 
 - **Interface (SwiftUI):** `NativeUI.swift` (window, sky, sidebar, Collection, song card, `NativeStore`),
   `NativeScreens.swift` (Timeline, Stats, Credits), `NativeTools.swift` (Duplicates, File health), `NativeFixer.swift`
   (Tag fixer), `NativeExtras.swift` (setup, player, Trivia, Export & backup), `NativeMore.swift` (lyrics, mini player,
-  Spotlight, Shortcuts, widget feed), `NativeJuice.swift` (era stickers and themes, badges, motion).
+  Spotlight, Shortcuts, widget feed), `NativeJuice.swift` (era stickers and themes, badges, motion), `NativeFeatures.swift` (ratings, rarity, year in review,
+  the lyrics window, drive comparison).
 - **Engine:**
   - `Engine.swift`: the pure logic, Foundation only: catalog cleaning, tag reading (ID3v1/v2.2–2.4, FLAC, MP4,
     Ogg/Opus) and writing (MP3, FLAC, M4A, with safety checks), scanning, matching, save folders, the tag fixer
     plan, duplicates, file health, export helpers.
   - `EngineState.swift`: the catalog (12-hour cache, new and newly released songs), your saved data (`personal.json`:
     wishlist, notes, hand matches, trivia, fixer settings) and the state every screen shows.
-  - `EngineLibrary.swift`: the music folder (bookmark under `lastFolder.plex-music`), tag cache, scan and matching.
+  - `EngineLibrary.swift`: the music folder (bookmark under `lastFolder.plex-music`), tag cache, scan and matching,
+    watching the folder (FSEvents) and comparing with another drive.
   - `EngineDownloads.swift`: the download queue, drive status, background music, weekly snapshot.
   - `EngineTools.swift`: tag fixer writing, auto-tag after downloads, duplicate cleanup, file health.
   - `EngineActions.swift`: backup and restore, the catalog spreadsheet, the collection card.
@@ -29,7 +31,7 @@ music folder, downloads and tags what's missing, and plays your collection. All 
 
 ## Safety rules for your files
 
-Tags are only rewritten after `TagWriter`'s check passes (audio bytes unchanged, every tag reads back); the original
+Tags and cover art are only written after `TagWriter`'s check passes (audio bytes unchanged, every tag reads back); the original
 is backed up first when a backup folder is set; writes are atomic. Files are only removed by moving them to the Trash.
 Downloads never overwrite, and never leave the music folder.
 
@@ -37,8 +39,9 @@ Downloads never overwrite, and never leave the music folder.
 
 `scripts/test-engine.sh` (run in CI before every build) compiles `Engine.swift` with `tests/EngineTests.swift` and
 checks it against `tests/fixtures`: the old HTML page's own answers for tricky inputs, frozen when the page was
-retired. Tag writes must match the page byte for byte, with the same safety-check results and error text. One case
-goes beyond the page on purpose: tags after large cover art are read (the page missed them).
+retired. Tag writes must match the page byte for byte, with the same safety-check results and error text. Two cases
+go beyond the page on purpose: tags after large cover art are read (the page missed them), and adding cover art
+(`TagWriter.addArt`) to each format leaves the tags readable and refuses a second picture.
 
 ## History
 

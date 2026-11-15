@@ -10,6 +10,12 @@ import AppKit
         switch op {
         case "details": return await details(i)
         case "play": play(i); return ""
+        case "playNext":
+            if let path = (library.match.owned[i] ?? []).first(where: { EngineAmbient.playable.contains(Engine.extOf($0)) }), let url = library.url(of: path) {
+                EngineAmbient.on = true
+                AmbientPlayer.shared.queueNext(url, title: catalog[i].name)
+            }
+            return ""
         case "songForPath": return songsFor(paths: [a["path"] as? String ?? ""]).first.map { $0 >= 0 ? String($0) : "" } ?? ""
         case "songsForPaths": return EngineTools.json(songsFor(paths: a["paths"] as? [String] ?? []))
         case "neverPlayed": return EngineTools.json(neverPlayed(heard: Set(a["paths"] as? [String] ?? [])))
@@ -59,7 +65,7 @@ import AppKit
     }
 
     /// Which song each file on disk is (-1: none), for lyrics, artwork and the play history.
-    private static func songsFor(paths: [String]) -> [Int] {
+    static func songsFor(paths: [String]) -> [Int] {
         let library = EngineLibrary.shared
         var byDisk: [String: Int] = [:]
         for f in library.files { if let i = library.match.songsFor[f.path]?.first, let url = library.url(of: f.path) { byDisk[url.path] = i } }

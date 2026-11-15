@@ -123,16 +123,27 @@ struct PlayerPanel: View {
                             Button { AmbientPlayer.shared.skip() } label: { Image(systemName: "forward.fill") }.buttonStyle(.borderless).help("Next song")
                             Slider(value: $volume, in: 0...100) { editing in if !editing { AmbientPlayer.shared.volume = Float(volume / 100); EngineAmbient.volume = volume } }
                                 .controlSize(.mini)
-                            Button { MiniPlayer.show() } label: { Image(systemName: "pip.enter") }.buttonStyle(.borderless).help("Mini player (⌘3)")
+                            Button { LyricsWindow.show() } label: { Image(systemName: "quote.bubble") }.buttonStyle(.borderless).help("Lyrics").accessibilityLabel("Lyrics")
+                            Button { MiniPlayer.show() } label: { Image(systemName: "pip.enter") }.buttonStyle(.borderless).help("Mini player (⌘3)").accessibilityLabel("Mini player")
                         }
                         // An era with no playable songs plays everything (the page falls back), so say "All eras" then.
                         Menu(info.eras.contains(info.era) ? info.era : "All eras") {
                             Button("All eras") { setEra("") }
                             Divider()
                             ForEach(info.eras, id: \.self) { e in Button(e) { setEra(e) } }
+                            Divider()
+                            Toggle("Play an era in recording order", isOn: Binding(get: { EngineAmbient.inOrder }, set: { EngineAmbient.setInOrder($0); load() }))
                         }
                         .controlSize(.small)
                         .help("Which era the background music plays from")
+                        if !AmbientPlayer.shared.upNext.isEmpty {
+                            HStack {
+                                Text("Up next: \(AmbientPlayer.shared.upNext.map(\.title).prefix(2).joined(separator: ", "))\(AmbientPlayer.shared.upNext.count > 2 ? " +\(AmbientPlayer.shared.upNext.count - 2)" : "")")
+                                    .font(.caption2).foregroundColor(JT.muted).lineLimit(1)
+                                Spacer()
+                                Button { AmbientPlayer.shared.clearUpNext() } label: { Image(systemName: "xmark.circle") }.buttonStyle(.borderless).help("Clear up next")
+                            }
+                        }
                     }
                 }
                 .padding(10).doodled(10)
@@ -317,6 +328,7 @@ struct ExportScreen: View {
                     item("Full catalog spreadsheet", "Every song with all credits, dates and notes, plus your library, wishlist and notes.") {
                         Button("Export full catalog…") { Task { await exportCatalog() } }
                     }
+                    DriveCompareCard()
                     item("Wishlist and notes backup", "Your wishlist, notes, trivia scores and hand matches, in one file you can keep or move to another Mac.") {
                         HStack { Button("Save a backup…") { Task { await backup() } }; Button("Restore…") { Task { await restore() } } }
                     }

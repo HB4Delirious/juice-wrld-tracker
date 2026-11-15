@@ -724,12 +724,13 @@ struct CollectionScreen: View {
 
     private var songs: [Song] {
         let q = query.lowercased().trimmingCharacters(in: .whitespaces)
-        let fresh = self.fresh, rel = releasedNow
-        return all.filter { s in
+        let fresh = self.fresh, rel = releasedNow, ratings = EngineState.shared.ratings
+        let list = all.filter { s in
             (era == nil || s.e == era) &&
-            (tab == "all" || (tab == "have" && s.o) || (tab == "missing" && !s.o) || (tab == "wish" && s.w) || (tab == "new" && fresh.contains(s.i)) || (tab == "released" && rel.contains(s.i))) &&
+            (tab == "all" || (tab == "have" && s.o) || (tab == "missing" && !s.o) || (tab == "wish" && s.w) || (tab == "rated" && ratings[s.s.id] != nil) || (tab == "new" && fresh.contains(s.i)) || (tab == "released" && rel.contains(s.i))) &&
             (q.isEmpty || s.n.lowercased().contains(q) || s.e.lowercased().contains(q) || s.s.a.contains { $0.lowercased().contains(q) })
         }
+        return tab == "rated" ? list.sorted { (ratings[$0.s.id] ?? 0) > (ratings[$1.s.id] ?? 0) } : list // best first
     }
 
     var body: some View {
@@ -860,7 +861,7 @@ struct CollectionScreen: View {
         return VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 12) {
                 Picker("", selection: $tab) {
-                    Text("All").tag("all"); Text("In your library").tag("have"); Text("Not in your library").tag("missing"); Text("Wishlist").tag("wish")
+                    Text("All").tag("all"); Text("In your library").tag("have"); Text("Not in your library").tag("missing"); Text("Wishlist").tag("wish"); Text("Top rated").tag("rated")
                 }
                 .pickerStyle(.segmented).labelsHidden().frame(maxWidth: 460)
                 TextField("Search songs or eras", text: $query).textFieldStyle(.roundedBorder).frame(maxWidth: 260)
@@ -1065,6 +1066,10 @@ struct SongRow: View {
         .overlay(alignment: .leading) { if hover { Capsule().fill(JT.lavender).frame(width: 3).padding(.vertical, 6).transition(.opacity) } }
         .animation(.easeOut(duration: 0.15), value: hover)
         .onHover { hover = $0 }
+        .contextMenu {
+            if song.o { Button("Play next") { Task { await NativeStore.shared.act("playNext", song.i) } } }
+            Button("Open song card", action: open)
+        }
         .overlay(Rectangle().fill(JT.line).frame(height: 0.5), alignment: .bottom)
     }
 
@@ -1096,6 +1101,7 @@ struct SongCard: View {
                     Text(song.n).font(JT.marker(30))
                     Text("\(song.c) · \(song.e) era").foregroundColor(JT.muted)
                     if let alt = d?.alt, !alt.isEmpty { Text("Also known as \(alt)").font(.caption).foregroundColor(JT.muted) }
+                    HStack(spacing: 10) { RatingHearts(id: song.s.id); RarityChip(song: song) }.padding(.top, 4)
                 }
                 Spacer()
                 Button("Close", action: close).keyboardShortcut(.cancelAction)
@@ -1125,7 +1131,10 @@ struct SongCard: View {
                 }
                 HStack {
                     Button { EngineState.shared.toggleWish(song.s.id) } label: { Label(song.w ? "On your wishlist" : "Add to wishlist", systemImage: song.w ? "star.fill" : "star") }
-                    if d.playable { Button { Task { await NativeStore.shared.act("play", song.i) } } label: { Label("Play", systemImage: "play.fill") } }
+                    if d.playable {
+                        Button { Task { await NativeStore.shared.act("play", song.i) } } label: { Label("Play", systemImage: "play.fill") }
+                        Button { Task { await NativeStore.shared.act("playNext", song.i) } } label: { Label("Play next", systemImage: "text.line.first.and.arrowtriangle.forward") }
+                    }
                     if !song.o && song.f { Button { EngineDownloads.shared.add([song.s.id]) } label: { Label("Download", systemImage: "arrow.down.circle") } }
                     Spacer()
                     if let url = URL(string: d.siteUrl), !d.siteUrl.isEmpty { Link("Open the file on the site", destination: url) }

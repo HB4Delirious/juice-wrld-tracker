@@ -240,19 +240,24 @@ extension EngineLibrary {
         get { UserDefaults.standard.string(forKey: "ambientEra") ?? "" }
         set { UserDefaults.standard.set(newValue, forKey: "ambientEra") }
     }
+    /// Era radio: an era's songs in recording order instead of shuffled.
+    static var inOrder: Bool {
+        get { UserDefaults.standard.bool(forKey: "ambientInOrder") }
+        set { UserDefaults.standard.set(newValue, forKey: "ambientInOrder") }
+    }
     static var volume: Double {
         get { UserDefaults.standard.object(forKey: "ambientVolume") as? Double ?? 6 }
         set { UserDefaults.standard.set(newValue, forKey: "ambientVolume") }
     }
 
     /// Each playable file you have, with its song: (file, title, era).
-    private static func playableFiles() -> [(url: URL, title: String, era: String)] {
+    private static func playableFiles() -> [(url: URL, title: String, era: String, when: Int)] {
         let library = EngineLibrary.shared, catalog = EngineState.shared.catalog
         guard let root = library.root else { return [] }
         return library.files.compactMap { f in
             guard playable.contains(f.ext), let i = library.match.songsFor[f.path]?.first, catalog.indices.contains(i) else { return nil }
             let url = f.path.split(separator: "/").dropFirst().reduce(root) { $0.appendingPathComponent(String($1)) }
-            return (url, catalog[i].name, Engine.eraName(catalog[i]))
+            return (url, catalog[i].name, Engine.eraName(catalog[i]), Engine.recordMonth(catalog[i].recordDates) ?? Int.max)
         }
     }
     /// The eras you can pick (ones you have playable songs from).
@@ -262,16 +267,19 @@ extension EngineLibrary {
     static func sync() {
         let all = playableFiles()
         let picked = era.isEmpty ? [] : all.filter { $0.era == era }
-        let items = (picked.isEmpty ? all : picked).map { ($0.url, $0.title) }
+        let radio = inOrder && !picked.isEmpty // in order only makes sense within an era
+        let list = radio ? picked.sorted { ($0.when, $0.title) < ($1.when, $1.title) } : (picked.isEmpty ? all : picked)
+        let items = list.map { ($0.url, $0.title) }
         guard !items.isEmpty else { return }
         let player = AmbientPlayer.shared
-        player.set(items)
+        player.set(items, inOrder: radio)
         player.volume = Float(volume / 100)
         on ? player.play() : player.stop()
     }
 
     static func setOn(_ value: Bool) { on = value; sync() }
-    static func setEra(_ name: String) { era = name; on = true; sync() }
+    static func setEra(_ name: String) { era = name; on = true; sync(); AmbientPlayer.shared.skip() } // the new mix starts now
+    static func setInOrder(_ value: Bool) { inOrder = value; sync(); if !era.isEmpty { AmbientPlayer.shared.skip() } }
 }
 
 // MARK: - The weekly library snapshot

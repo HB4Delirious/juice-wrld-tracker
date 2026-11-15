@@ -104,7 +104,7 @@ import Foundation
         for c in fx["writes"] as! [[String: Any]] {
             let name = c["name"] as! String, ext = c["ext"] as! String
             let input = [UInt8](Data(base64Encoded: c["input"] as! String)!), desired = c["desired"] as! [String: String]
-            let write: ([UInt8], Tags) throws -> TagWriter.Written = ext == "mp3" ? TagWriter.writeMp3 : ext == "flac" ? TagWriter.writeFlac : TagWriter.writeM4a
+            let write: ([UInt8], Tags) throws -> TagWriter.Written = ext == "mp3" ? { try TagWriter.writeMp3($0, $1) } : ext == "flac" ? { try TagWriter.writeFlac($0, $1) } : { try TagWriter.writeM4a($0, $1) }
             let verify: ([UInt8], TagWriter.Written, Tags) throws -> Void = ext == "mp3" ? TagWriter.verifyMp3 : ext == "flac" ? TagWriter.verifyFlac : TagWriter.verifyM4a
             do {
                 let r = try write(input, desired)
@@ -192,6 +192,22 @@ import Foundation
 
         // reading snapshots back (stage 5)
         for c in fx["csvCases"] as! [[Any]] { let t = c[0] as! String; expect(Engine.parseCsv(t) == c[1] as! [[String]], "parseCsv(\(t.debugDescription)) = \(Engine.parseCsv(t))") }
+
+        // Cover art (beyond the page): added to each format, tags and audio untouched, and refused the second time.
+        let jpeg: [UInt8] = [0xFF, 0xD8, 0xFF, 0xE0] + [UInt8](repeating: 0x42, count: 5000) + [0xFF, 0xD9]
+        for name in ["written.mp3", "written.flac", "written.m4a"] {
+            let url = dir.appendingPathComponent("files/\(name)"), ext = Engine.extOf(name)
+            let orig = [UInt8](try Data(contentsOf: url)), before = TagReader.read(url, ext: ext)
+            do {
+                let out = try TagWriter.addArt(orig, ext: ext, jpeg: jpeg, width: 600, height: 600)
+                let copy = dir.appendingPathComponent("art-\(name)")
+                try Data(out).write(to: copy)
+                expect(TagReader.hasArt(copy, ext: ext), "\(name): cover art reads back from disk")
+                expect(TagReader.read(copy, ext: ext) == before, "\(name): tags unchanged by adding cover art (\(TagReader.read(copy, ext: ext)) vs \(before))")
+                expect(!TagReader.hasArt(orig, ext: ext), "\(name): the original had no art")
+                expect((try? TagWriter.addArt(out, ext: ext, jpeg: jpeg, width: 600, height: 600)) == nil, "\(name): a second picture is refused")
+            } catch { expect(false, "\(name): adding cover art failed: \(error.localizedDescription)") }
+        }
 
         print("\(checks - failures) of \(checks) engine checks match the page")
         if failures > 0 { exit(1) }

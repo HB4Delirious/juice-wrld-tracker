@@ -102,6 +102,11 @@ final class AmbientPlayer: NSObject, AVAudioPlayerDelegate {
     var isPlaying: Bool { player != nil && !isPaused }
     private var items: [(url: URL, title: String)] = []
     private var order: [Int] = []
+    private var inOrder = false                          // era radio: the era's songs in recording order, not shuffled
+    private(set) var upNext: [(url: URL, title: String)] = [] // songs you picked to play next, before the mix
+    private var crossfading = false                      // the next song has started fading in over this one
+    /// Seconds songs blend into each other (0: one after the other). Settings > Playback.
+    static var crossfade: Double { UserDefaults.standard.object(forKey: "crossfadeSeconds") as? Double ?? 4 }
     private var player: AVAudioPlayer?
     private var artwork: MPMediaItemArtwork?
     private var generation = 0 // bumps on every start/stop so a slow load can't start after the user turned it off
@@ -117,12 +122,32 @@ final class AmbientPlayer: NSObject, AVAudioPlayerDelegate {
         c.togglePlayPauseCommand.addTarget { [weak self] _ in self?.togglePause(); return .success }
         c.nextTrackCommand.addTarget { [weak self] _ in self?.skip(); return .success }
         c.previousTrackCommand.isEnabled = false
+        // Crossfade: a few seconds before a song ends, start the next one fading in over it.
+        Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in self?.crossfadeIfDue() }
     }
 
-    func set(_ newItems: [(URL, String)]) {
-        items = newItems.map { (url: $0.0, title: $0.1) }
-        order = []
-        if items.isEmpty { stop() }
+    /// The songs to play from. `inOrder` plays them as given (era radio) instead of shuffled.
+    func set(_ newItems: [(URL, String)], inOrder: Bool = false) {
+        let list = newItems.map { (url: $0.0, title: $0.1) }
+        if list.map(\.url) != items.map(\.url) || inOrder != self.inOrder { order = [] }
+        items = list
+        self.inOrder = inOrder
+        if items.isEmpty && upNext.isEmpty { stop() }
+    }
+
+    /// Plays this song after the current one (before the mix carries on).
+    func queueNext(_ url: URL, title: String) {
+        upNext.append((url, title))
+        publish()
+        if player == nil && !isPaused { next() }
+    }
+    func clearUpNext() { upNext = []; publish() }
+
+    private func crossfadeIfDue() {
+        let fade = Self.crossfade
+        guard fade > 0, !crossfading, clip == nil, let p = player, p.isPlaying, p.duration > fade * 3, p.duration - p.currentTime <= fade else { return }
+        crossfading = true
+        next(fade: fade)
     }
 
     /// Starts shuffling unless something is already playing, loading, or the user paused.
@@ -149,15 +174,19 @@ final class AmbientPlayer: NSObject, AVAudioPlayerDelegate {
     func skip() { isPaused = false; next() }
     func playNow(_ url: URL, title: String) { isPaused = false; start((url: url, title: title)) }
 
-    private func next(failures: Int = 0) {
+    private func next(failures: Int = 0, fade: Double = 0) {
+        if !upNext.isEmpty { start(upNext.removeFirst(), failures: failures, fade: fade); return }
         guard !items.isEmpty, failures < min(items.count, 5) else { stop(); return }
         if order.isEmpty {
-            // Songs not heard yet today first; once all have played, everything shuffles again.
-            let heard = Self.heardToday()
-            let fresh = items.indices.filter { !heard.contains(items[$0].url.path) }
-            order = (fresh.isEmpty ? Array(items.indices) : fresh).shuffled()
+            if inOrder { order = Array(items.indices.reversed()) } // taken from the end: first song first
+            else {
+                // Songs not heard yet today first; once all have played, everything shuffles again.
+                let heard = Self.heardToday()
+                let fresh = items.indices.filter { !heard.contains(items[$0].url.path) }
+                order = (fresh.isEmpty ? Array(items.indices) : fresh).shuffled()
+            }
         }
-        start(items[order.removeLast()], failures: failures)
+        start(items[order.removeLast()], failures: failures, fade: fade)
     }
 
     /// Every play (path and time), for "your listening" in Stats. The newest 5,000 are kept.
@@ -222,8 +251,12 @@ final class AmbientPlayer: NSObject, AVAudioPlayerDelegate {
         if resumeAfterClip, !isPaused { player?.play() }
     }
 
-    private func start(_ item: (url: URL, title: String), failures: Int = 0) {
-        player?.stop()
+    private func start(_ item: (url: URL, title: String), failures: Int = 0, fade: Double = 0) {
+        if fade > 0, let old = player {
+            old.delegate = nil // its end isn't "the song finished" any more
+            old.setVolume(0, fadeDuration: fade)
+            DispatchQueue.main.asyncAfter(deadline: .now() + fade) { old.stop() }
+        } else { player?.stop() }
         generation += 1
         let gen = generation
         // Opening a file on a network drive can take seconds; keep it off the main thread.
@@ -238,8 +271,9 @@ final class AmbientPlayer: NSObject, AVAudioPlayerDelegate {
                 loaded.isMeteringEnabled = true
                 loaded.volume = 0
                 loaded.play()
-                loaded.setVolume(self.volume, fadeDuration: 3)
+                loaded.setVolume(self.volume, fadeDuration: fade > 0 ? fade : 3)
                 self.player = loaded
+                self.crossfading = false
                 self.title = item.title
                 self.currentPath = item.url.path
                 self.hasOwnCover = cover != nil
@@ -282,7 +316,7 @@ final class AmbientPlayer: NSObject, AVAudioPlayerDelegate {
     func audioPlayerDidFinishPlaying(_ finished: AVAudioPlayer, successfully flag: Bool) {
         guard finished === player else { return }
         player = nil
-        if !items.isEmpty { next() } else { title = nil; publish() }
+        if !items.isEmpty || !upNext.isEmpty { next() } else { title = nil; publish() }
     }
 
     // A damaged file stops partway with this instead of "finished"; move on rather than go quiet.

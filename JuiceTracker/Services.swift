@@ -227,9 +227,13 @@ enum SongAlerts {
         // For the menu bar's "New songs" line.
         defaults.set(added.map(\.name) + nowReleased.map { "\($0.name) (released)" }, forKey: "alertsLastNew")
         defaults.set(Date(), forKey: "alertsLastNewDate")
+        // The app's catalog catches up now, so the new songs are in it when you open the window.
+        Task { @MainActor in await EngineState.shared.reload() }
         if defaults.bool(forKey: "alertsDryRun") { return } // set only when testing, so no notification prompt appears
         guard !others.isEmpty || !otherReleases.isEmpty else { return }
-        notify(added: others.map(\.name), released: otherReleases.map(\.name))
+        // New songs that already have a file (and older ones that just got one) can be downloaded from the alert.
+        let fileNews = songs.filter { s in s.hasFile && !wishIds.contains(s.id) && (!known.contains(s.id) || (hadFile.map { !$0.contains(s.id) } ?? false)) }
+        notify(added: others.map(\.name), released: otherReleases.map(\.name), downloadable: fileNews.map(\.id))
     }
 
     static let wishCategory = "wishlist"
@@ -258,7 +262,7 @@ enum SongAlerts {
         }
     }
 
-    static func notify(added: [String], released: [String]) {
+    static func notify(added: [String], released: [String], downloadable: [String] = []) {
         func list(_ names: [String]) -> String {
             names.count <= 3 ? names.joined(separator: ", ") : names.prefix(2).joined(separator: ", ") + " and \(names.count - 2) more"
         }
@@ -267,8 +271,10 @@ enum SongAlerts {
         if !released.isEmpty { parts.append("Just released: \(list(released)).") }
         let content = UNMutableNotificationContent()
         content.title = "Juice Tracker"
+        if !downloadable.isEmpty { parts.append("\(downloadable.count) \(downloadable.count == 1 ? "has a file" : "have files") to download.") }
         content.body = parts.joined(separator: " ")
         content.sound = .default
+        if !downloadable.isEmpty { content.categoryIdentifier = wishCategory; content.userInfo = ["songIds": downloadable] } // its Download button
         let center = UNUserNotificationCenter.current()
         center.requestAuthorization(options: [.alert, .sound]) { ok, _ in
             guard ok else { return }
@@ -436,6 +442,7 @@ enum Updater {
 
 struct SettingsView: View {
     @AppStorage(Pref.dailyCheck) private var dailyCheck = true
+    @AppStorage("crossfadeSeconds") private var crossfade = 4.0
     @AppStorage(Pref.keepRunning) private var keepRunning = false
     @AppStorage(Pref.autoUpdate) private var autoUpdate = true
     @AppStorage(Pref.menuBar) private var menuBar = true
@@ -461,6 +468,11 @@ struct SettingsView: View {
                 Text("Daily checks run while Juice Tracker is open. Keep it running, or open it at login, to get alerts without the window.")
                     .font(.caption).foregroundColor(.secondary).fixedSize(horizontal: false, vertical: true)
             } header: { Text("New songs").bold() }
+            Section {
+                Picker("Crossfade between songs", selection: $crossfade) {
+                    Text("Off").tag(0.0); Text("2 seconds").tag(2.0); Text("4 seconds").tag(4.0); Text("6 seconds").tag(6.0); Text("8 seconds").tag(8.0)
+                }
+            } header: { Text("Playback").bold() }
 
             Section {
                 Picker("Era theme", selection: $eraTheme) {
