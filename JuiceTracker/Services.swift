@@ -309,6 +309,13 @@ enum Snapshots {
 enum Updater {
     struct Failure: LocalizedError { let errorDescription: String? }
 
+    /// Shows the question as a sheet on the window, so downloads, scans and the music keep going while it's open
+    /// (a modal alert stops the app's work until it's answered).
+    @MainActor private static func present(_ alert: NSAlert) async -> NSApplication.ModalResponse {
+        guard let window = NSApp.windows.first(where: { $0.isVisible && $0.canBecomeMain }) else { return alert.runModal() }
+        return await withCheckedContinuation { cont in alert.beginSheetModal(for: window) { cont.resume(returning: $0) } }
+    }
+
     /// "updateFeed" is only set when testing the updater against a local server.
     private static var feed: URL {
         URL(string: UserDefaults.standard.string(forKey: "updateFeed") ?? "")
@@ -353,7 +360,7 @@ enum Updater {
             ask.addButton(withTitle: "Later")
             ask.addButton(withTitle: "Skip This Version")
             NSApp.activate(ignoringOtherApps: true)
-            switch ask.runModal() {
+            switch await present(ask) {
             case .alertFirstButtonReturn: try await install(dmgURL, version: latest)
             case .alertThirdButtonReturn: UserDefaults.standard.set(latest, forKey: "skippedVersion")
             default: break

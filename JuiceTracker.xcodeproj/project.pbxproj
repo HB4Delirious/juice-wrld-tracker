@@ -7,8 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		14E55C26DBE504F6A45408BA /* bridge.js in Resources */ = {isa = PBXBuildFile; fileRef = 7CC2F554E14D92FF0DFC5244 /* bridge.js */; };
-		7566C83FDE2D874A8C527794 /* NativeBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = E6A30A4561E530805D149EE4 /* NativeBridge.swift */; };
+		7566C83FDE2D874A8C527794 /* Player.swift in Sources */ = {isa = PBXBuildFile; fileRef = E6A30A4561E530805D149EE4 /* Player.swift */; };
 		5E6A1C7F2B3D4E5F60718293 /* Services.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6F7B2D803C4E5F60718293A4 /* Services.swift */; };
 		7A8B9C0D1E2F304152637485 /* MenuBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8B9C0D1E2F30415263748596 /* MenuBar.swift */; };
 		9C0D1E2F3041526374859607 /* NativeUI.swift in Sources */ = {isa = PBXBuildFile; fileRef = AD1E2F304152637485960718 /* NativeUI.swift */; };
@@ -18,29 +17,24 @@
 		1485960718293A4B5C6D7E8F /* NativeExtras.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2596071829304B5C6D7E8F90 /* NativeExtras.swift */; };
 		36A7B8C9D0E1F20314253647 /* NativeMore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 47B8C9D0E1F2031425364758 /* NativeMore.swift */; };
 		58C9D0E1F203142536475869 /* NativeJuice.swift in Sources */ = {isa = PBXBuildFile; fileRef = 69D0E1F20314253647586970 /* NativeJuice.swift */; };
+		58C9D0E1F203142536475A08 /* EngineRest.swift in Sources */ = {isa = PBXBuildFile; fileRef = 69D0E1F20314253647586A08 /* EngineRest.swift */; };
 		58C9D0E1F203142536475A07 /* EngineTools.swift in Sources */ = {isa = PBXBuildFile; fileRef = 69D0E1F20314253647586A07 /* EngineTools.swift */; };
 		58C9D0E1F203142536475A06 /* EngineDownloads.swift in Sources */ = {isa = PBXBuildFile; fileRef = 69D0E1F20314253647586A06 /* EngineDownloads.swift */; };
 		58C9D0E1F203142536475A05 /* EngineLibrary.swift in Sources */ = {isa = PBXBuildFile; fileRef = 69D0E1F20314253647586A05 /* EngineLibrary.swift */; };
 		58C9D0E1F203142536475A04 /* EngineActions.swift in Sources */ = {isa = PBXBuildFile; fileRef = 69D0E1F20314253647586A04 /* EngineActions.swift */; };
 		58C9D0E1F203142536475A03 /* EngineState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 69D0E1F20314253647586A03 /* EngineState.swift */; };
-		58C9D0E1F203142536475A02 /* EngineCheck.swift in Sources */ = {isa = PBXBuildFile; fileRef = 69D0E1F20314253647586A02 /* EngineCheck.swift */; };
 		58C9D0E1F203142536475A01 /* Engine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 69D0E1F20314253647586A01 /* Engine.swift */; };
 		93AD2DE8F603B24719141ACE /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 2DA6296CA099F01CDF41D14C /* Assets.xcassets */; };
-		C169FD5F3E196738AE889C7D /* juice-tracker.html in Resources */ = {isa = PBXBuildFile; fileRef = ACB23FEBF9072389C24011D1 /* juice-tracker.html */; };
 		C8E648084E7309C1B01150E8 /* JuiceTrackerApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = B11B15543E9C61D2DE5F191E /* JuiceTrackerApp.swift */; };
-		ED549C999B26D36BC005D7A2 /* WebViewStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 33923ED7623C961878FB8F8C /* WebViewStore.swift */; };
 		B2C3D4E5F60718293A4B5C6D /* JuiceTrackerWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60718293A4B5C /* JuiceTrackerWidget.swift */; };
 		F60718293A4B5C6D7E8F9001 /* JuiceTrackerWidget.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = E5F60718293A4B5C6D7E8F90 /* JuiceTrackerWidget.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
 		2DA6296CA099F01CDF41D14C /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
-		33923ED7623C961878FB8F8C /* WebViewStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebViewStore.swift; sourceTree = "<group>"; };
-		7CC2F554E14D92FF0DFC5244 /* bridge.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; path = bridge.js; sourceTree = "<group>"; };
-		ACB23FEBF9072389C24011D1 /* juice-tracker.html */ = {isa = PBXFileReference; lastKnownFileType = text.html; name = "juice-tracker.html"; path = "../web/juice-tracker.html"; sourceTree = "<group>"; };
 		B11B15543E9C61D2DE5F191E /* JuiceTrackerApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JuiceTrackerApp.swift; sourceTree = "<group>"; };
 		CBB29ABC89E055B4458F1CD6 /* JuiceTracker.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = JuiceTracker.app; sourceTree = BUILT_PRODUCTS_DIR; };
-		E6A30A4561E530805D149EE4 /* NativeBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeBridge.swift; sourceTree = "<group>"; };
+		E6A30A4561E530805D149EE4 /* Player.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Player.swift; sourceTree = "<group>"; };
 		6F7B2D803C4E5F60718293A4 /* Services.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Services.swift; sourceTree = "<group>"; };
 		8B9C0D1E2F30415263748596 /* MenuBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuBar.swift; sourceTree = "<group>"; };
 		AD1E2F304152637485960718 /* NativeUI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeUI.swift; sourceTree = "<group>"; };
@@ -50,12 +44,12 @@
 		2596071829304B5C6D7E8F90 /* NativeExtras.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeExtras.swift; sourceTree = "<group>"; };
 		47B8C9D0E1F2031425364758 /* NativeMore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeMore.swift; sourceTree = "<group>"; };
 		69D0E1F20314253647586970 /* NativeJuice.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeJuice.swift; sourceTree = "<group>"; };
+		69D0E1F20314253647586A08 /* EngineRest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EngineRest.swift; sourceTree = "<group>"; };
 		69D0E1F20314253647586A07 /* EngineTools.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EngineTools.swift; sourceTree = "<group>"; };
 		69D0E1F20314253647586A06 /* EngineDownloads.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EngineDownloads.swift; sourceTree = "<group>"; };
 		69D0E1F20314253647586A05 /* EngineLibrary.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EngineLibrary.swift; sourceTree = "<group>"; };
 		69D0E1F20314253647586A04 /* EngineActions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EngineActions.swift; sourceTree = "<group>"; };
 		69D0E1F20314253647586A03 /* EngineState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EngineState.swift; sourceTree = "<group>"; };
-		69D0E1F20314253647586A02 /* EngineCheck.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EngineCheck.swift; sourceTree = "<group>"; };
 		69D0E1F20314253647586A01 /* Engine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Engine.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60718293A4B5C /* JuiceTrackerWidget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JuiceTrackerWidget.swift; sourceTree = "<group>"; };
 		C3D4E5F60718293A4B5C6D7E /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
@@ -77,10 +71,8 @@
 			isa = PBXGroup;
 			children = (
 				2DA6296CA099F01CDF41D14C /* Assets.xcassets */,
-				7CC2F554E14D92FF0DFC5244 /* bridge.js */,
-				ACB23FEBF9072389C24011D1 /* juice-tracker.html */,
 				B11B15543E9C61D2DE5F191E /* JuiceTrackerApp.swift */,
-				E6A30A4561E530805D149EE4 /* NativeBridge.swift */,
+				E6A30A4561E530805D149EE4 /* Player.swift */,
 				6F7B2D803C4E5F60718293A4 /* Services.swift */,
 				8B9C0D1E2F30415263748596 /* MenuBar.swift */,
 				AD1E2F304152637485960718 /* NativeUI.swift */,
@@ -90,14 +82,13 @@
 				2596071829304B5C6D7E8F90 /* NativeExtras.swift */,
 				47B8C9D0E1F2031425364758 /* NativeMore.swift */,
 				69D0E1F20314253647586970 /* NativeJuice.swift */,
+				69D0E1F20314253647586A08 /* EngineRest.swift */,
 				69D0E1F20314253647586A07 /* EngineTools.swift */,
 				69D0E1F20314253647586A06 /* EngineDownloads.swift */,
 				69D0E1F20314253647586A05 /* EngineLibrary.swift */,
 				69D0E1F20314253647586A04 /* EngineActions.swift */,
 				69D0E1F20314253647586A03 /* EngineState.swift */,
-				69D0E1F20314253647586A02 /* EngineCheck.swift */,
 				69D0E1F20314253647586A01 /* Engine.swift */,
-				33923ED7623C961878FB8F8C /* WebViewStore.swift */,
 			);
 			path = JuiceTracker;
 			sourceTree = "<group>";
@@ -239,8 +230,6 @@
 			buildActionMask = 2147483647;
 			files = (
 				93AD2DE8F603B24719141ACE /* Assets.xcassets in Resources */,
-				14E55C26DBE504F6A45408BA /* bridge.js in Resources */,
-				C169FD5F3E196738AE889C7D /* juice-tracker.html in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -252,7 +241,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				C8E648084E7309C1B01150E8 /* JuiceTrackerApp.swift in Sources */,
-				7566C83FDE2D874A8C527794 /* NativeBridge.swift in Sources */,
+				7566C83FDE2D874A8C527794 /* Player.swift in Sources */,
 				5E6A1C7F2B3D4E5F60718293 /* Services.swift in Sources */,
 				7A8B9C0D1E2F304152637485 /* MenuBar.swift in Sources */,
 				9C0D1E2F3041526374859607 /* NativeUI.swift in Sources */,
@@ -262,14 +251,13 @@
 				1485960718293A4B5C6D7E8F /* NativeExtras.swift in Sources */,
 				36A7B8C9D0E1F20314253647 /* NativeMore.swift in Sources */,
 				58C9D0E1F203142536475869 /* NativeJuice.swift in Sources */,
+				58C9D0E1F203142536475A08 /* EngineRest.swift in Sources */,
 				58C9D0E1F203142536475A07 /* EngineTools.swift in Sources */,
 				58C9D0E1F203142536475A06 /* EngineDownloads.swift in Sources */,
 				58C9D0E1F203142536475A05 /* EngineLibrary.swift in Sources */,
 				58C9D0E1F203142536475A04 /* EngineActions.swift in Sources */,
 				58C9D0E1F203142536475A03 /* EngineState.swift in Sources */,
-				58C9D0E1F203142536475A02 /* EngineCheck.swift in Sources */,
 				58C9D0E1F203142536475A01 /* Engine.swift in Sources */,
-				ED549C999B26D36BC005D7A2 /* WebViewStore.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

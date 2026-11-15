@@ -1,13 +1,12 @@
 import AppKit
 
-// Stage 4b of replacing the HTML engine: Swift owns the music folder and the library. It reopens the folder, shows the
-// last scan right away from its tag cache, lists the folder in the background (a network drive can take minutes),
-// matches files to songs, and hands the page the library (it still downloads, writes tags and checks files until
-// 4c and 4d). The page tells Swift about every file it adds, retags or trashes, and about hand matches.
+// The music folder and the library: reopens the folder (from its bookmark), shows the last scan right away from the
+// tag cache, lists the folder in the background (a network drive can take minutes), and matches files to songs.
+// Downloads, tag writes and the Trash update it as they happen.
 
 @MainActor final class EngineLibrary: ObservableObject {
     static let shared = EngineLibrary()
-    static let folderId = "plex-music" // the page's picker id: the same saved folder and bookmark as before
+    static let folderId = "plex-music" // the saved folder and bookmark keep the name they always had
 
     @Published private(set) var root: URL?
     @Published private(set) var files: [LibraryFile] = []
@@ -36,10 +35,8 @@ import AppKit
     func start() async {
         guard !started else { return }
         started = true
-        await EngineAmbient.migrate() // the page's player settings, before the first sync
         cache = EngineFiles.tagCache()
-        if cache.isEmpty || EngineFiles.read("items.json") == nil { await migrateFromPage() }
-        overrides = await pageOverrides() ?? overrides
+        overrides = (EngineState.shared.personalAny("matchOverrides") as? [String: Any] ?? [:]).compactMapValues { $0 as? String }
         guard let url = await Self.restoreFolder() else { return }
         use(url)
         let items = EngineFiles.read("items.json").flatMap { try? JSONDecoder().decode([String].self, from: $0) } ?? []
@@ -47,31 +44,13 @@ import AppKit
             files = items.compactMap { libraryFile($0, cache[$0]) }.sorted { $0.path.localizedCompare($1.path) == .orderedAscending }
             loaded = true
             rematch()
-            await pushToPage(status: "\(files.count.formatted()) Juice WRLD files from your last scan. Checking the folder for changes…")
+            status = "\(files.count.formatted()) Juice WRLD files from your last scan. Checking the folder for changes…"
         }
         await checkDrive()
         watchDrive()
         await scan(reread: false)
         await EngineDownloads.shared.start() // carries on with what was queued
         EngineSnapshot.maybeSave()
-    }
-
-    /// The first launch with a Swift library: the page's tag cache and file list, so nothing is read twice.
-    private func migrateFromPage() async {
-        if cache.isEmpty, let json = try? await NativeStore.shared.tryAct("engineTagCache"),
-           let raw = try? JSONSerialization.jsonObject(with: Data(json.utf8)) as? [String: [String: Any]] {
-            for (path, v) in raw { cache[path] = Self.cached(v) }
-            saveCache()
-        }
-        if let json = try? await NativeStore.shared.tryAct("engineItems"), let items = try? JSONDecoder().decode([String].self, from: Data(json.utf8)), !items.isEmpty {
-            saveItems(items)
-        }
-    }
-
-    private func pageOverrides() async -> [String: String]? {
-        guard let json = try? await NativeStore.shared.tryAct("engineExport"),
-              let ex = try? JSONSerialization.jsonObject(with: Data(json.utf8)) as? [String: Any] else { return nil }
-        return ((ex["personal"] as? [String: Any])?["matchOverrides"] as? [String: Any])?.compactMapValues { $0 as? String }
     }
 
     // MARK: The folder
@@ -120,10 +99,7 @@ import AppKit
         await checkDrive()
     }
 
-    private func use(_ url: URL) {
-        root = url
-        WebViewStore.shared.allowFolder(url.path) // the page may read and write in it (downloads, tags, Trash)
-    }
+    private func use(_ url: URL) { root = url }
 
     private func scan(reread: Bool) async {
         guard let root, !scanning else { return }
@@ -153,65 +129,17 @@ import AppKit
         if result.audioCount == 0 { text = "No audio files found in that folder. Choose the folder that holds your music." }
         else if files.isEmpty { text = "Found \(result.audioCount.formatted()) audio files, but none look like Juice WRLD." }
         else { text = "\(files.count.formatted()) Juice WRLD files found\(onlyJuice ? " out of \(result.audioCount.formatted()) audio files" : "")." }
-        await pushToPage(status: text)
+        status = text
         NSLog("Juice Tracker: scanned \(result.audioCount) files in \(String(format: "%.1f", took)) s")
     }
 
-    // MARK: Matching and the page
+    // MARK: Matching
 
     func rematch() {
         match = Engine.match(catalog: EngineState.shared.catalog, files: files, overrides: overrides)
         layout = Engine.layout(catalog: EngineState.shared.catalog, files: files, match: match)
         NativeStore.shared.rebuild()
         EngineAmbient.sync()
-    }
-
-    /// Gives the page the library (paths, tags and where each file is), so its tag fixer, duplicates, file health,
-    /// downloads and music keep working. It matches the same way, so it agrees on what you own.
-    func pushToPage(status text: String) async {
-        status = text
-        guard let root else { return }
-        let base = root.path.hasSuffix("/") ? String(root.path.dropLast()) : root.path
-        let list: [[String: Any]] = files.map { f in
-            ["path": f.path, "abs": base + "/" + f.path.split(separator: "/", maxSplits: 1).dropFirst().joined(), "ext": f.ext, "tags": f.tags,
-             "title": f.title, "key": f.key, "stem": f.stem, "fromTags": f.fromTags, "size": f.size]
-        }
-        let json = (try? JSONSerialization.data(withJSONObject: list)).map { String(decoding: $0, as: UTF8.self) } ?? "[]"
-        await NativeStore.shared.act("useLibrary", -1, ["root": base, "rootName": root.lastPathComponent, "files": json, "status": text])
-    }
-
-    /// What the page changed: tags it read or wrote ("put", path → size, date, tags), the files it still has after
-    /// moving some to the Trash ("items"), and hand matches ("overrides").
-    func pageChanged(_ change: [String: Any]) {
-        var changed = false
-        if let put = change["put"] as? [String: [String: Any]] {
-            for (path, v) in put {
-                let c = Self.cached(v)
-                // A report older than what's here (the page scanned a download before Swift tagged it) is stale.
-                if let have = cache[path], have.mtime > c.mtime { continue }
-                cache[path] = c
-                if let f = libraryFile(path, c) {
-                    if let n = files.firstIndex(where: { $0.path == path }) { files[n] = f } else { files.append(f) }
-                } else { files.removeAll { $0.path == path } } // not a Juice WRLD file
-                changed = true
-            }
-            saveCache()
-        }
-        if let items = change["items"] as? [String] {
-            let keep = Set(items)
-            let before = files.count
-            files.removeAll { !keep.contains($0.path) }
-            changed = changed || files.count != before
-            saveItems(items)
-        }
-        if let o = (change["overrides"] as? [String: Any])?.compactMapValues({ $0 as? String }), o != overrides {
-            overrides = o
-            changed = true
-        }
-        if changed {
-            files.sort { $0.path.localizedCompare($1.path) == .orderedAscending }
-            rematch()
-        }
     }
 
     // MARK: Changes made here (stage 4d)
@@ -236,7 +164,7 @@ import AppKit
         rematch()
     }
 
-    /// Files moved to the Trash: out of the library, here and in the page.
+    /// Files moved to the Trash: out of the library.
     func removeFiles(_ paths: [String]) async {
         guard !paths.isEmpty else { return }
         let gone = Set(paths)
@@ -244,19 +172,21 @@ import AppKit
         let items = (EngineFiles.read("items.json").flatMap { try? JSONDecoder().decode([String].self, from: $0) } ?? []).filter { !gone.contains($0) }
         saveItems(items)
         rematch()
-        await pushToPage(status: status)
     }
 
     /// A hand match ("none" for none of these), or nil to go back to automatic matching.
     func setOverride(_ path: String, _ id: String?) {
         overrides[path] = id
         rematch()
-        Task { await pushToPage(status: status) }
+    }
+    /// A backup's hand matches, for files that don't have one yet.
+    func mergeOverrides(_ add: [String: String]) {
+        for (path, id) in add where overrides[path] == nil { overrides[path] = id }
+        rematch()
     }
     func clearOverrides() {
         overrides = [:]
         rematch()
-        Task { await pushToPage(status: status) }
     }
 
     // MARK: Helpers

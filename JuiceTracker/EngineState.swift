@@ -1,10 +1,24 @@
 import Foundation
 
-// Stage 2 of replacing the HTML engine: Swift owns the catalog (loading, the 12-hour cache, new and newly released
-// songs), your wishlist and notes, and builds everything the screens show. The page still scans the folder, matches,
-// downloads and plays; Swift hands it the same catalog, so a song's number means the same song on both sides, and
-// takes from it only what you own, the file count, the drive status and the download queue.
+// The catalog (loading, the 12-hour cache, new and newly released songs), your saved data (wishlist, notes, hand
+// matches, settings) and everything the screens show.
 
+/// Where the engine keeps its files: ~/Library/Application Support/JuiceTracker/<app id>/engine/.
+enum EngineFiles {
+    static var dir: URL {
+        let d = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent("Library/Application Support/JuiceTracker/\(Bundle.main.bundleIdentifier ?? "com.hb4delirious.JuiceTracker")/engine")
+        try? FileManager.default.createDirectory(at: d, withIntermediateDirectories: true)
+        return d
+    }
+    static func write(_ name: String, _ data: Data) throws { try data.write(to: dir.appendingPathComponent(name), options: .atomic) }
+    static func read(_ name: String) -> Data? { try? Data(contentsOf: dir.appendingPathComponent(name)) }
+
+    /// The tag cache (path → size, date, tags).
+    static func tagCache() -> [String: Engine.CachedTags] {
+        read("tags.json").flatMap { try? JSONDecoder().decode([String: Engine.CachedTags].self, from: $0) } ?? [:]
+    }
+}
 
 @MainActor final class EngineState: ObservableObject {
     static let shared = EngineState()
@@ -28,8 +42,8 @@ import Foundation
     private(set) var eras: [String: EraInfo] = [:]
     private(set) var saved = Saved()
     private(set) var fetchedAt: Date?
-    private(set) var token = 0                    // goes up each time the page is handed the catalog
-    private var personal: [String: Any] = [:]     // the page's personal data; Swift edits "wish" and "notes"
+    private(set) var token = 0                    // goes up with every new catalog (the screens rebuild their song lists)
+    private var personal: [String: Any] = [:]     // personal.json: wishlist, notes, hand matches, trivia, fixer settings
     private var started = false
     private var eraCache: (token: Int, order: [Engine.EraStat], names: [String])?
     private var todayCache: (token: Int, day: String, groups: [(key: String, songs: [Int])])?
@@ -39,55 +53,25 @@ import Foundation
 
     // MARK: Starting up
 
-    /// Runs once the page has loaded: moves saved data over from the web view the first time, loads the cached
-    /// catalog, hands it to the page, and refreshes it when it's older than 12 hours.
+    /// At launch: loads the saved catalog, your data and your library, and refreshes the catalog when it's older
+    /// than 12 hours.
     func start() async {
         guard !started else { return }
         started = true
-        if EngineFiles.read("catalog.json") == nil && EngineFiles.read("personal.json") == nil { await migrateFromPage() }
         saved = EngineFiles.read("saved.json").flatMap { try? Self.decoder.decode(Saved.self, from: $0) } ?? Saved()
         personal = EngineFiles.read("personal.json").flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] } ?? [:]
         if let data = EngineFiles.read("catalog.json"), let file = try? Self.decoder.decode(CatalogFile.self, from: data) {
             catalog = file.songs; eras = file.eras; fetchedAt = file.fetchedAt
             status = "\(file.songs.count.formatted()) songs, loaded \(Self.ago(file.fetchedAt))."
         }
-        await pushPersonal()
-        if !catalog.isEmpty { await pushCatalog() }
+        if !catalog.isEmpty { pushCatalog() }
         await EngineLibrary.shared.start() // the folder and your files (it needs the catalog to match against)
         if let fetchedAt, Date().timeIntervalSince(fetchedAt) > Self.cacheHours * 3600 { await reload() }
     }
 
-    /// The first launch with the Swift engine: copy the catalog, its history and your wishlist and notes out of the
-    /// page's storage. Read only on the page's side.
-    private func migrateFromPage() async {
-        guard let json = try? await NativeStore.shared.tryAct("engineExport"),
-              let ex = try? JSONSerialization.jsonObject(with: Data(json.utf8)) as? [String: Any] else { return }
-        let store = ex["store"] as? [String: Any] ?? [:]
-        if let personal = ex["personal"] as? [String: Any], let data = try? JSONSerialization.data(withJSONObject: personal) { try? EngineFiles.write("personal.json", data) }
-        try? EngineFiles.write("settings.json", (try? JSONSerialization.data(withJSONObject: ["onlyJuice": ex["onlyJuice"] ?? true, "root": ex["root"] ?? ""])) ?? Data())
-        let date: (Any?) -> Date? = { ($0 as? String).flatMap { Self.iso.date(from: $0) } }
-        var s = Saved()
-        s.knownIds = store["knownIds"] as? [String]
-        s.releaseSnap = (store["releaseSnap"] as? [String: Any])?.compactMapValues { ($0 as? NSNumber)?.intValue }
-        s.newIds = store["newIds"] as? [String] ?? []
-        s.releasedIds = store["releasedIds"] as? [String] ?? []
-        s.prevCheck = date(store["prevCheck"]); s.lastCheck = date(store["lastCheck"])
-        s.firstCheck = store["firstCheck"] as? Bool
-        save(s)
-        if let cat = store["catalog"] as? [String: Any], let songs = cat["songs"] as? [[String: Any]], !songs.isEmpty {
-            var eras: [String: EraInfo] = [:]
-            for (name, v) in cat["eras"] as? [String: [String: Any]] ?? [:] {
-                eras[name] = EraInfo(id: (v["id"] as? NSNumber)?.intValue, description: v["description"] as? String ?? "", timeFrame: v["timeFrame"] as? String ?? "")
-            }
-            let file = CatalogFile(fetchedAt: date(cat["fetchedAt"]) ?? .distantPast, songs: songs.map(Engine.cleanSong), eras: eras)
-            if let data = try? Self.encoder.encode(file) { try? EngineFiles.write("catalog.json", data) }
-        }
-    }
-
     // MARK: The catalog
 
-    /// Downloads the catalog, notes which songs are new or newly released since the last time, saves it, and hands
-    /// it to the page. Same rules as the page's "Reload catalog".
+    /// Downloads the catalog, notes which songs are new or newly released since the last time, and saves it.
     func reload() async {
         guard !loading else { return }
         loading = true
@@ -111,30 +95,46 @@ import Foundation
             catalog = songs; eras = fetched.eras; fetchedAt = now
             if let data = try? Self.encoder.encode(CatalogFile(fetchedAt: now, songs: songs, eras: fetched.eras)) { try? EngineFiles.write("catalog.json", data) }
             status = "\(songs.count.formatted()) songs loaded."
-            await pushCatalog()
+            pushCatalog()
             EngineLibrary.shared.rematch()
         } catch {
             status = "\(error.localizedDescription) Try again in a minute."
         }
     }
 
-    /// Gives the page the catalog, so its song numbers are Swift's song numbers.
-    private func pushCatalog() async {
-        token += 1
-        let songs = (try? Self.encoder.encode(catalog)).map { String(decoding: $0, as: UTF8.self) } ?? "[]"
-        let eraDict = eras.mapValues { e -> [String: Any] in ["id": e.id.map { $0 as Any } ?? NSNull(), "description": e.description, "timeFrame": e.timeFrame] }
-        await NativeStore.shared.act("useCatalog", -1, ["token": token, "songs": songs, "eras": eraDict])
-    }
+    /// A new catalog: the screens rebuild their song lists (the token tells NativeStore the catalog changed).
+    private func pushCatalog() { token += 1 }
 
-    /// Gives the page your wishlist, notes, hand matches and fixer settings (what it still does uses them).
-    private func pushPersonal() async {
-        var p: [String: Any] = ["wish": wish, "notes": notes]
-        for k in ["matchOverrides", "fixGenre", "autoTag"] { if let v = personal[k] { p[k] = v } }
-        await NativeStore.shared.act("setPersonal", -1, p)
-    }
-
+    /// One of your saved settings (trivia scores, downloads, hand matches and so on).
+    func personalAny(_ key: String) -> Any? { personal[key] }
     func personalString(_ key: String) -> String { personal[key] as? String ?? "" }
     func personalBool(_ key: String, default d: Bool) -> Bool { personal[key] as? Bool ?? d }
+    /// Fills in a song's full details from the site the first time its card opens (the catalog download has the
+    /// basics). Kept for this session; the next catalog reload brings them too.
+    func fillDetails(_ i: Int) async {
+        guard catalog.indices.contains(i), !catalog[i].hasDetails else { return }
+        let id = catalog[i].id
+        guard let url = URL(string: Engine.api + Engine.encodeURIComponent(id) + "/"),
+              let (data, r) = try? await URLSession.shared.data(from: url), (r as? HTTPURLResponse)?.statusCode == 200,
+              let raw = try? JSONSerialization.jsonObject(with: data) as? [String: Any], catalog.indices.contains(i), catalog[i].id == id else { return }
+        let full = Engine.cleanSong(raw)
+        var s = catalog[i]
+        s.engineers = full.engineers; s.locations = full.locations; s.key = full.key; s.info = full.info; s.notes = full.notes
+        s.previewDate = full.previewDate; s.leakDate = full.leakDate; s.leakType = full.leakType; s.sessions = full.sessions; s.dates = full.dates
+        if !Engine.hasValue(s.artists) && Engine.hasValue(full.artists) { s.artists = full.artists }
+        if !Engine.hasValue(s.producers) && Engine.hasValue(full.producers) { s.producers = full.producers }
+        if !Engine.hasValue(s.recordDates) && Engine.hasValue(full.recordDates) { s.recordDates = full.recordDates }
+        if !Engine.hasValue(s.release) && Engine.hasValue(full.release) { s.release = full.release }
+        if s.alt.isEmpty { s.alt = full.alt }
+        if s.publicId.isEmpty { s.publicId = full.publicId }
+        if s.filePath.isEmpty { s.filePath = full.filePath }
+        s.hasDetails = true
+        catalog[i] = s
+        eras = Engine.collectEras([raw], into: eras)
+        pushCatalog()
+        NativeStore.shared.rebuild()
+    }
+
     /// Changes one of your saved settings (hand matches, fixer genre, auto-tag) and saves it.
     func setPersonal(_ key: String, _ value: Any) {
         personal[key] = value
@@ -182,12 +182,11 @@ import Foundation
         if let data = try? JSONSerialization.data(withJSONObject: personal) { try? EngineFiles.write("personal.json", data) }
         UserDefaults.standard.set(Array(wish.keys), forKey: "wishlistIds") // the daily check alerts these songs on their own
         NativeStore.shared.rebuild()
-        Task { await pushPersonal() }
     }
 
     // MARK: What the screens show
 
-    /// The screens' state: Swift's catalog and data, with what you own from the page.
+    /// The screens' state, from the catalog, your data and your library.
     func build(includeCatalog: Bool) -> NState {
         let library = EngineLibrary.shared, owned = library.owned, wished = wish
         var catOrder: [String] = [], cats: [String: (have: Int, total: Int)] = [:]

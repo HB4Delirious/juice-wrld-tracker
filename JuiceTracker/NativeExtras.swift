@@ -391,7 +391,8 @@ struct ExportScreen: View {
     private func fromSnapshot() async {
         guard let text = Files.openText(types: [.commaSeparatedText]) else { return }
         do {
-            lost = (try? JSONDecoder().decode([Int].self, from: Data(try await store.tryAct("snapshotLost", -1, ["text": text]).utf8))) ?? []
+            let json = try await store.tryAct("snapshotLost", -1, ["text": text]) // throws when it isn't a snapshot
+            lost = (try? JSONDecoder().decode([Int].self, from: Data(json.utf8))) ?? []
             message = lost.isEmpty ? ("You still have every song in that snapshot.", false) : nil
         } catch { message = (error.localizedDescription, true) }
     }

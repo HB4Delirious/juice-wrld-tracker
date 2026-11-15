@@ -1,8 +1,6 @@
 import AppKit
 
-// Stage 4c of replacing the HTML engine: the download queue, the music drive status, the background music and the
-// weekly library snapshot, run by Swift. After each download the page still adds the file to the library and
-// auto-tags it (tag writing moves in 4d).
+// The download queue, the music drive status, the background music and the weekly library snapshot.
 
 @MainActor final class EngineDownloads: ObservableObject {
     static let shared = EngineDownloads()
@@ -14,16 +12,11 @@ import AppKit
     private var stopping = false
     private var loaded = false
 
-    /// The queue (queue.json), carried over from the page the first time. It survives quitting and dropped drives.
+    /// The queue (queue.json). It survives quitting and dropped drives.
     private func load() async {
         guard !loaded else { return }
         loaded = true
         queue = EngineFiles.read("queue.json").flatMap { try? JSONDecoder().decode([Item].self, from: $0) } ?? []
-        if let json = try? await NativeStore.shared.tryAct("engineQueue"),
-           let old = try? JSONSerialization.jsonObject(with: Data(json.utf8)) as? [[String: Any]] {
-            for o in old { if let id = o["id"].map({ "\($0)" }), !queue.contains(where: { $0.id == id }) { queue.append(Item(id: id, tries: (o["tries"] as? NSNumber)?.intValue ?? 0)) } }
-            save()
-        }
     }
     private func save() { if let data = try? JSONEncoder().encode(queue) { try? EngineFiles.write("queue.json", data) } }
 
@@ -114,7 +107,7 @@ import AppKit
         return (r.existed, r.note, inner.isEmpty ? (library.root?.lastPathComponent ?? "") : inner)
     }
 
-    /// Saves one song into the folder its era's songs live in; the page adds it to the library, then Swift tags it.
+    /// Saves one song into the folder its era's songs live in, adds it to the library and auto-tags it.
     private func downloadSong(_ i: Int) async throws -> (existed: Bool, note: String) {
         let library = EngineLibrary.shared, song = EngineState.shared.catalog[i]
         guard let root = library.root, let url = URL(string: Engine.fileUrl(song)) else { throw EngineError("Choose your music folder first") }
@@ -123,14 +116,19 @@ import AppKit
         let dest = inner.reduce(root) { $0.appendingPathComponent($1) }.standardizedFileURL
         // never outside the music folder, whatever a song's name says
         guard dest.path.hasPrefix(root.standardizedFileURL.path + "/") else { throw EngineError("can't be saved there") }
-        let r = try await NativeBridge.downloadFile(url, to: dest, root: root.path)
+        let r = try await Downloader.downloadFile(url, to: dest, root: root.path)
         var note = ""
-        if let json = try? await NativeStore.shared.tryAct("afterDownload", i, ["rel": rel, "existed": r.existed, "noTag": true]),
-           let out = try? JSONSerialization.jsonObject(with: Data(json.utf8)) as? [String: Any] {
-            note = out["note"] as? String ?? ""
-        }
+        let state = EngineState.shared, now = EngineState.isoString(Date())
+        var opened = state.personalAny("opened") as? [String: Any] ?? [:]
+        opened[song.id] = now
+        state.setPersonal("opened", opened)
         if !r.existed {
-            // Into Swift's library straight away (the page's report of it can arrive later), then auto-tag it.
+            var downloaded = state.personalAny("downloaded") as? [String: Any] ?? [:]
+            downloaded[song.id] = now
+            state.setPersonal("downloaded", downloaded)
+            // We know exactly which song this file is, even when its title also matches other versions: a hand match,
+            // so it counts once and can be tagged. Then into the library, and auto-tagged.
+            EngineLibrary.shared.setOverride(rel, song.id)
             let tags = await Task.detached { TagReader.read(dest, ext: Engine.extOf(rel)) }.value
             EngineLibrary.shared.updateFile(rel, tags: tags, size: r.size)
             let tagNote = await EngineFixer.shared.autoTag(rel, song: i)
@@ -230,7 +228,7 @@ extension EngineLibrary {
 
 // MARK: - Background music
 
-/// Your matched songs, shuffled, very quietly (or one era's). The settings carry over from the page the first time.
+/// Your matched songs, shuffled, very quietly (or one era's).
 @MainActor enum EngineAmbient {
     static let playable: Set<String> = ["mp3", "m4a", "m4b", "aac", "alac", "flac", "wav", "aif", "aiff"] // what AVAudioPlayer opens
 
@@ -245,18 +243,6 @@ extension EngineLibrary {
     static var volume: Double {
         get { UserDefaults.standard.object(forKey: "ambientVolume") as? Double ?? 6 }
         set { UserDefaults.standard.set(newValue, forKey: "ambientVolume") }
-    }
-
-    /// The page's player settings, once.
-    static func migrate() async {
-        guard UserDefaults.standard.object(forKey: "ambientMigrated") == nil,
-              let json = try? await NativeStore.shared.tryAct("engineSettings"),
-              let s = try? JSONSerialization.jsonObject(with: Data(json.utf8)) as? [String: Any] else { return }
-        UserDefaults.standard.set(true, forKey: "ambientMigrated")
-        if let a = s["ambient"] as? String { on = a != "off" }
-        if let e = s["era"] as? String { era = e }
-        if let v = (s["volume"] as? String).flatMap(Double.init) { volume = v }
-        if let t = (s["lastSnapshot"] as? String).flatMap(Double.init), t > 0 { UserDefaults.standard.set(t / 1000, forKey: "lastSnapshot") }
     }
 
     /// Each playable file you have, with its song: (file, title, era).

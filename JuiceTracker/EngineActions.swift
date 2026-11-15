@@ -1,42 +1,39 @@
 import AppKit
 import SwiftUI
 
-// Stage 3 of replacing the HTML engine: backup and restore, the full catalog spreadsheet and the collection card,
-// made in Swift from Swift's data. The few things the page still keeps (trivia scores, hand matches, which files
-// you have) are asked of it.
+// Backup and restore, the full catalog spreadsheet and the collection card.
 
 extension EngineState {
     // MARK: Backup and restore
 
-    /// The page's personal data (trivia, hand matches and the like, which it still owns).
-    private func pagePersonal() async -> [String: Any] {
-        guard let json = try? await NativeStore.shared.tryAct("engineExport"),
-              let ex = try? JSONSerialization.jsonObject(with: Data(json.utf8)) as? [String: Any] else { return [:] }
-        return ex["personal"] as? [String: Any] ?? [:]
-    }
-
     /// A backup file in the same format as before, so old and new backups restore either way.
     func backupJSON() async -> String {
-        let page = await pagePersonal()
         let names = Dictionary(catalog.map { ($0.id, $0.name) }, uniquingKeysWith: { a, _ in a })
         let backup: [String: Any] = [
             "app": "juice-wrld-collection-tracker", "version": 1, "exportedAt": Self.isoString(Date()),
             "wishlist": wish.sorted { $0.value < $1.value }.map { ["id": $0.key, "name": names[$0.key] ?? "", "added": $0.value] },
             "notes": notes.sorted { $0.key < $1.key }.map { ["id": $0.key, "name": names[$0.key] ?? "", "text": $0.value] },
-            "trivia": page["trivia"] ?? [:], "linkTemplate": page["linkTemplate"] ?? "",
-            "matchOverrides": page["matchOverrides"] ?? [:], "opened": page["opened"] ?? [:], "fixGenre": page["fixGenre"] ?? "",
+            "trivia": personalAny("trivia") ?? [:], "linkTemplate": personalAny("linkTemplate") ?? "",
+            "matchOverrides": personalAny("matchOverrides") ?? [:], "opened": personalAny("opened") ?? [:], "fixGenre": personalAny("fixGenre") ?? "",
         ]
         let data = (try? JSONSerialization.data(withJSONObject: backup, options: [.prettyPrinted, .sortedKeys])) ?? Data()
         return String(decoding: data, as: UTF8.self)
     }
 
-    /// Merges a backup into what's here (nothing is overwritten): the wishlist and notes into Swift's, the rest into
-    /// the page's. Throws if the file isn't a backup.
+    /// Merges a backup into what's here (nothing is overwritten). Throws if the file isn't a backup.
     func restore(_ text: String) async throws -> String {
         guard let data = try? JSONSerialization.jsonObject(with: Data(text.utf8)) as? [String: Any],
               data["app"] as? String == "juice-wrld-collection-tracker" else { throw EngineError("That file isn't a backup from this tracker.") }
         let added = mergeBackup(wishlist: data["wishlist"] as? [[String: Any]] ?? [], notes: data["notes"] as? [[String: Any]] ?? [])
-        _ = try? await NativeStore.shared.tryAct("restoreData", -1, ["text": text]) // trivia, hand matches, link and genre settings
+        var trivia = personalAny("trivia") as? [String: Any] ?? [:]
+        for (k, v) in data["trivia"] as? [String: Any] ?? [:] { trivia[k] = max((trivia[k] as? NSNumber)?.intValue ?? 0, (v as? NSNumber)?.intValue ?? 0) }
+        setPersonal("trivia", trivia)
+        if let t = data["linkTemplate"] as? String, !t.isEmpty, personalString("linkTemplate").isEmpty { setPersonal("linkTemplate", t) }
+        var opened = personalAny("opened") as? [String: Any] ?? [:]
+        for (k, v) in data["opened"] as? [String: Any] ?? [:] where opened[k] == nil { opened[k] = v }
+        setPersonal("opened", opened)
+        if let g = data["fixGenre"] as? String, !g.isEmpty, personalString("fixGenre").isEmpty { setPersonal("fixGenre", g) }
+        EngineLibrary.shared.mergeOverrides((data["matchOverrides"] as? [String: Any] ?? [:]).compactMapValues { $0 as? String })
         func plural(_ n: Int, _ one: String, _ many: String) -> String { "\(n.formatted()) \(n == 1 ? one : many)" }
         return "Restored \(plural(added.wish, "wishlist song", "wishlist songs")) and \(plural(added.notes, "note", "notes")). Anything you already had was kept."
     }
@@ -54,11 +51,7 @@ extension EngineState {
 
     /// Every song with all its details, plus your files, wishlist, notes and what's new.
     func catalogCSV() async -> String {
-        // which files you have for each song: the page still scans the folder (until stage 4)
-        var files: [Int: [String]] = [:]
-        if let json = try? await NativeStore.shared.tryAct("ownedPaths"), let pairs = try? JSONSerialization.jsonObject(with: Data(json.utf8)) as? [[Any]] {
-            for p in pairs { if let i = (p.first as? NSNumber)?.intValue { files[i] = p.last as? [String] ?? [] } }
-        }
+        let files = EngineLibrary.shared.match.owned // which files you have for each song
         let newIds = Set(saved.newIds), releasedIds = Set(saved.releasedIds), wished = wish, noteText = notes
         var lines = [Self.fullColumns.map(\.0) + ["in_your_library", "your_files", "on_wishlist", "your_note", "new_since_last_check", "now_released"]]
         for (i, s) in catalog.enumerated() {

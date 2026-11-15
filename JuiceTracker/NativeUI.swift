@@ -1,13 +1,11 @@
 import AppKit
 import QuartzCore
 import SwiftUI
-import WebKit
 
-// The native (SwiftUI) interface, stage 1. The classic page stays the engine: it loads the catalog, scans and
-// matches the library, writes tags and downloads, and sends a snapshot here after each change. This window draws
-// that snapshot and sends actions back (jwNativeAction in juice-tracker.html). Screens move here one at a time.
+// The app's interface. What it shows comes from the Swift engine (Engine*.swift): EngineState builds it, and screens
+// ask for more through NativeStore.act, which EngineRouter answers.
 
-// MARK: - Snapshot from the page
+// MARK: - What the screens show
 
 struct NState: Decodable {
     struct Cat: Decodable, Hashable { let name: String; let have: Int; let total: Int }
@@ -63,7 +61,7 @@ struct SongDetails: Decodable {
     let note: String
 }
 
-final class NativeStore: NSObject, ObservableObject, WKScriptMessageHandler {
+final class NativeStore: NSObject, ObservableObject {
     static let shared = NativeStore()
     @Published var state: NState?
     @Published var songs: [Song] = []
@@ -71,14 +69,11 @@ final class NativeStore: NSObject, ObservableObject, WKScriptMessageHandler {
     @Published var eraFilter: String?            // the era picked on the Collection screen (or from ⌘K)
     @Published var showSetup = false
     @Published var landed: [Int] = [] // songs that just came into the library (for the confetti)
-    @Published var version = 0 // bumps with every snapshot, so screens that ask the page for more can refresh
+    @Published var version = 0 // bumps with every rebuild, so screens that ask for more can refresh
     private var catalog: [NState.CatSong] = []
     private var catalogToken = -1 // the EngineState catalog that `catalog` was built from
 
-    /// The page's own snapshot isn't needed any more: everything the screens show comes from Swift (stage 4c).
-    func userContentController(_ controller: WKUserContentController, didReceive message: WKScriptMessage) {}
-
-    /// Rebuilds the screens' state from Swift's data and the page's last snapshot.
+    /// Rebuilds the screens' state from the engine's catalog, your data and your library.
     @MainActor func rebuild() {
         let engine = EngineState.shared
         guard !engine.catalog.isEmpty, EngineLibrary.shared.loaded else { return }
@@ -100,34 +95,21 @@ final class NativeStore: NSObject, ObservableObject, WKScriptMessageHandler {
     /// The song card opened from any screen.
     @Published var openSong: Song?
 
-    /// Runs an action in the page (wish, download, play, details, refresh) and returns its text result.
+    /// Asks the engine for something (details, the fixer, trivia, Plex…) and returns its text answer.
     @MainActor @discardableResult func act(_ op: String, _ i: Int = -1, _ extra: [String: Any] = [:]) async -> String {
         (try? await tryAct(op, i, extra)) ?? ""
     }
 
-    /// Like act, but passes on the page's error (for file fixes, whose failures the screen shows).
-    /// Waits (up to `seconds`) for the page's first snapshot, e.g. when Shortcuts just launched the app.
+    /// Waits (up to `seconds`) for the library to load, e.g. when Shortcuts just launched the app.
     @MainActor func ready(seconds: Int = 20) async -> Bool {
         for _ in 0..<seconds * 4 where state == nil { try? await Task.sleep(nanoseconds: 250_000_000) }
         return state != nil
     }
 
+    /// Like act, but passes on the error (for file fixes, whose failures the screen shows).
     @MainActor func tryAct(_ op: String, _ i: Int = -1, _ extra: [String: Any] = [:]) async throws -> String {
-        // The tag fixer, duplicates and file health are Swift's now (stage 4d); the screens ask the same way.
-        if let answer = try await EngineTools.handle(op, extra) { return answer }
-        var a: [String: Any] = ["op": op, "i": i]
-        a.merge(extra) { _, new in new }
-        do {
-            let result = try await WebViewStore.shared.webView.callAsyncJavaScript(
-                "return await (window.jwNativeAction ? window.jwNativeAction(a) : '')", arguments: ["a": a], contentWorld: .page)
-            return result as? String ?? ""
-        } catch {
-            // WebKit's own text is just "a JavaScript exception occurred"; the page's message is in userInfo.
-            let message = (error as NSError).userInfo["WKJavaScriptExceptionMessage"] as? String ?? error.localizedDescription
-            throw PageError(message: message.replacingOccurrences(of: "Error: ", with: ""))
-        }
+        try await EngineRouter.handle(op, i, extra)
     }
-    struct PageError: LocalizedError { let message: String; var errorDescription: String? { message } }
 
     @MainActor func details(_ i: Int) async -> SongDetails? {
         let json = await act("details", i)
@@ -531,7 +513,6 @@ struct NativeRoot: View {
         .id(theme.id) // a new era theme redraws everything in its colors
         .sheet(item: $store.openSong) { s in SongCard(opened: s, close: { store.openSong = nil }) }
         .sheet(isPresented: $searching) { QuickSearch(close: { searching = false }) }
-        .task { await store.act("refresh") }
     }
 }
 
@@ -1165,19 +1146,5 @@ struct SongCard: View {
          ("Surfaced", [d.leakDate, d.leakType].filter { !$0.isEmpty }.joined(separator: ", ")), ("Sessions", d.sessions), ("Artists", d.artists),
          ("Producers", d.producers), ("Engineers", d.engineers), ("Studios", d.locations)]
             .map { ($0.0, $0.1.trimmingCharacters(in: .whitespacesAndNewlines)) }.filter { !$0.1.isEmpty }
-    }
-}
-
-/// Holds the page (the engine) inside the native window, tiny and covered by the interface. It stays in a visible
-/// window so WebKit keeps its timers and network at full speed; it draws nothing you can see.
-final class EngineHostView: NSView {
-    func adopt(_ webView: WKWebView) {
-        guard webView.superview !== self else { return }
-        webView.removeFromSuperview()
-        webView.translatesAutoresizingMaskIntoConstraints = true
-        webView.frame = bounds
-        webView.autoresizingMask = [.width, .height]
-        webView.alphaValue = 0.01
-        addSubview(webView)
     }
 }
