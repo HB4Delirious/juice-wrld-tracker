@@ -57,13 +57,16 @@ public partial class App : Application
             {
                 try
                 {
-                    var song = new Song(0, new EngineSong { Id = "1", Name = "Smoke Test", Era = "DRFL", Category = "unreleased", Length = "3:00" }, false, false);
+                    Store.Shared.FillForSmokeTest(); // the window now shows Collection with songs, eras and notices
+                    var song = Store.Shared.Songs.First(s => s.Owned);
                     UIElement[] screens = [new CollectionPage(), new FixerPage(), new SetupPage(), new SongCard(song), new SongRow(song), new PlayerPanel()];
                     foreach (var s in screens) { s.Measure(new Size(1000, 800)); s.Arrange(new Rect(0, 0, 1000, 800)); }
                     // screens redraw in place whenever something changes: do that twice, like a download finishing
                     foreach (var s in screens.OfType<IRefresh>()) { s.Refresh(); s.Refresh(); }
                     Store.Shared.Notify(); Store.Shared.Notify();
+                    window.Show(Page.Fixer); window.Show(Page.Collection);
                     window.ShowOverlay(new SongCard(song));
+                    window.ShowOverlay(new SongCard(Store.Shared.Songs.First(s => !s.Owned && s.HasFile)));
                     SettingsWindow.Open();
                     Dispatcher.BeginInvoke(() => { File.WriteAllText(report, "ok"); Shutdown(0); }, DispatcherPriority.ApplicationIdle);
                 }

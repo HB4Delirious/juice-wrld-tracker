@@ -96,6 +96,30 @@ public sealed class Store
 
     // MARK: Starting up
 
+    /// For the smoke test (App --smoke-test): a made-up library of 60 songs in four eras, some owned and some dated
+    /// today, so every screen is drawn with data in it. Nothing is read from or written to disk.
+    internal void FillForSmokeTest()
+    {
+        string[] eras = ["DRFL", "GB&GR", "LND", "WOD"];
+        Catalog = Enumerable.Range(0, 60).Select(i => new EngineSong
+        {
+            Id = $"{i}", Name = i % 10 == 0 ? $"Song {i / 10} (v2)" : $"Song {i}", Era = eras[i % 4], Category = i % 3 == 0 ? "released" : "unreleased",
+            Length = "3:00", RecordDates = $"{DateTime.Now:MMMM d}, {2015 + i % 5}", FilePath = i % 2 == 0 ? $"Juice WRLD/Song {i}.mp3" : "",
+            Producers = "Nick Mira & Dre Moon", Alt = i % 7 == 0 ? [$"Alt {i}"] : [],
+        }).ToList();
+        Eras = new() { ["DRFL"] = new(1, "Death Race For Love", "2018 - 2019"), ["GB&GR"] = new(2, "Goodbye & Good Riddance", "2017 - 2018"), ["LND"] = new(3, "Legends Never Die", "2020") };
+        Root = Path.Combine(Path.GetTempPath(), "JT Smoke");
+        Files = Enumerable.Range(0, 25).Select(i =>
+        {
+            var tags = new Dictionary<string, string> { ["title"] = $"Song {i}", ["artist"] = "Juice WRLD" };
+            return new LibraryFile($"JT Smoke/GB&GR/Song {i}.mp3", "mp3", tags, $"Song {i}", Engine.Normalize($"Song {i}"), $"song {i}", true, 4_000_000);
+        }).ToList();
+        saved = new Saved { FirstCheck = true, NewIds = ["3", "5"], ReleasedIds = ["9"] };
+        Me.Wish["2"] = DateTime.UtcNow.ToString("o"); Me.Ratings["4"] = 5;
+        FolderStatus = "25 Juice WRLD files found.";
+        Rematch();
+    }
+
     public async Task StartAsync()
     {
         Directory.CreateDirectory(DataDir);
