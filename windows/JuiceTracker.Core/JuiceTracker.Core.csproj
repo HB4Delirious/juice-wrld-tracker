@@ -1,0 +1,10 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- The engine: catalog, tags, scanning, matching and the rules behind the screens. Cross-platform, so its tests
+       run anywhere (the same frozen answers tests/fixtures holds for the Mac app's Swift engine). -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>JuiceTracker</RootNamespace>
+  </PropertyGroup>
+</Project>

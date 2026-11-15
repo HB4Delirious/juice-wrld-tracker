@@ -5,3 +5,5 @@ dist/
 *.dmg
 xcuserdata/
 *.xcuserstate
+bin/
+obj/

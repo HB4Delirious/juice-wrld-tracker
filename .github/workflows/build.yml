@@ -1,4 +1,4 @@
-name: Build DMG
+name: Build
 
 on:
   push:
@@ -24,9 +24,31 @@ jobs:
           name: JuiceTracker-dmg
           path: dist/JuiceTracker.dmg
 
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+      # the C# engine must give the same answers in tests/fixtures as the Swift one
+      - run: dotnet run --project windows/JuiceTracker.Tests -c Release
+      # one self-contained JuiceTracker.exe (no .NET install needed), versioned from the latest v* tag
+      - shell: bash
+        run: |
+          v=$(git describe --tags --abbrev=0 --match 'v*' 2>/dev/null || echo v0.0); v=${v#v}
+          dotnet publish windows/JuiceTracker.App -c Release -r win-x64 --self-contained true \
+            -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:EnableCompressionInSingleFile=true -p:Version=$v.0 -o dist/windows
+      - uses: actions/upload-artifact@v4
+        with:
+          name: JuiceTracker-windows
+          path: dist/windows/JuiceTracker.exe
+
   release:
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: build
+    needs: [build, windows]
     runs-on: ubuntu-latest
     permissions:
       contents: write  # only this job publishes, and it runs no third-party code
@@ -34,6 +56,9 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           name: JuiceTracker-dmg
+      - uses: actions/download-artifact@v4
+        with:
+          name: JuiceTracker-windows
       - env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "$GITHUB_REF_NAME" JuiceTracker.dmg --repo "$GITHUB_REPOSITORY" --title "$GITHUB_REF_NAME" --generate-notes
+        run: gh release create "$GITHUB_REF_NAME" JuiceTracker.dmg JuiceTracker.exe --repo "$GITHUB_REPOSITORY" --title "$GITHUB_REF_NAME" --generate-notes
