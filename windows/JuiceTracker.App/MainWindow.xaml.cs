@@ -238,6 +238,20 @@ public sealed class Sidebar : Grid
         var settings = UI.Button("Settings", SettingsWindow.Open, "");
         settings.HorizontalAlignment = HorizontalAlignment.Left; settings.Margin = new Thickness(0, 0, 0, 10);
         bottom.Children.Add(settings);
+        // the Mac app's "Support this project" capsule: a heart and dark text on an orange gradient, opening Ko-fi
+        var support = new Button
+        {
+            Style = (Style)Application.Current.FindResource("Plain"), Cursor = Cursors.Hand, HorizontalAlignment = HorizontalAlignment.Left, Margin = new Thickness(0, 0, 0, 10),
+            Content = new Border
+            {
+                CornerRadius = new CornerRadius(18), Padding = new Thickness(16, 9, 16, 9),
+                Background = new LinearGradientBrush(Color.FromRgb(255, 184, 89), JT.New, 90),
+                Child = UI.Row(8, UI.Icon("", 14, JT.Missing), UI.Text("Support this project", 14, JT.Night, weight: FontWeights.SemiBold)),
+            },
+        };
+        support.Click += (_, _) => System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("https://ko-fi.com/hb4delirious") { UseShellExecute = true });
+        UI.AutomationName(support, "Support this project on Ko-fi");
+        bottom.Children.Add(support);
         bottom.Children.Add(new TextBlock { Text = "Your files stay on this computer. Only song info comes from juicewrldapi.com.", FontSize = 11, Foreground = JT.Brush(JT.Muted), TextWrapping = TextWrapping.Wrap });
     }
     public void UpdatePlayer() => player.Update();
