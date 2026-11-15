@@ -173,6 +173,21 @@ import AVFoundation
         EngineLibrary.shared.updateFile(path, tags: tags, size: size)
     }
 
+    /// Adds cover art to a file that has none, with the same safety check, backup and atomic save as a tag write.
+    func addArt(_ path: String, jpeg: [UInt8], width: Int, height: Int) async throws {
+        guard let url = EngineLibrary.shared.url(of: path) else { throw EngineError("isn't in your music folder") }
+        let backup = backupDir.map { dir in path.split(separator: "/").dropFirst().reduce(dir) { $0.appendingPathComponent(String($1)) } }
+        let ext = Engine.extOf(path)
+        let (tags, size) = try await Task.detached { () -> (Tags, Int) in
+            let orig = [UInt8](try Data(contentsOf: url))
+            let out = try TagWriter.addArt(orig, ext: ext, jpeg: jpeg, width: width, height: height)
+            if let backup { try Self.backUp(Data(orig), to: backup) }
+            try Data(out).write(to: url, options: .atomic)
+            return (TagReader.read(url, ext: ext), out.count)
+        }.value
+        EngineLibrary.shared.updateFile(path, tags: tags, size: size)
+    }
+
     /// Keeps the first backup forever, but not an empty one (a failed earlier attempt could have left it).
     nonisolated static func backUp(_ data: Data, to url: URL) throws {
         let fm = FileManager.default
@@ -242,13 +257,17 @@ import AVFoundation
         let issues = Engine.healthIssues(files: library.files, match: library.match, catalog: catalog, probes: probes)
         let titles = ["damaged": ("May be damaged or cut off", "Replace it with the site's copy, or move it to the Trash."),
                       "upgrade": ("Better copies on the site", "Upgrade downloads the site's higher-quality file; yours goes to the Trash."),
-                      "tags": ("Tags to fix", "The Tag fixer writes the catalog's tags to matched files. Unmatched files can be matched by hand there.")]
-        let groups = ["damaged", "upgrade", "tags"].compactMap { k -> [String: Any]? in
+                      "tags": ("Tags to fix", "The Tag fixer writes the catalog's tags to matched files. Unmatched files can be matched by hand there."),
+                      "loudness": ("Much quieter or louder", "Compared with the middle of your library. A very different level can mean a bad rip or a different source."),
+                      "art": ("No cover art", "Add artwork puts the song's picture from the site into the file. Tags and audio stay as they are; the Tag fixer's backup folder is used when set.")]
+        let groups = ["damaged", "upgrade", "tags", "loudness", "art"].compactMap { k -> [String: Any]? in
             let items = issues.filter { $0.group == k }
             guard !items.isEmpty else { return nil }
             return ["key": k, "title": titles[k]!.0, "help": titles[k]!.1, "items": items.prefix(500).map { x -> [String: Any] in
                 let songs = library.match.songsFor[x.path] ?? [], song = songs.count == 1 ? catalog[songs[0]] : nil
-                return ["path": x.path, "text": x.text, "reveal": true, "trash": library.root != nil, "replace": library.root != nil && !(song?.filePath.isEmpty ?? true)]
+                return ["path": x.path, "text": x.text, "reveal": true, "trash": library.root != nil && x.group != "art",
+                        "replace": library.root != nil && x.group != "art" && !(song?.filePath.isEmpty ?? true),
+                        "art": x.group == "art" && library.root != nil && !songs.isEmpty]
             }]
         }
         return EngineTools.json(["running": running, "done": done, "status": status, "probeable": true, "groups": groups])
@@ -289,13 +308,64 @@ import AVFoundation
             let asset = AVURLAsset(url: url)
             let seconds = CMTimeGetSeconds(asset.duration)
             let size = ((try? FileManager.default.attributesOfItem(atPath: url.path))?[.size] as? NSNumber)?.intValue ?? 0
-            return Engine.Probe(ok: asset.isPlayable && !asset.tracks(withMediaType: .audio).isEmpty, seconds: seconds.isFinite ? seconds : 0, size: size)
+            let ok = asset.isPlayable && !asset.tracks(withMediaType: .audio).isEmpty, ext = Engine.extOf(url.path)
+            return Engine.Probe(ok: ok, seconds: seconds.isFinite ? seconds : 0, size: size, loudness: ok ? loudness(url) : nil,
+                                art: Engine.editableExts.contains(ext) ? TagReader.hasArt(url, ext: ext) : nil)
         }.value
+    }
+
+    /// The average level (RMS, in dBFS) of three 3-second samples at a quarter, half and three quarters of the way in.
+    /// Reads under 1 MB of audio, so it stays quick on a network drive. Silence or an unreadable file gives nothing.
+    nonisolated static func loudness(_ url: URL) -> Double? {
+        guard let file = try? AVAudioFile(forReading: url), file.length > 0,
+              let buf = AVAudioPCMBuffer(pcmFormat: file.processingFormat, frameCapacity: AVAudioFrameCount(file.processingFormat.sampleRate * 3)) else { return nil }
+        var sum = 0.0, count = 0
+        for at in [0.25, 0.5, 0.75] {
+            file.framePosition = AVAudioFramePosition(Double(file.length) * at)
+            guard (try? file.read(into: buf)) != nil, let ch = buf.floatChannelData else { continue }
+            for c in 0..<Int(buf.format.channelCount) {
+                for n in 0..<Int(buf.frameLength) { let v = Double(ch[c][n]); sum += v * v }
+                count += Int(buf.frameLength)
+            }
+        }
+        guard count > 0, sum > 0 else { return nil }
+        return 10 * log10(sum / Double(count))
+    }
+
+    /// The song's picture from the site as a JPEG, at most 600 px across.
+    private static func artwork(for song: EngineSong) async throws -> (jpeg: [UInt8], width: Int, height: Int) {
+        guard let x = await Extras.shared.extras(for: String(song.id)), let link = x.image, let img = await Extras.shared.image(link),
+              let cg = img.cgImage(forProposedRect: nil, context: nil, hints: nil) else { throw EngineError("The site has no picture for “\(song.name)”") }
+        let scale = min(1, 600 / Double(max(cg.width, cg.height)))
+        let w = max(1, Int(Double(cg.width) * scale)), h = max(1, Int(Double(cg.height) * scale))
+        guard let ctx = CGContext(data: nil, width: w, height: h, bitsPerComponent: 8, bytesPerRow: 0, space: CGColorSpaceCreateDeviceRGB(),
+                                  bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue) else { throw EngineError("Couldn't resize the picture") }
+        ctx.interpolationQuality = .high
+        ctx.draw(cg, in: CGRect(x: 0, y: 0, width: w, height: h))
+        guard let small = ctx.makeImage(), let data = NSBitmapImageRep(cgImage: small).representation(using: .jpeg, properties: [.compressionFactor: 0.85])
+        else { throw EngineError("Couldn't make a JPEG of the picture") }
+        return ([UInt8](data), w, h)
+    }
+
+    private func addArt(_ path: String) async throws {
+        guard let i = EngineLibrary.shared.match.songsFor[path]?.first else { throw EngineError("That file isn't matched to a song") }
+        let a = try await Self.artwork(for: EngineState.shared.catalog[i])
+        try await EngineFixer.shared.addArt(path, jpeg: a.jpeg, width: a.width, height: a.height)
+        probes[path]?.art = true
     }
 
     /// Show in Finder, move to the Trash, or replace with the site's copy (the screen asked you first).
     func fix(_ op: String, path: String) async throws -> String {
         let library = EngineLibrary.shared
+        if op == "artAll" {
+            let paths = probes.filter { $0.value.art == false && library.match.songsFor[$0.key]?.first != nil }.keys.sorted()
+            var ok = 0, failed: [String] = []
+            for p in paths {
+                do { try await addArt(p); ok += 1 } catch { failed.append("\(Engine.baseName(p)): \(error.localizedDescription)") }
+            }
+            if ok > 0 { Plex.scheduleRefresh() }
+            return "Added cover art to \(EngineTools.plural(ok, "file", "files")).\(failed.isEmpty ? "" : " Skipped \(failed.prefix(3).joined(separator: "; "))\(failed.count > 3 ? "; and more" : "").")"
+        }
         guard library.files.contains(where: { $0.path == path }), let url = library.url(of: path) else { throw EngineError("That file isn't in your library anymore") }
         switch op {
         case "reveal":
@@ -305,6 +375,10 @@ import AVFoundation
             probes[path] = nil
             await library.removeFiles([path])
             return "Moved “\(Engine.baseName(path))” to the Trash."
+        case "art":
+            try await addArt(path)
+            Plex.scheduleRefresh()
+            return "Added cover art to “\(Engine.baseName(path))”."
         case "replace":
             guard let i = library.match.songsFor[path]?.first else { throw EngineError("That file isn't matched to a song") }
             let song = EngineState.shared.catalog[i]

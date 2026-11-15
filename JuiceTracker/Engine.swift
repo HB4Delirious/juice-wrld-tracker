@@ -547,6 +547,9 @@ extension Engine {
     static func scan(root: URL, onlyJuice: Bool, cache: [String: CachedTags], reread: Bool,
                      progress: ((Int, Int) -> Void)? = nil) async -> (files: [LibraryFile], audioCount: Int, fresh: [String: CachedTags], paths: [String]) {
         let audio = listAudio(root: root)
+        // A network drive answers each read slowly but can serve many at once, so more files are read in parallel there.
+        let local = (try? root.resourceValues(forKeys: [.volumeIsLocalKey]))?.volumeIsLocal ?? true
+        let parallel = local ? 8 : 16
         var fresh: [String: CachedTags] = [:], found: [LibraryFile] = [], done = 0
         await withTaskGroup(of: (LibraryFile?, CachedTags?, String).self) { group in
             var next = 0
@@ -570,7 +573,7 @@ extension Engine {
                                         fromTags: !(tags["title"] ?? "").isEmpty, size: size), read, path)
                 }
             }
-            for _ in 0..<8 { add() }
+            for _ in 0..<parallel { add() }
             for await (file, read, path) in group {
                 if let file { found.append(file) }
                 if let read { fresh[path] = read }
@@ -833,7 +836,7 @@ enum TagWriter {
     }
     static func splitComm(_ body: [UInt8]) -> (desc: String, value: String)? { body.count < 5 ? nil : TagReader.splitTxxx([body[0]] + body[4...]) }
 
-    static func writeMp3(_ orig: [UInt8], _ d: Tags) throws -> Written {
+    static func writeMp3(_ orig: [UInt8], _ d: Tags, art: [UInt8]? = nil) throws -> Written {
         let p = TagReader.parseId3(orig)
         if let p {
             if p.ver != 3 && p.ver != 4 { throw EngineError("uses an older ID3 tag version that can't be edited here") }
@@ -863,6 +866,7 @@ enum TagWriter {
         if let v = d["producer"] { added += id3Txxx("PRODUCER", v, ver) }
         if let v = d["genre"] { added += id3Text("TCON", v, ver) }
         if let v = d["comment"] { added += id3Comm(v, ver) }
+        if let art { added += id3Frame("APIC", [0] + ascii("image/jpeg") + [0, 3, 0] + art, ver) } // front cover, no description
         let frames = kept + added, size = frames.count + 2048
         let header: [UInt8] = [0x49, 0x44, 0x33, ver, 0, 0, UInt8(size >> 21 & 0x7f), UInt8(size >> 14 & 0x7f), UInt8(size >> 7 & 0x7f), UInt8(size & 0x7f)]
         let audio = orig[min(p?.tagEnd ?? 0, orig.count)...]
@@ -912,7 +916,7 @@ enum TagWriter {
     static let vorbisWriteKey = ["title": "TITLE", "artist": "ARTIST", "albumartist": "ALBUMARTIST", "album": "ALBUM", "year": "DATE",
                                  "producer": "PRODUCER", "genre": "GENRE", "comment": "COMMENT"]
 
-    static func writeFlac(_ orig: [UInt8], _ d: Tags) throws -> Written {
+    static func writeFlac(_ orig: [UInt8], _ d: Tags, art: (jpeg: [UInt8], width: Int, height: Int)? = nil) throws -> Written {
         let (blocks, audioStart) = try parseFlacBlocks(orig)
         let ci: Int? = blocks.firstIndex { $0.type == 4 }
         var vendor = utf8("Juice WRLD collection tracker"), comments: [String] = []
@@ -927,6 +931,11 @@ enum TagWriter {
         var insertAt = 1
         if let c = ci { insertAt = Swift.max(1, blocks[..<c].filter { $0.type != 4 }.count) }
         out.insert(FlacBlock(type: 4, body: body), at: Swift.min(insertAt, out.count))
+        if let art { // a front cover PICTURE block, right after the comments
+            let mime = ascii("image/jpeg")
+            let pic = u32be(3) + u32be(mime.count) + mime + u32be(0) + u32be(art.width) + u32be(art.height) + u32be(24) + u32be(0) + u32be(art.jpeg.count) + art.jpeg
+            out.insert(FlacBlock(type: 6, body: pic), at: Swift.min(insertAt + 1, out.count))
+        }
         if !out.contains(where: { $0.type == 1 }) { out.append(FlacBlock(type: 1, body: [UInt8](repeating: 0, count: 1024))) }
         var pieces = ascii("fLaC")
         for (i, bl) in out.enumerated() {
@@ -995,7 +1004,7 @@ enum TagWriter {
         try stcoTables(b, s, e).flatMap { t in (0..<t.n).map { t.wide ? u64(b, t.p + $0 * 8) : TagReader.u32(b, t.p + $0 * 4) } }
     }
 
-    static func writeM4a(_ orig: [UInt8], _ d: Tags) throws -> Written {
+    static func writeM4a(_ orig: [UInt8], _ d: Tags, art: [UInt8]? = nil) throws -> Written {
         let top = try readAtoms(orig, 0, orig.count)
         guard top.first?.type == "ftyp" else { throw EngineError("isn't a valid M4A file") }
         if top.contains(where: { $0.type == "moof" }) { throw EngineError("is a fragmented MP4, which can't be edited here") }
@@ -1033,6 +1042,7 @@ enum TagWriter {
             added += try mp4Box("----", try mp4Box("mean", [0, 0, 0, 0], ascii("com.apple.iTunes")), try mp4Box("name", [0, 0, 0, 0], utf8("PRODUCER")),
                                 try mp4Box("data", mp4TextFlags, utf8(v)))
         }
+        if let art { added += try mp4Box("covr", try mp4Box("data", [0, 0, 0, 13, 0, 0, 0, 0], art)) } // 13: JPEG
         let newIlst = try mp4Box("ilst", kept, added)
         let hdlrBytes = try metaKids.first { $0.type == "hdlr" }.map(raw) ?? mp4Box("hdlr", [UInt8](repeating: 0, count: 8), ascii("mdirappl"), [UInt8](repeating: 0, count: 9))
         let newMeta = try mp4Box("meta", metaPrefix, hdlrBytes, newIlst, metaKids.filter { $0.type != "hdlr" && $0.type != "ilst" }.flatMap(raw))
@@ -1289,7 +1299,11 @@ extension Engine {
     }
 
     // File health
-    struct Probe: Codable { var ok: Bool; var seconds: Double; var size: Int }
+    struct Probe: Codable {
+        var ok: Bool; var seconds: Double; var size: Int
+        var loudness: Double? = nil // average level in dBFS, from a few short samples
+        var art: Bool? = nil        // has cover art (only checked for files the app can write)
+    }
     struct HealthIssue: Equatable { var path: String; var group: String; var text: String }
     /// What to look at: files that may be damaged or cut off, better copies on the site, and tags to fix.
     static func healthIssues(files: [LibraryFile], match: Match, catalog: [EngineSong], probes: [String: Probe]) -> [HealthIssue] {
@@ -1316,6 +1330,16 @@ extension Engine {
             else if songs.isEmpty { out.append(.init(path: f.path, group: "tags", text: "Its title, “\(f.title)”, isn't in the catalog.")) }
             else if match.how[f.path] == "close" { out.append(.init(path: f.path, group: "tags", text: "Its title, “\(f.title)”, is close to “\(catalog[songs[0]].name)” but not exact.")) }
         }
+        // Beyond the page: a file far from the library's typical level, and files with no cover art.
+        let levels = files.compactMap { probes[$0.path]?.loudness }.sorted()
+        if levels.count >= 5 {
+            let typical = levels[levels.count / 2]
+            for f in files {
+                guard let l = probes[f.path]?.loudness, abs(l - typical) >= 6 else { continue }
+                out.append(.init(path: f.path, group: "loudness", text: "About \(Int(abs(l - typical).rounded())) dB \(l < typical ? "quieter" : "louder") than the rest of your library."))
+            }
+        }
+        for f in files where probes[f.path]?.art == false { out.append(.init(path: f.path, group: "art", text: "No cover art.")) }
         return out
     }
 }
@@ -1360,5 +1384,84 @@ extension Engine {
             let pick = k >= 0 && k < list.count ? k : 0
             return list.indices.contains(pick) ? list[pick] : nil
         })
+    }
+}
+
+// MARK: - Rarity
+
+extension Engine {
+    /// How hard a song is to find: a grail is unreleased with no file on the site, and you have it anyway; rare is
+    /// unreleased with no file on the site (yet). Released songs and ones the site has a file for are nil (common).
+    static func rarity(_ s: EngineSong, owned: Bool) -> String? {
+        guard !isReleased(s), s.filePath.isEmpty else { return nil }
+        return owned ? "Grail" : "Rare"
+    }
+}
+
+
+// MARK: - Cover art
+
+extension TagReader {
+    /// Whether a file already has cover art (an ID3 picture, an MP4 "covr" item, or a FLAC PICTURE block).
+    static func hasArt(_ b: [UInt8], ext: String) -> Bool {
+        switch ext {
+        case "flac": return (try? TagWriter.parseFlacBlocks(b))?.blocks.contains { $0.type == 6 } ?? false
+        case "m4a", "m4b", "alac":
+            guard let top = try? TagWriter.readAtoms(b, 0, b.count), let moov = top.first(where: { $0.type == "moov" }) else { return false }
+            var found = false
+            func walk(_ s: Int, _ e: Int) {
+                walkAtoms(b, s, e) { type, s2, e2 in
+                    if type == "covr" { found = true }
+                    else if type == "udta" || type == "ilst" { walk(s2, e2) }
+                    else if type == "meta" { walk(latin1(sub(b, s2 + 4, s2 + 8)) == "hdlr" ? s2 : s2 + 4, e2) }
+                }
+            }
+            walk(moov.start + moov.hdr, moov.end)
+            return found
+        default: return parseId3(b)?.frames.contains { $0.id == "APIC" || $0.id == "PIC" } ?? false
+        }
+    }
+
+    /// The same for a file on disk, reading only the tag (an MP3's ID3 tag, an M4A's moov box, a FLAC's header).
+    static func hasArt(_ url: URL, ext: String) -> Bool {
+        guard let f = try? FileHandle(forReadingFrom: url) else { return false }
+        defer { try? f.close() }
+        let file = Reader(f)
+        switch ext {
+        case "flac":
+            guard latin1(file.bytes(0, 4)[...]) == "fLaC" else { return false }
+            var pos: UInt64 = 4
+            for _ in 0..<64 {
+                let h = file.bytes(pos, pos + 4)
+                guard h.count >= 4 else { break }
+                if h[0] & 0x7f == 6 { return true }
+                pos += 4 + UInt64(Int(h[1]) << 16 | Int(h[2]) << 8 | Int(h[3]))
+                if h[0] & 0x80 != 0 { break }
+            }
+            return false
+        case "m4a", "m4b", "alac":
+            return hasArt(file.bytes(0, min(file.size, 64 * 1024 * 1024)), ext: ext) // shortcut: songs with the moov after 64 MB of audio aren't checked
+        default:
+            let h = file.bytes(0, 10)
+            guard h.count >= 10, latin1(h[0..<3]) == "ID3" else { return false }
+            return hasArt(file.bytes(0, UInt64(10 + min(synchsafe(h, 6), 8 * 1024 * 1024))), ext: ext)
+        }
+    }
+}
+
+extension TagWriter {
+    /// Adds a front cover (JPEG) to a file that has none, leaving its tags and audio as they are. Runs the same safety
+    /// check as a tag write, and checks the picture reads back.
+    static func addArt(_ orig: [UInt8], ext: String, jpeg: [UInt8], width: Int, height: Int) throws -> [UInt8] {
+        guard !TagReader.hasArt(orig, ext: ext) else { throw EngineError("already has cover art") }
+        let r: Written
+        switch ext {
+        case "mp3": r = try writeMp3(orig, [:], art: jpeg); try verifyMp3(orig, r, [:])
+        case "flac": r = try writeFlac(orig, [:], art: (jpeg, width, height)); try verifyFlac(orig, r, [:])
+        case "m4a": r = try writeM4a(orig, [:], art: jpeg); try verifyM4a(orig, r, [:])
+        default: throw EngineError("can't get cover art here (only MP3, FLAC and M4A)")
+        }
+        guard TagReader.hasArt(r.out, ext: ext) else { throw EngineError("failed a safety check (the picture didn't read back), so it was left unchanged") }
+        return r.out
     }
 }

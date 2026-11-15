@@ -13,7 +13,7 @@ extension EngineState {
             "app": "juice-wrld-collection-tracker", "version": 1, "exportedAt": Self.isoString(Date()),
             "wishlist": wish.sorted { $0.value < $1.value }.map { ["id": $0.key, "name": names[$0.key] ?? "", "added": $0.value] },
             "notes": notes.sorted { $0.key < $1.key }.map { ["id": $0.key, "name": names[$0.key] ?? "", "text": $0.value] },
-            "trivia": personalAny("trivia") ?? [:], "linkTemplate": personalAny("linkTemplate") ?? "",
+            "ratings": ratings, "trivia": personalAny("trivia") ?? [:], "linkTemplate": personalAny("linkTemplate") ?? "",
             "matchOverrides": personalAny("matchOverrides") ?? [:], "opened": personalAny("opened") ?? [:], "fixGenre": personalAny("fixGenre") ?? "",
         ]
         let data = (try? JSONSerialization.data(withJSONObject: backup, options: [.prettyPrinted, .sortedKeys])) ?? Data()
@@ -25,6 +25,9 @@ extension EngineState {
         guard let data = try? JSONSerialization.jsonObject(with: Data(text.utf8)) as? [String: Any],
               data["app"] as? String == "juice-wrld-collection-tracker" else { throw EngineError("That file isn't a backup from this tracker.") }
         let added = mergeBackup(wishlist: data["wishlist"] as? [[String: Any]] ?? [], notes: data["notes"] as? [[String: Any]] ?? [])
+        var r = ratings
+        for (k, v) in data["ratings"] as? [String: Any] ?? [:] where r[k] == nil { r[k] = (v as? NSNumber)?.intValue }
+        setPersonal("ratings", r)
         var trivia = personalAny("trivia") as? [String: Any] ?? [:]
         for (k, v) in data["trivia"] as? [String: Any] ?? [:] { trivia[k] = max((trivia[k] as? NSNumber)?.intValue ?? 0, (v as? NSNumber)?.intValue ?? 0) }
         setPersonal("trivia", trivia)

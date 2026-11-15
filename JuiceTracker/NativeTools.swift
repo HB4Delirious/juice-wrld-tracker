@@ -148,7 +148,7 @@ struct DuplicatesScreen: View {
 
 // MARK: - File health
 
-private struct HealthItem: Decodable, Hashable { let path: String; let text: String; let reveal: Bool; let trash: Bool; let replace: Bool }
+private struct HealthItem: Decodable, Hashable { let path: String; let text: String; let reveal: Bool; let trash: Bool; let replace: Bool; var art: Bool? }
 private struct HealthGroup: Decodable, Hashable { let key: String; let title: String; let help: String; let items: [HealthItem] }
 private struct HealthData: Decodable { let running: Bool; let done: Bool; let status: String; let probeable: Bool; let groups: [HealthGroup] }
 
@@ -163,7 +163,7 @@ struct HealthScreen: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
                 ScreenTitle(text: "File health")
-                Text("Finds files that may be damaged or cut off, songs the site has in better quality, and files with missing or mismatched tags. Nothing changes until you click a fix.")
+                Text("Finds files that may be damaged or cut off, songs the site has in better quality, and files with missing or mismatched tags, files much quieter or louder than the rest, and files with no cover art. Nothing changes until you click a fix.")
                     .foregroundColor(JT.muted)
                 if let result { Banner(text: result.0, error: result.1) }
                 HStack(spacing: 12) {
@@ -204,6 +204,9 @@ struct HealthScreen: View {
         VStack(alignment: .leading, spacing: 10) {
             Text("\(g.title) (\(g.items.count))").font(.title3.bold())
             Text(g.help).font(.caption).foregroundColor(JT.muted)
+            if g.key == "art", g.items.contains(where: { $0.art == true }) {
+                Button("Add artwork to all \(g.items.filter { $0.art == true }.count)") { fix("artAll", g.items[0]) }
+            }
             VStack(spacing: 0) {
                 ForEach(g.items, id: \.self) { x in
                     HStack(alignment: .center, spacing: 12) {
@@ -214,6 +217,9 @@ struct HealthScreen: View {
                         Spacer()
                         if g.key == "tags" {
                             Button("Open Tag fixer") { store.page = .fixer }
+                        } else if g.key == "art" {
+                            Button { fix("reveal", x) } label: { Image(systemName: "magnifyingglass") }.help("Show in Finder").accessibilityLabel("Show in Finder")
+                            if x.art == true { Button("Add artwork") { fix("art", x) } }
                         } else {
                             if x.reveal { Button { fix("reveal", x) } label: { Image(systemName: "magnifyingglass") }.help("Show in Finder").accessibilityLabel("Show in Finder") }
                             if x.replace { Button(g.key == "upgrade" ? "Upgrade" : "Replace with the site's copy") { fix("replace", x) } }
@@ -238,6 +244,12 @@ struct HealthScreen: View {
             pending = Pending(title: "Replace “\(fileName(x.path))” with the site's copy?",
                               message: "The site's file is downloaded and yours goes to the Trash. If the download fails, yours stays where it is (or, if both have the same name, in the Trash).",
                               button: "Replace", run: run)
+        case "artAll":
+            pending = Pending(title: "Add cover art to every matched file without it?",
+                              message: "Each file gets its song's picture from the site. Tags and audio stay the same; originals are copied to the Tag fixer's backup folder first when one is set.",
+                              button: "Add artwork", run: run)
+        case "art":
+            Task { do { result = (try await run(), false) } catch { result = ("That didn't work: \(error.localizedDescription)", true) } }
         default:
             Task { do { _ = try await run() } catch { result = ("That didn't work: \(error.localizedDescription)", true) } }
         }

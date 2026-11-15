@@ -189,6 +189,7 @@ struct StatsScreen: View {
                 Legend(items: [("Previewed", Color(red: 1, green: 0.63, blue: 0.29)), ("Surfaced", JT.missing), ("Released", JT.have)])
                 YearBars(years: eventYears, values: events, colors: [Color(red: 1, green: 0.63, blue: 0.29), JT.missing, JT.have])
                 ListeningSection()
+                YearInReviewSection()
             }
             .padding(.horizontal, 34).padding(.top, 40).padding(.bottom, 60)
             .frame(maxWidth: 1080, alignment: .leading)

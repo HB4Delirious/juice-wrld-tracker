@@ -64,6 +64,14 @@ cache, download queue).
 - **Motion**: confetti and a note when songs land, the big count rolls up, pages fade in, the sidebar highlight glides, bars grow in, era cards rise in and their stickers slap on, finished eras get a COMPLETE stamp, the song playing shows bouncing bars, earned badges glint, and notes drift up from the player. All of it is Core Animation or one-shot SwiftUI, so it costs next to nothing.
 - **Era themes** (Settings > Look): recolor the accents and the sky after an era: Goodbye & Good Riddance blue, Death Race for Love red, Legends Never Die gold, Fighting Demons green or WRLD on Drugs cyan.
 - **Timeline:** every song as a dot in the month it was recorded, with yours lit up. **Collection card** (Export & backup): an image of your progress to post or keep.
+- **Playback:** songs crossfade into each other (Settings > Playback, off to 12 seconds). **Play next** (song card or a row's right-click menu) queues a song after the one playing; the player shows what's up next. **Era radio:** the player's era menu can play an era in recording order instead of shuffled.
+- **Ratings and rarity:** rate songs 1–5 hearts on their card; Collection has a **Top rated** tab. Unreleased songs with no file on the site are marked **Rare**, and **Grail** when you have them.
+- **Full-screen lyrics:** the quote button on the player opens a big lyrics window (full screen works) with the line being sung large. Shown live from juicewrldapi.com, never saved.
+- **Year in review (Stats):** your plays this year, about how long you listened, top songs, top eras and your busiest month.
+- **Watching the folder:** files added, changed or removed in the music folder show up a moment later, without a rescan. The catalog is also refreshed in the background when it's over 12 hours old, and new songs with a file get a notification with a Download button.
+- **Compare with another drive** (Export & backup): scans a second folder, like a backup drive, and lists the songs only on one of them, with a button to download the ones missing here. Nothing on either drive changes.
+- **Loudness and cover art (File health):** files much quieter or louder than the rest of your library, and files with no cover art. **Add artwork** writes the song's picture from the site into the file (one at a time or all at once), with the same safety check and backup as the tag fixer.
+- **Faster first scan:** a network drive is read 16 files at a time.
 - **Settings (⌘,):**
   - Daily new-song and release alerts (macOS notifications), "Keep running when the window is closed", and "Open at login".
   - Automatic app updates from GitHub releases (also Juice Tracker > Check for Updates…).
