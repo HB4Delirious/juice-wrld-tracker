@@ -423,9 +423,19 @@ struct PlayEraIntent: AppIntent {
     @MainActor func perform() async throws -> some IntentResult & ProvidesDialog {
         let store = NativeStore.shared
         guard await store.ready() else { return .result(dialog: IntentDialog(stringLiteral: "Juice Tracker isn't ready yet. Try again in a moment.")) }
-        guard !EngineAmbient.eras.isEmpty else { return .result(dialog: IntentDialog(stringLiteral: "There are no songs to play yet.")) }
-        EngineAmbient.setEra(era ?? "")
-        return .result(dialog: IntentDialog(stringLiteral: "Playing \(era.map { "songs from \($0)" } ?? "your songs")."))
+        let eras = EngineAmbient.eras
+        guard !eras.isEmpty else { return .result(dialog: IntentDialog(stringLiteral: "There are no songs to play yet.")) }
+        let spoken = (era ?? "").trimmingCharacters(in: .whitespaces)
+        let fits = spoken.isEmpty ? [""] : EngineAmbient.erasNamed(spoken)
+        guard fits.count == 1 else {
+            let text = fits.isEmpty
+                ? "There's no era called \(spoken) in your library. You have \(eras.prefix(8).joined(separator: ", "))\(eras.count > 8 ? ", and more" : "")."
+                : "Which one: \(fits.prefix(6).joined(separator: ", "))?"
+            return .result(dialog: IntentDialog(stringLiteral: text))
+        }
+        let picked = fits[0]
+        EngineAmbient.setEra(picked)
+        return .result(dialog: IntentDialog(stringLiteral: picked.isEmpty ? "Playing your songs." : "Playing songs from \(picked)."))
     }
 }
 

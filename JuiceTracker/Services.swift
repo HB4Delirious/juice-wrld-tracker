@@ -182,26 +182,13 @@ enum SongAlerts {
     }
 
     static func check() async {
-        var next = URL(string: "https://juicewrldapi.com/juicewrld/songs/?page=1&page_size=100")
-        var songs: [(id: String, name: String, released: Bool, hasFile: Bool)] = []
-        do {
-            while let url = next, songs.count < 50_000 {
-                let (data, response) = try await URLSession.shared.data(from: url)
-                guard (response as? HTTPURLResponse)?.statusCode == 200,
-                      let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] else { return }
-                for s in json["results"] as? [[String: Any]] ?? [] {
-                    guard let id = s["id"].map({ "\($0)" }) else { continue }
-                    // Same rule as the page's isReleased: category "released" or a release date.
-                    let released = (s["category"] as? String)?.lowercased() == "released"
-                        || !((s["release_date"] as? String) ?? "").trimmingCharacters(in: .whitespaces).isEmpty
-                    let hasFile = !((s["path"] as? String) ?? "").trimmingCharacters(in: .whitespaces).isEmpty
-                    songs.append((id, s["name"] as? String ?? "", released, hasFile))
-                }
-                // The API's "next" link is plain http; apps may only use https (App Transport Security).
-                next = (json["next"] as? String).map { $0.replacingOccurrences(of: "http://", with: "https://") }.flatMap(URL.init(string:))
-            }
-        } catch { return } // offline: try again next hour
-        guard !songs.isEmpty else { return }
+        // The app's own catalog, freshly downloaded: one download, and the same rules for "released" and "has a file"
+        // as everywhere else in the app.
+        let before = await MainActor.run { EngineState.shared.fetchedAt }
+        await EngineState.shared.reload()
+        let (after, catalog) = await MainActor.run { (EngineState.shared.fetchedAt, EngineState.shared.catalog) }
+        guard let after, after != before, !catalog.isEmpty else { return } // offline, or a download already running: next hour
+        let songs = catalog.map { (id: $0.id, name: $0.name, released: Engine.isReleased($0), hasFile: !$0.filePath.isEmpty) }
         let defaults = UserDefaults.standard
         let known = Set(defaults.stringArray(forKey: "alertsKnownIds") ?? [])
         let wasReleased = Set(defaults.stringArray(forKey: "alertsReleasedIds") ?? [])
@@ -227,8 +214,6 @@ enum SongAlerts {
         // For the menu bar's "New songs" line.
         defaults.set(added.map(\.name) + nowReleased.map { "\($0.name) (released)" }, forKey: "alertsLastNew")
         defaults.set(Date(), forKey: "alertsLastNewDate")
-        // The app's catalog catches up now, so the new songs are in it when you open the window.
-        Task { @MainActor in await EngineState.shared.reload() }
         if defaults.bool(forKey: "alertsDryRun") { return } // set only when testing, so no notification prompt appears
         guard !others.isEmpty || !otherReleases.isEmpty else { return }
         // New songs that already have a file (and older ones that just got one) can be downloaded from the alert.
@@ -457,9 +442,17 @@ struct SettingsView: View {
     @AppStorage("discordOn") private var discordOn = false
     @AppStorage("discordAppId") private var discordAppId = ""
 
+    private static var colorSave: DispatchWorkItem?
     /// A color picker's color, kept as hex in the settings.
     private func hex(_ value: Binding<String>) -> Binding<Color> {
-        Binding(get: { Color(EraTheme.color(value.wrappedValue) ?? .systemPink) }, set: { value.wrappedValue = EraTheme.hex($0) })
+        // Saved a moment after the color stops changing: each save redraws the whole window, and dragging in the color
+        // wheel sends dozens of changes a second.
+        Binding(get: { Color(EraTheme.color(value.wrappedValue) ?? .systemPink) }, set: { color in
+            Self.colorSave?.cancel()
+            let save = DispatchWorkItem { value.wrappedValue = EraTheme.hex(color) }
+            Self.colorSave = save
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3, execute: save)
+        })
     }
     @AppStorage(Pref.plexServer) private var plexServer = ""
     @State private var plexToken = "" // read when the window opens, never at app launch (see Keychain.write)
@@ -557,6 +550,7 @@ final class DiscordStatus {
     private var startedAt: Date?
     private var lastTitle: String?
     private var lastEra = ""
+    private var lastId = ""          // the app ID last sent (main thread only; `connectedId` belongs to the queue)
     /// The playing song's era (NowPlaying finds the song a moment after it starts, then calls `refresh`).
     var era = ""
     func refresh() { update() }
@@ -575,8 +569,8 @@ final class DiscordStatus {
         let id = Self.appId, title = Self.on && p.isPlaying ? p.title : nil
         if title != lastTitle { startedAt = title == nil ? nil : Date().addingTimeInterval(-p.currentTime) }
         let era = title == nil ? "" : self.era
-        guard title != lastTitle || era != lastEra || connectedId != id else { return }
-        lastTitle = title; lastEra = era
+        guard title != lastTitle || era != lastEra || lastId != id else { return }
+        lastTitle = title; lastEra = era; lastId = id
         let started = startedAt
         queue.async { [weak self] in self?.send(id: id, title: title, era: era, started: started) }
     }
@@ -584,7 +578,7 @@ final class DiscordStatus {
     private func send(id: String, title: String?, era: String, started: Date?) {
         guard !id.isEmpty, id.allSatisfy(\.isNumber) else { close(); return }
         if fd < 0 || connectedId != id { close(); connect(id) }
-        guard fd >= 0 else { return }
+        guard fd >= 0 else { retryLater(playing: title != nil); return } // Discord isn't open (yet)
         var activity: Any = NSNull()
         if let title {
             var a: [String: Any] = ["details": title, "state": era.isEmpty ? "Juice WRLD" : "Juice WRLD · \(era)", "assets": ["large_text": "Juice Tracker"]]
@@ -592,7 +586,18 @@ final class DiscordStatus {
             activity = a
         }
         let ok = frame(1, ["cmd": "SET_ACTIVITY", "args": ["pid": Int(getpid()), "activity": activity], "nonce": UUID().uuidString])
-        if !ok { close() } // Discord quit: try again next song
+        if !ok { close(); retryLater(playing: title != nil) } // Discord quit
+    }
+
+    /// While music plays and Discord can't be reached, try again every 30 seconds, so opening Discord mid-song shows
+    /// the status without waiting for the next song.
+    private var retry: DispatchWorkItem? // only one waiting retry (this runs on `queue`)
+    private func retryLater(playing: Bool) {
+        retry?.cancel()
+        guard playing else { return }
+        let work = DispatchWorkItem { [weak self] in self?.lastId = ""; self?.update() }
+        retry = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 30, execute: work)
     }
 
     /// Discord listens on discord-ipc-0…9 in the temporary folder.
@@ -613,7 +618,7 @@ final class DiscordStatus {
                 var wait = timeval(tv_sec: 2, tv_usec: 0) // never hang waiting for Discord's answer
                 setsockopt(s, SOL_SOCKET, SO_RCVTIMEO, &wait, socklen_t(MemoryLayout<timeval>.size))
                 fd = s; connectedId = id
-                if frame(0, ["v": 1, "client_id": id]) { readReply(); return }
+                if frame(0, ["v": 1, "client_id": id]) { return } // frame read Discord's answer
                 close(); return
             }
             Darwin.close(s)

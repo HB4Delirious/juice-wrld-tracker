@@ -38,6 +38,33 @@ extension Engine {
         guard let r = v.range(of: #"\b(19|20)\d{2}\b"#, options: .regularExpression) else { return "" }
         return String(v[r])
     }
+    /// Whether the library counts a file as Juice WRLD: its path or its artist tags say so.
+    static func countsAsJuice(path: String, tags: Tags) -> Bool {
+        hasArtist(path) || hasArtist("\(tags["artist"] ?? "") \(tags["albumartist"] ?? "")")
+    }
+    /// Whether a file has finished arriving (a copy can take minutes): its size didn't change between two looks a few
+    /// seconds apart, and it wasn't written to in the last 10 seconds.
+    static func settled(sizeBefore: Int, sizeNow: Int, modified: Date, now: Date) -> Bool {
+        // A date in the future (a NAS whose clock runs ahead, bad metadata) says nothing about the copy; the size does.
+        sizeNow > 0 && sizeNow == sizeBefore && (now.timeIntervalSince(modified) >= 10 || modified > now)
+    }
+    /// The eras a spoken name fits, best first: the short name ("drfl"), then the full name ("Death Race For Love"),
+    /// then names containing the words ("party never ends" fits TPNE and TPNE 2.0). Case, "&" and punctuation don't matter.
+    static func erasNamed(_ spoken: String, eras: [(name: String, full: String)]) -> [String] {
+        func plain(_ s: String) -> String {
+            let t = s.lowercased().replacingOccurrences(of: "&", with: " and ")
+            return String(String.UnicodeScalarView(t.unicodeScalars.filter { CharacterSet.alphanumerics.contains($0) || $0 == " " }))
+                .split(separator: " ").joined(separator: " ")
+        }
+        let s = plain(spoken)
+        guard !s.isEmpty else { return [] }
+        for test in [{ (e: (name: String, full: String)) in plain(e.name) == s }, { plain($0.full) == s },
+                     { plain($0.name).contains(s) || plain($0.full).contains(s) }] {
+            let hits = eras.filter(test).map(\.name)
+            if !hits.isEmpty { return hits }
+        }
+        return []
+    }
     static func hasArtist(_ text: String) -> Bool {
         String(text.lowercased().unicodeScalars.filter { ("a"..."z").contains($0) }).contains("juicewrld")
     }
@@ -567,7 +594,7 @@ extension Engine {
                         tags = TagReader.read(url, ext: ext)
                         read = CachedTags(size: size, mtime: (values?.contentModificationDate?.timeIntervalSince1970 ?? 0) * 1000, tags: tags)
                     }
-                    guard !onlyJuice || hasArtist(path) || hasArtist("\(tags["artist"] ?? "") \(tags["albumartist"] ?? "")") else { return (nil, read, path) }
+                    guard !onlyJuice || countsAsJuice(path: path, tags: tags) else { return (nil, read, path) }
                     let title = (tags["title"] ?? "").isEmpty ? titleFromFilename(path) : tags["title"]!
                     return (LibraryFile(path: path, ext: ext, tags: tags, title: title, key: normalize(title), stem: stemOf(path),
                                         fromTags: !(tags["title"] ?? "").isEmpty, size: size), read, path)
@@ -1444,7 +1471,7 @@ extension TagReader {
         default:
             let h = file.bytes(0, 10)
             guard h.count >= 10, latin1(h[0..<3]) == "ID3" else { return false }
-            return hasArt(file.bytes(0, UInt64(10 + min(synchsafe(h, 6), 8 * 1024 * 1024))), ext: ext)
+            return hasArt(file.bytes(0, UInt64(10 + min(synchsafe(h, 6), 64 * 1024 * 1024))), ext: ext) // the whole tag, even with big art
         }
     }
 }
@@ -1483,7 +1510,8 @@ extension Engine {
     }
 
     /// Where each matched file would go under a pattern like "{era}/{song}" (also {category}, {year}). Only files
-    /// matched by title, file name or hand (not a close title) to one song, or to versions `primarySong` can settle, move. A file never moves onto
+    /// matched by title, file name or hand (not a close title) to one song, or to versions `primarySong` can settle, move,
+    /// and only where the library still counts them as Juice WRLD files. A file never moves onto
     /// another file's place: the first one wins and the rest stay where they are.
     static func organizePlan(files: [LibraryFile], match: Match, catalog: [EngineSong], pattern: String) -> [(from: String, to: String)] {
         var taken = Set(files.map { $0.path.lowercased() }), out: [(String, String)] = []
@@ -1497,7 +1525,8 @@ extension Engine {
             let parts = rel.split(separator: "/").map { safeName(String($0)) }
             guard !parts.isEmpty else { continue }
             let to = ([root] + parts).joined(separator: "/") + "." + f.ext
-            guard to != f.path, !taken.contains(to.lowercased()) else { continue }
+            // A file counted only because its folder says Juice WRLD would drop out of the library at its new place.
+            guard to != f.path, !taken.contains(to.lowercased()), countsAsJuice(path: to, tags: f.tags) else { continue }
             taken.remove(f.path.lowercased()); taken.insert(to.lowercased())
             out.append((f.path, to))
         }

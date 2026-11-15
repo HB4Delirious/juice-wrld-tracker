@@ -1,6 +1,6 @@
 #!/bin/sh
 # Builds tests/EngineTests.swift with the app's engine and checks it against tests/fixtures: the answers the old HTML
-# page gave for the same inputs (frozen when the page was retired; they were made by tests/engine-fixtures.mjs).
+# page gave for the same inputs. They were frozen when the page was retired and can't be made again; keep them as they are.
 set -e
 cd "$(dirname "$0")/.."
 work=$(mktemp -d)

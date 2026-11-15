@@ -1,5 +1,5 @@
-// Checks the Swift engine (JuiceTracker/Engine.swift) against the page's own answers in fixtures.json, written by
-// tests/engine-fixtures.mjs. Run: scripts/test-engine.sh
+// Checks the Swift engine (JuiceTracker/Engine.swift) against the page's own answers in fixtures.json, frozen when the
+// HTML page was retired (they can't be made again). Run: scripts/test-engine.sh
 import Foundation
 
 @main struct EngineTests {
@@ -201,7 +201,7 @@ import Foundation
                            sessions: "", dates: "", bitrate: "", filePath: "", hasDetails: false)
             }
             func file(_ path: String) -> LibraryFile {
-                LibraryFile(path: path, ext: Engine.extOf(path), tags: [:], title: "", key: "", stem: "", fromTags: false, size: 1)
+                LibraryFile(path: path, ext: Engine.extOf(path), tags: ["artist": "Juice WRLD"], title: "", key: "", stem: "", fromTags: false, size: 1)
             }
             let cat = [song("1", "Lucid Dreams", "GB&GR"), song("2", "What?/Why", "DRFL")]
             let files = [file("M/a.mp3"), file("M/b.flac"), file("M/c.mp3"), file("M/GB&GR/Lucid Dreams.mp3")]
@@ -218,6 +218,25 @@ import Foundation
             let p2 = Engine.organizePlan(files: files, match: m, catalog: cat, pattern: "{year}/{song} ({era})")
             expect(p2.map(\.to) == ["M/2018/Lucid Dreams (GB&GR).mp3", "M/2018/WhatWhy (DRFL).flac"], "organizer: pattern fields and safe names (\(p2))")
             expect(Set(p2.map(\.to)).count == p2.count, "organizer: no two files go to the same place")
+            var untagged = files[0]; untagged.path = "M/Juice WRLD/a.mp3"; untagged.tags = [:]
+            m.songsFor[untagged.path] = [0]; m.how[untagged.path] = "title"
+            expect(Engine.organizePlan(files: [untagged], match: m, catalog: cat, pattern: "{era}/{song}").isEmpty,
+                   "organizer: a file counted only by its Juice WRLD folder stays put")
+            expect(Engine.organizePlan(files: [untagged], match: m, catalog: cat, pattern: "Juice WRLD/{era}/{song}").map(\.to) == ["M/Juice WRLD/GB&GR/Lucid Dreams.mp3"],
+                   "organizer: it can move inside a Juice WRLD folder")
+            let t0 = Date(timeIntervalSince1970: 1_000_000)
+            expect(!Engine.settled(sizeBefore: 100, sizeNow: 200, modified: t0, now: t0 + 60), "inbox: a growing file isn't settled")
+            expect(!Engine.settled(sizeBefore: 200, sizeNow: 200, modified: t0, now: t0 + 3), "inbox: a file written seconds ago isn't settled")
+            expect(Engine.settled(sizeBefore: 200, sizeNow: 200, modified: t0, now: t0 + 30), "inbox: a finished file is settled")
+            expect(!Engine.settled(sizeBefore: 0, sizeNow: 0, modified: t0, now: t0 + 30), "inbox: an empty file isn't settled")
+            expect(Engine.settled(sizeBefore: 200, sizeNow: 200, modified: t0 + 3600, now: t0), "inbox: a file dated in the future is settled by its size")
+            let eras = [("DRFL", "Death Race For Love"), ("DRFL (TV)", "Death Race For Love TV mixes"), ("TPNE", "The Party Never Ends"),
+                        ("TPNE 2.0", "The Party Never Ends 2.0"), ("GB&GR", "Goodbye & Good Riddance")].map { (name: $0.0, full: $0.1) }
+            expect(Engine.erasNamed("drfl", eras: eras) == ["DRFL"], "era names: the short name, any case")
+            expect(Engine.erasNamed("death race for love", eras: eras) == ["DRFL"], "era names: the full name beats the TV mixes")
+            expect(Engine.erasNamed("goodbye and good riddance", eras: eras) == ["GB&GR"], "era names: & and and are the same")
+            expect(Engine.erasNamed("party never ends", eras: eras) == ["TPNE", "TPNE 2.0"], "era names: several fits are all returned")
+            expect(Engine.erasNamed("fighting demons", eras: eras).isEmpty, "era names: no fit, nothing")
         }
 
         // Cover art (beyond the page): added to each format, tags and audio untouched, and refused the second time.

@@ -100,6 +100,7 @@ enum EngineFiles {
             Task { @MainActor in
                 let s = EngineState.shared
                 if let f = s.fetchedAt, Date().timeIntervalSince(f) > Self.cacheHours * 3600 { await s.reload() }
+                EngineSnapshot.maybeSave() // weekly, also while the app stays open for weeks
             }
         }
     }

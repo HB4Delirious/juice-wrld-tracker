@@ -345,13 +345,18 @@ final class ABCompare: ObservableObject {
 
 enum ABWindow {
     private static var window: NSWindow?
+    private static var closing: NSObjectProtocol?
     @MainActor static func show(_ versions: [Song], start: Song) {
         window?.close()
+        if let closing { NotificationCenter.default.removeObserver(closing) }
         let other = versions.first { $0.i != start.i } ?? start
+        let ab = ABCompare(a: start, b: other)
         let w = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 520, height: 300), styleMask: [.titled, .closable], backing: .buffered, defer: false)
         w.title = "Compare versions"
         w.isReleasedWhenClosed = false
-        w.contentView = NSHostingView(rootView: ABView(versions: versions, ab: ABCompare(a: start, b: other)))
+        w.contentView = NSHostingView(rootView: ABView(versions: versions, ab: ab))
+        // A closed window stays in memory, so SwiftUI's onDisappear never runs: stop the players when it closes.
+        closing = NotificationCenter.default.addObserver(forName: NSWindow.willCloseNotification, object: w, queue: .main) { _ in ab.stop() }
         w.center()
         w.makeKeyAndOrderFront(nil)
         window = w
@@ -389,7 +394,6 @@ private struct ABView: View {
         .task { ab.load() }
         .onChange(of: ab.a) { _ in ab.load() }
         .onChange(of: ab.b) { _ in ab.load() }
-        .onDisappear { ab.stop() }
     }
 
     private func side(_ label: String, _ pick: Binding<Song>, on: Bool) -> some View {

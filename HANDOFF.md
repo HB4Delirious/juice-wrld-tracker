@@ -40,7 +40,9 @@ is backed up first when a backup folder is set; writes are atomic. Files are onl
 Downloads never overwrite, and never leave the music folder. The organizer and inbox move files only inside the music
 folder (or from the inbox into it), never onto an existing file; a folder a move empties is removed only if it's empty.
 When a title matches several versions, `Engine.primarySong` settles it (one name among the plain-named versions, and
-the era most of them share) or the file stays put.
+the era most of them share) or the file stays put. A move never takes a file somewhere the library would stop counting it
+(`Engine.countsAsJuice`). The inbox only takes files that have finished arriving (`Engine.settled`: same size a few
+seconds apart, untouched for 10 seconds), runs one pass at a time, and tags each file it moves (artist included).
 
 ## Tests
 

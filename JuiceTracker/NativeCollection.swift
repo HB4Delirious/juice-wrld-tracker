@@ -232,8 +232,7 @@ private struct PlaylistDetail: View {
         let songs = playlist.songs.compactMap { byId[$0] }
         VStack(alignment: .leading, spacing: 10) {
             HStack {
-                TextField("Name", text: $name, onCommit: { update { $0.name = name.isEmpty ? "Playlist" : name } })
-                    .textFieldStyle(.roundedBorder).font(.title3).frame(maxWidth: 320)
+                TextField("Name", text: $name).textFieldStyle(.roundedBorder).font(.title3).frame(maxWidth: 320)
                 Spacer()
                 Button { playInOrder(songs.filter(\.o).map(\.i)) } label: { Label("Play", systemImage: "play.fill") }.disabled(!songs.contains(where: \.o))
                 Button("Export M3U…") { saveM3U(songs.map(\.i), name: playlist.name) }.disabled(!songs.contains(where: \.o))
@@ -258,6 +257,10 @@ private struct PlaylistDetail: View {
         }
         .onAppear { name = playlist.name }
         .onChange(of: playlist.id) { _ in name = playlist.name }
+        .onChange(of: name) { typed in // saved on every keystroke, so switching playlists right away keeps it
+            guard typed != playlist.name, !typed.trimmingCharacters(in: .whitespaces).isEmpty else { return }
+            update { $0.name = typed }
+        }
     }
 
     private func update(_ change: (inout EngineState.Playlist) -> Void) {
@@ -343,7 +346,7 @@ struct OrganizeScreen: View {
 
                 VStack(alignment: .leading, spacing: 10) {
                     Text("Inbox folder").font(.title3.bold())
-                    Text("Drop songs into this folder (outside your music folder) and each one the tracker recognizes moves into its era's folder; when it matches exactly one version, it also gets the catalog's tags. Anything else stays in the inbox for you to look at.")
+                    Text("Drop songs into this folder (outside your music folder). Each one the tracker recognizes moves into its era's folder and gets the catalog's tags, once it has finished copying. Anything else stays in the inbox for you to look at, with a note saying why.")
                         .font(.caption).foregroundColor(JT.muted).fixedSize(horizontal: false, vertical: true)
                     HStack {
                         Button(inbox.isEmpty ? "Choose an inbox folder…" : "Change…") { pickInbox() }
