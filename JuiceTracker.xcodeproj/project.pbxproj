@@ -18,6 +18,10 @@
 		1485960718293A4B5C6D7E8F /* NativeExtras.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2596071829304B5C6D7E8F90 /* NativeExtras.swift */; };
 		36A7B8C9D0E1F20314253647 /* NativeMore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 47B8C9D0E1F2031425364758 /* NativeMore.swift */; };
 		58C9D0E1F203142536475869 /* NativeJuice.swift in Sources */ = {isa = PBXBuildFile; fileRef = 69D0E1F20314253647586970 /* NativeJuice.swift */; };
+		58C9D0E1F203142536475A04 /* EngineActions.swift in Sources */ = {isa = PBXBuildFile; fileRef = 69D0E1F20314253647586A04 /* EngineActions.swift */; };
+		58C9D0E1F203142536475A03 /* EngineState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 69D0E1F20314253647586A03 /* EngineState.swift */; };
+		58C9D0E1F203142536475A02 /* EngineCheck.swift in Sources */ = {isa = PBXBuildFile; fileRef = 69D0E1F20314253647586A02 /* EngineCheck.swift */; };
+		58C9D0E1F203142536475A01 /* Engine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 69D0E1F20314253647586A01 /* Engine.swift */; };
 		93AD2DE8F603B24719141ACE /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 2DA6296CA099F01CDF41D14C /* Assets.xcassets */; };
 		C169FD5F3E196738AE889C7D /* juice-tracker.html in Resources */ = {isa = PBXBuildFile; fileRef = ACB23FEBF9072389C24011D1 /* juice-tracker.html */; };
 		C8E648084E7309C1B01150E8 /* JuiceTrackerApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = B11B15543E9C61D2DE5F191E /* JuiceTrackerApp.swift */; };
@@ -43,6 +47,10 @@
 		2596071829304B5C6D7E8F90 /* NativeExtras.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeExtras.swift; sourceTree = "<group>"; };
 		47B8C9D0E1F2031425364758 /* NativeMore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeMore.swift; sourceTree = "<group>"; };
 		69D0E1F20314253647586970 /* NativeJuice.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeJuice.swift; sourceTree = "<group>"; };
+		69D0E1F20314253647586A04 /* EngineActions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EngineActions.swift; sourceTree = "<group>"; };
+		69D0E1F20314253647586A03 /* EngineState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EngineState.swift; sourceTree = "<group>"; };
+		69D0E1F20314253647586A02 /* EngineCheck.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EngineCheck.swift; sourceTree = "<group>"; };
+		69D0E1F20314253647586A01 /* Engine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Engine.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60718293A4B5C /* JuiceTrackerWidget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JuiceTrackerWidget.swift; sourceTree = "<group>"; };
 		C3D4E5F60718293A4B5C6D7E /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		D4E5F60718293A4B5C6D7E8F /* JuiceTrackerWidget.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = JuiceTrackerWidget.entitlements; sourceTree = "<group>"; };
@@ -76,6 +84,10 @@
 				2596071829304B5C6D7E8F90 /* NativeExtras.swift */,
 				47B8C9D0E1F2031425364758 /* NativeMore.swift */,
 				69D0E1F20314253647586970 /* NativeJuice.swift */,
+				69D0E1F20314253647586A04 /* EngineActions.swift */,
+				69D0E1F20314253647586A03 /* EngineState.swift */,
+				69D0E1F20314253647586A02 /* EngineCheck.swift */,
+				69D0E1F20314253647586A01 /* Engine.swift */,
 				33923ED7623C961878FB8F8C /* WebViewStore.swift */,
 			);
 			path = JuiceTracker;
@@ -241,6 +253,10 @@
 				1485960718293A4B5C6D7E8F /* NativeExtras.swift in Sources */,
 				36A7B8C9D0E1F20314253647 /* NativeMore.swift in Sources */,
 				58C9D0E1F203142536475869 /* NativeJuice.swift in Sources */,
+				58C9D0E1F203142536475A04 /* EngineActions.swift in Sources */,
+				58C9D0E1F203142536475A03 /* EngineState.swift in Sources */,
+				58C9D0E1F203142536475A02 /* EngineCheck.swift in Sources */,
+				58C9D0E1F203142536475A01 /* Engine.swift in Sources */,
 				ED549C999B26D36BC005D7A2 /* WebViewStore.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

@@ -17,24 +17,13 @@ struct JuiceTrackerApp: App {
                 CommandGroup(after: .appInfo) {
                     Button("Check for Updates…") { Task { await Updater.check(userInitiated: true) } }
                 }
-                CommandGroup(after: .toolbar) {
-                    Button("Reload Page") { WebViewStore.shared.reload() }
-                        .keyboardShortcut("r", modifiers: .command)
-                    Divider()
-                    Button("Actual Size") { WebViewStore.shared.setZoom(1) }
-                        .keyboardShortcut("0", modifiers: .command)
-                    Button("Zoom In") { WebViewStore.shared.zoom(by: 0.1) }
-                        .keyboardShortcut("+", modifiers: .command)
-                    Button("Zoom Out") { WebViewStore.shared.zoom(by: -0.1) }
-                        .keyboardShortcut("-", modifiers: .command)
-                }
                 CommandGroup(before: .windowList) {
                     Button("Juice Tracker") { AppDelegate.shared?.showMainWindow() }
                         .keyboardShortcut("1", modifiers: .command)
-                    Button("Classic Window") { AppDelegate.shared?.showClassicWindow() }
-                        .keyboardShortcut("2", modifiers: .command)
                     Button("Mini Player") { MiniPlayer.show() }
                         .keyboardShortcut("3", modifiers: .command)
+                    Divider()
+                    Button("Check Swift Engine…") { EngineCheck.show() } // stage 1 of replacing the page
                 }
                 CommandGroup(replacing: .help) {
                     Button("Open juicewrldapi.com") {
@@ -48,7 +37,6 @@ struct JuiceTrackerApp: App {
 final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUserNotificationCenterDelegate {
     /// SwiftUI wraps the app delegate, so NSApp.delegate isn't this object; menus and windows use this instead.
     private(set) static weak var shared: AppDelegate?
-    private var window: NSWindow?
     private var nativeWindow: NSWindow?
     private let menuBar = MenuBar()
 
@@ -70,35 +58,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUs
     /// The app's window: the SwiftUI interface.
     func showMainWindow() { showNativeWindow() }
 
-    var classicVisible: Bool { window?.isVisible == true }
-
-    /// The classic (HTML) interface, kept for anything the native one doesn't do yet and for comparison. The page moves
-    /// in here from the native window's engine host while this window is open.
-    func showClassicWindow() {
-        if window == nil {
-            let w = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1180, height: 820),
-                             styleMask: [.titled, .closable, .miniaturizable, .resizable], backing: .buffered, defer: false)
-            w.title = "Juice Tracker (Classic)"
-            w.minSize = NSSize(width: 820, height: 600)
-            w.isReleasedWhenClosed = false
-            w.delegate = self
-            w.contentView = WKWebViewContainer(webView: WebViewStore.shared.webView)
-            if !w.setFrameUsingName("MainWindow") { w.center() }
-            w.setFrameAutosaveName("MainWindow") // remembers size and position
-            window = w
-        }
-        (window?.contentView as? WKWebViewContainer)?.adopt(WebViewStore.shared.webView)
-        WebViewStore.shared.webView.evaluateJavaScript("window.jwEngineMode && window.jwEngineMode(false)")
-        window?.makeKeyAndOrderFront(nil)
-        NSApp.activate(ignoringOtherApps: true)
-    }
-
-    /// The page goes back to running unseen inside the native window.
-    private func parkEngine() {
-        engineHost.adopt(WebViewStore.shared.webView)
-        WebViewStore.shared.webView.evaluateJavaScript("window.jwEngineMode && window.jwEngineMode(true)")
-    }
-
+    /// The page (the engine that's still being moved to Swift) runs unseen inside the window.
     private let engineHost = EngineHostView()
 
     /// The SwiftUI interface. The page (catalog, scanning, matching, tag writing, downloads) runs unseen behind it.
@@ -127,7 +87,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUs
             w.setFrameAutosaveName("NativeWindow")
             nativeWindow = w
         }
-        if !classicVisible { parkEngine() }
+        engineHost.adopt(WebViewStore.shared.webView)
         nativeWindow?.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
     }
@@ -135,13 +95,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUs
     /// With "Keep running" on, closing the window only hides it, so the app (and its daily checks) keeps running;
     /// the Dock icon or an alert brings it back. Off: the window closes and the app quits.
     func windowShouldClose(_ sender: NSWindow) -> Bool {
-        // The classic window only shows the engine: closing it hides it and the page goes back behind the native window.
-        if sender === window {
-            sender.orderOut(nil)
-            parkEngine()
-            if nativeWindow?.isVisible != true, !Pref.bool(Pref.keepRunning, default: false) { NSApp.terminate(nil) }
-            return false
-        }
         guard Pref.bool(Pref.keepRunning, default: false) else { return true }
         WebViewStore.shared.stopAmbient() // music shouldn't keep playing from a hidden window
         sender.orderOut(nil)

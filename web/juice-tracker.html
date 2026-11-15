@@ -2150,6 +2150,7 @@ function useCatalog(songs, sourceText, { trackChanges, eras = {} }) {
     }
   }
   state.catalog = songs;
+  state.catalogVersion = (state.catalogVersion || 0) + 1; // tells the native window to take the new catalog
   state.trivia.round = null;
   state.eras = { ...(store.catalog?.eras || {}), ...eras };
   state.newIds = new Set(store.newIds || []);
@@ -5160,44 +5161,15 @@ function confetti() {
   }
 }
 
-/* ---------- the native (SwiftUI) window: this page stays the engine and sends it a snapshot after each change.
-   The native window draws it and calls jwNativeAction for anything that changes data. */
-// The catalog's fixed details (names, dates, credits) are sent only when they change; owned, wishlist and the
-// queue go every time. Credits and dates fill in as song details load, so the detail count is part of the check.
-var nativeCatalogKey = null;
+/* ---------- the native (SwiftUI) window. Swift owns the catalog, wishlist and notes, and builds what the screens
+   show; this page still scans, matches, downloads and plays, and reports what you own after each change. */
 function nativeState() {
-  const cats = new Map();
-  state.catalog.forEach((s, i) => { const c = cats.get(s.category) || { name: capital(s.category), have: 0, total: 0 }; c.total++; if (state.owned.has(i)) c.have++; cats.set(s.category, c); });
-  const key = `${state.catalog.length}|${state.catalog.filter(s => s.hasDetails).length}|${state.catalog[0] && state.catalog[0].id}`;
-  const out = {
-    total: state.catalog.length, have: state.owned.size, folder: state.rootHandle ? state.rootHandle.name : "",
+  return {
+    cv: state.nativeToken ?? null, // the catalog Swift handed over (see the useCatalog action)
+    owned: [...state.owned.keys()], files: (state.library || []).length, folder: state.rootHandle ? state.rootHandle.name : "",
     queue: state.bulk ? { done: state.bulk.done, total: state.bulk.total, current: state.bulk.current || "", waiting: Boolean(state.bulk.waiting) } : null,
-    cats: [...cats.values()].sort((a, b) => b.total - a.total),
-    eras: eraStats().map(e => ({ name: e.name, have: e.have, total: e.total, time: hasValue(e.info.timeFrame) ? e.info.timeFrame : "", desc: hasValue(e.info.description) ? e.info.description : "" })),
-    owned: [...state.owned.keys()],
-    wished: state.catalog.map((s, i) => isWished(s) ? i : -1).filter(i => i >= 0),
-    fresh: state.catalog.map((s, i) => state.newIds.has(s.id) ? i : -1).filter(i => i >= 0),
-    released: state.catalog.map((s, i) => state.releasedIds.has(s.id) ? i : -1).filter(i => i >= 0),
-    files: (state.library || []).length,
     drive: $("drive-status").hidden ? null : { kind: $("drive-status").className.replace("drive", "").trim(), text: $("drive-status").textContent.trim() },
-    // what the classic home page shows under the scoreboard, read from it so both always agree
-    notices: [...$("notices").children].map(p => ({ text: p.textContent.trim(), released: p.classList.contains("released") })),
-    today: $("today-card").hidden ? [] : [...$("today-card").querySelectorAll("p")].map(p => ({
-      head: (p.querySelector("strong") || {}).textContent || "", songs: [...p.querySelectorAll("button[data-open-song]")].map(b => Number(b.dataset.openSong)),
-      more: Number((/and (\d+) more\s*$/.exec(p.textContent) || [])[1] || 0) })),
-    catalog: null,
   };
-  if (key !== nativeCatalogKey) {
-    nativeCatalogKey = key;
-    const year = v => { const y = yearOf(v); return y ? Number(y) : null; };
-    out.catalog = state.catalog.map((s, i) => {
-      const d = state.derived[i] || deriveSong(s);
-      return { i, id: String(s.id), n: s.name, a: s.alt, rel: isReleased(s), e: eraName(s), c: capital(s.category), l: s.length || "", f: Boolean(fileUrl(s)), m: recordMonth(s.recordDates),
-        ry: [...d.recYears], py: year(s.previewDate), sy: year(s.leakDate), rl: isReleased(s) ? year(s.release) : null,
-        pr: d.producers, ar: d.artists, en: d.engineers, st: d.studios };
-    });
-  }
-  return out;
 }
 var nativeTimer = null;
 function pushNativeState() {
@@ -5208,7 +5180,31 @@ function pushNativeState() {
 }
 window.jwNativeAction = async a => {
   const s = state.catalog && state.catalog[a.i];
-  if (a.op === "refresh") { nativeCatalogKey = null; pushNativeState(); return ""; }
+  if (a.op === "refresh") { pushNativeState(); return ""; }
+  // Swift's catalog: used as is, so song numbers mean the same songs on both sides. Swift tracks new and released songs.
+  if (a.op === "useCatalog") {
+    state.nativeToken = a.token;
+    useCatalog(JSON.parse(a.songs).map(r => cleanSong(r)), "", { trackChanges: false, eras: a.eras || {} });
+    state.eras = a.eras || {};
+    return "";
+  }
+  if (a.op === "setPersonal") { state.personal.wish = a.wish || {}; state.personal.notes = a.notes || {}; savePersonal(); return ""; }
+  // The Swift engine (stage 1): your saved data and tag cache to copy, and the page's answers to compare with. Read only.
+  if (a.op === "engineExport") {
+    const root = state.rootHandle;
+    return JSON.stringify({ store: readStore(), personal: state.personal, onlyJuice: $("only-juice").checked, root: root ? root._path || "" : "", rootName: root ? root.name : "" });
+  }
+  if (a.op === "engineTagCache") {
+    const out = {};
+    (await tagCache.all()).forEach((v, k) => { if (k !== tagCache.ITEMS) out[k] = v; });
+    return JSON.stringify(out);
+  }
+  if (a.op === "engineParity") {
+    return JSON.stringify({ catalog: state.catalog || [], overrides: state.personal.matchOverrides || {},
+      library: (state.library || []).map(f => ({ path: f.path, ext: f.ext, tags: f.tags || {}, title: f.title, key: f.key, stem: f.stem, fromTags: Boolean(f.fromTags), size: f.size || 0 })),
+      owned: state.owned ? [...state.owned].map(([i, fs]) => [i, fs.map(f => f.path)]) : [] });
+  }
+  if (a.op === "engineClean") return JSON.stringify(JSON.parse(a.raw).map(r => cleanSong(r)));
   if (a.op === "dups") {
     const groups = duplicateGroups();
     return JSON.stringify({ canTrash: canTrash(), exactExtra: canTrash() ? extraCopies(groups.filter(isExactDuplicate)).length : 0,
@@ -5239,9 +5235,7 @@ window.jwNativeAction = async a => {
   if (a.op === "healthFix") { return await healthFix(a.fix, a.path); }
   if (a.op === "classic") { showView(a.view); return ""; }
   // setup: catalog and music folder
-  if (a.op === "setup") return JSON.stringify({ catalog: Boolean(state.catalog), folder: state.rootHandle ? state.rootHandle.name : "",
-    catalogStatus: $("catalog-status").textContent, folderStatus: $("folder-status").textContent });
-  if (a.op === "loadCatalog") { $("fetch-btn").click(); return ""; }
+  if (a.op === "setup") return JSON.stringify({ folder: state.rootHandle ? state.rootHandle.name : "", folderStatus: $("folder-status").textContent });
   // which catalog song a playing file is (for lyrics and artwork), and lookups for the app's own play history
   if (a.op === "songForPath") { const f = (state.library || []).find(x => x.handle && x.handle._path === a.path); return f && f.songs && f.songs.length ? String(f.songs[0]) : ""; }
   if (a.op === "songsForPaths") {
@@ -5249,8 +5243,14 @@ window.jwNativeAction = async a => {
     return JSON.stringify((a.paths || []).map(p => byPath.has(p) ? byPath.get(p) : -1));
   }
   if (a.op === "neverPlayed") { // songs you have none of whose files has ever played here
-    const heard = new Set(a.paths || []), out = [];
-    state.owned.forEach((files, i) => { if (!files.some(f => f.handle && heard.has(f.handle._path))) out.push(i); });
+    // One entry per file: versions matched by the same files count once.
+    const heard = new Set(a.paths || []), seen = new Set(), out = [];
+    state.owned.forEach((files, i) => {
+      const paths = files.map(f => f.handle && f.handle._path).filter(Boolean);
+      if (paths.some(p => heard.has(p)) || (paths.length && paths.every(p => seen.has(p)))) return;
+      paths.forEach(p => seen.add(p));
+      out.push(i);
+    });
     return JSON.stringify(out);
   }
   if (a.op === "downloadWishlist") {
@@ -5272,7 +5272,6 @@ window.jwNativeAction = async a => {
   // downloads and notes
   if (a.op === "downloadMany") { const songs = (a.ids || []).map(n => state.catalog[n]).filter(x => x && fileUrl(x)); return String(downloadAll(songs) || 0); }
   if (a.op === "stopQueue") { if (state.bulk) state.bulk.stop = true; return ""; }
-  if (a.op === "note") { const so = state.catalog[a.i]; if (so) { if (String(a.text || "").trim()) state.personal.notes[so.id] = a.text; else delete state.personal.notes[so.id]; savePersonal(); } return ""; }
   // background music: on/off and which era
   if (a.op === "ambientInfo") {
     const eras = [...new Set((state.library || []).filter(f => f.songs && f.songs.length && canPlay(f)).map(f => eraName(state.catalog[f.songs[0]])))].sort();
@@ -5290,10 +5289,8 @@ window.jwNativeAction = async a => {
   if (a.op === "triviaClip") { playTriviaClip({ clip: a.path }); return ""; }
   if (a.op === "triviaStop") { await window.jwAmbient?.({ stopClip: true }); return ""; }
   // export and backup
-  if (a.op === "exportCatalog") return fullCatalogCsv();
-  if (a.op === "backupData") return JSON.stringify(backupData(), null, 2);
+  if (a.op === "ownedPaths") return JSON.stringify(state.owned ? [...state.owned].map(([i, fs]) => [i, fs.map(f => f.path)]) : []);
   if (a.op === "restoreData") return restoreBackup(a.text);
-  if (a.op === "card") { const c = await drawCollectionCard(); return c.toDataURL("image/png"); }
   if (a.op === "snapshotInfo") return JSON.stringify({ available: Boolean(window.jwSnapshot), last: lastSnapshot() });
   if (a.op === "snapshotNow") { await saveSnapshot(false); return $("export-status").textContent; }
   if (a.op === "snapshotFolder") { await window.jwSnapshotFolder?.(); return ""; }
@@ -5360,7 +5357,6 @@ window.jwNativeAction = async a => {
   }
   if (a.op === "fixWrite") { writeSelectedTags(true); return ""; }
   if (!s) return "";
-  if (a.op === "wish") { toggleWish(s); renderTable(); renderExportPanel(); pushNativeState(); return ""; }
   if (a.op === "download") { downloadAll([s]); pushNativeState(); return ""; }
   if (a.op === "play") {
     const f = (state.owned.get(a.i) || []).find(canPlay);
