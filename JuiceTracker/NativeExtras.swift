@@ -138,6 +138,9 @@ struct PlayerPanel: View {
                     }
                 }
                 .padding(10).doodled(10)
+                .overlay(alignment: .top) {
+                    if info.on && !paused && title != nil { NoteDrift().frame(height: 110).offset(y: -110).allowsHitTesting(false) }
+                }
             }
         }
         .task(id: store.version) { await load() }

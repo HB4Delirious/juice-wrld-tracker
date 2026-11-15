@@ -151,18 +151,275 @@ struct BadgesScreen: View {
             if b.earned {
                 Label("Earned", systemImage: "checkmark.seal.fill").font(JT.body(12, .semibold)).foregroundColor(JT.have)
             } else {
-                GeometryReader { g in
-                    ZStack(alignment: .leading) {
-                        Capsule().fill(JT.raise)
-                        Capsule().fill(JT.lavender).frame(width: g.size.width * min(1, CGFloat(b.have) / CGFloat(max(b.need, 1))))
-                    }
-                }
-                .frame(height: 4)
+                FillBar(fraction: CGFloat(b.have) / CGFloat(max(b.need, 1)), fill: JT.lavender, delay: 0.15 + min(Double(seed) * 0.03, 0.4)).frame(height: 4)
                 Text("\(min(b.have, b.need).formatted()) of \(b.need.formatted())").font(JT.body(12)).foregroundColor(JT.muted)
             }
         }
         .padding(14)
         .frame(maxWidth: .infinity, minHeight: 190)
+        .overlay { if b.earned { Shimmer().opacity(0.35).clipShape(DoodleRect(seed: seed)) } }
         .doodled(14, seed: seed, stroke: b.earned ? JT.lavender.opacity(0.8) : JT.line2)
     }
+}
+
+// MARK: - Flair
+
+/// The catalog song playing right now, kept apart from NowPlaying (that one ticks 15 times a second, which would
+/// redraw every song row).
+@MainActor final class PlayingRow: ObservableObject {
+    static let shared = PlayingRow()
+    @Published var index: Int?
+}
+
+/// Three little equalizer bars, bouncing by Core Animation (nothing per frame in the app).
+struct EQBars: NSViewRepresentable {
+    func makeNSView(context: Context) -> NSView {
+        let v = NSView(frame: NSRect(x: 0, y: 0, width: 13, height: 12))
+        v.wantsLayer = true
+        for k in 0..<3 {
+            let bar = CALayer()
+            bar.backgroundColor = EraTheme.current.accentNS.cgColor
+            bar.cornerRadius = 1
+            bar.anchorPoint = CGPoint(x: 0.5, y: 0)
+            bar.frame = CGRect(x: CGFloat(k) * 5, y: 0, width: 3, height: 12)
+            let bounce = CABasicAnimation(keyPath: "transform.scale.y")
+            bounce.fromValue = 0.25
+            bounce.toValue = 1
+            bounce.duration = [0.42, 0.55, 0.36][k]
+            bounce.autoreverses = true
+            bounce.repeatCount = .infinity
+            bounce.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+            bar.add(bounce, forKey: "eq")
+            v.layer?.addSublayer(bar)
+        }
+        return v
+    }
+    func updateNSView(_ v: NSView, context: Context) {}
+}
+
+/// Confetti (rainbow bits, hearts, 999s and butterflies) that rains over the window when songs land in the library.
+/// The emitter lives for a few seconds per burst, so it costs nothing the rest of the time.
+struct Confetti: NSViewRepresentable {
+    static let fire = Notification.Name("JTConfetti")
+    func makeNSView(context: Context) -> ConfettiView { ConfettiView() }
+    func updateNSView(_ v: ConfettiView, context: Context) {}
+
+    final class ConfettiView: NSView {
+        override init(frame: NSRect) {
+            super.init(frame: frame)
+            wantsLayer = true
+            NotificationCenter.default.addObserver(self, selector: #selector(burst), name: Confetti.fire, object: nil)
+        }
+        required init?(coder: NSCoder) { fatalError("init(coder:) is not used") }
+        override func hitTest(_ point: NSPoint) -> NSView? { nil }
+
+        @objc private func burst() {
+            guard let root = layer, bounds.width > 0 else { return }
+            let e = CAEmitterLayer()
+            e.frame = bounds
+            e.emitterPosition = CGPoint(x: bounds.midX, y: bounds.maxY + 20)
+            e.emitterShape = .line
+            e.emitterSize = CGSize(width: bounds.width * 0.8, height: 1)
+            e.beginTime = CACurrentMediaTime()
+            e.emitterCells = Self.cells
+            root.addSublayer(e)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { e.birthRate = 0 }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 7) { e.removeFromSuperlayer() }
+        }
+
+        private static let cells: [CAEmitterCell] = {
+            func cell(_ image: CGImage, size: CGFloat, rate: Float) -> CAEmitterCell {
+                let c = CAEmitterCell()
+                c.contents = image
+                c.birthRate = rate
+                c.lifetime = 6.5
+                c.velocity = 90
+                c.velocityRange = 70
+                c.emissionLongitude = -.pi / 2 // straight down (the layer's y points up)
+                c.emissionRange = .pi / 4
+                c.yAcceleration = -110
+                c.spin = 2
+                c.spinRange = 5
+                c.scale = size / CGFloat(image.width)
+                c.scaleRange = c.scale * 0.3
+                c.alphaSpeed = -0.12
+                return c
+            }
+            let bits = JT.rainbowColors.map { color -> CGImage in
+                let img = NSImage(size: NSSize(width: 8, height: 14), flipped: false) { r in NSColor(color).setFill(); NSBezierPath(roundedRect: r, xRadius: 2, yRadius: 2).fill(); return true }
+                return img.cgImage(forProposedRect: nil, context: nil, hints: nil)!
+            }
+            let stickers = ["jt-heart", "jt-era-999", "jt-fly"].compactMap { NSImage(named: $0)?.cgImage(forProposedRect: nil, context: nil, hints: nil) }
+            return bits.map { cell($0, size: 8, rate: 26) } + stickers.map { cell($0, size: 26, rate: 6) }
+        }()
+    }
+}
+
+/// The little note that drops in from the top when songs land.
+struct LandedToast: View {
+    let text: String
+    var body: some View {
+        HStack(spacing: 10) {
+            Image("jt-heart").resizable().frame(width: 24, height: 24).rotationEffect(.degrees(-12))
+            Text(text).font(JT.body(15, .semibold)).lineLimit(1)
+        }
+        .padding(.horizontal, 18).padding(.vertical, 10)
+        .background(Capsule().fill(JT.raise))
+        .overlay(Capsule().stroke(JT.lavender.opacity(0.7), lineWidth: 1.5))
+        .shadow(color: JT.lavender.opacity(0.45), radius: 16, y: 6)
+    }
+}
+
+// MARK: - More motion (all Core Animation, so the app does nothing per frame)
+
+/// A soft band of light that sweeps across whatever it overlays every few seconds.
+struct Shimmer: NSViewRepresentable {
+    func makeNSView(context: Context) -> ShimmerView { ShimmerView() }
+    func updateNSView(_ v: ShimmerView, context: Context) {}
+
+    final class ShimmerView: NSView {
+        private let band = CAGradientLayer()
+        override init(frame: NSRect) {
+            super.init(frame: frame)
+            wantsLayer = true
+            band.colors = [NSColor.white.withAlphaComponent(0).cgColor, NSColor.white.withAlphaComponent(0.55).cgColor, NSColor.white.withAlphaComponent(0).cgColor]
+            band.startPoint = CGPoint(x: 0, y: 0.5)
+            band.endPoint = CGPoint(x: 1, y: 0.5)
+            layer?.addSublayer(band)
+        }
+        required init?(coder: NSCoder) { fatalError("init(coder:) is not used") }
+        override func hitTest(_ point: NSPoint) -> NSView? { nil }
+        override func layout() {
+            super.layout()
+            let w: CGFloat = 90
+            band.frame = CGRect(x: -w, y: 0, width: w, height: bounds.height)
+            let sweep = CAKeyframeAnimation(keyPath: "position.x")
+            sweep.values = [-w / 2, bounds.width + w / 2, bounds.width + w / 2]
+            sweep.keyTimes = [0, 0.35, 1]
+            sweep.duration = 4.5
+            sweep.repeatCount = .infinity
+            sweep.timingFunctions = [CAMediaTimingFunction(name: .easeInEaseOut), CAMediaTimingFunction(name: .linear)]
+            band.add(sweep, forKey: "sweep")
+        }
+    }
+}
+
+/// An image that flaps like wings now and then (squeezes sideways a few times, then rests).
+struct Flapping: NSViewRepresentable {
+    let image: String
+    func makeNSView(context: Context) -> NSView {
+        let v = NSView()
+        v.wantsLayer = true
+        let l = CALayer()
+        l.contents = NSImage(named: image)
+        l.contentsGravity = .resizeAspect
+        l.shadowColor = EraTheme.current.accentNS.cgColor
+        l.shadowOpacity = 0.7
+        l.shadowRadius = 6
+        l.shadowOffset = .zero
+        v.layer?.addSublayer(l)
+        let flap = CAKeyframeAnimation(keyPath: "transform.scale.x")
+        flap.values = [1, 0.45, 1, 0.45, 1, 0.45, 1, 1]
+        flap.keyTimes = [0, 0.04, 0.08, 0.12, 0.16, 0.2, 0.24, 1]
+        flap.duration = 3.2
+        flap.repeatCount = .infinity
+        l.add(flap, forKey: "flap")
+        context.coordinator.layer = l
+        return v
+    }
+    func updateNSView(_ v: NSView, context: Context) {
+        CATransaction.begin(); CATransaction.setDisableActions(true)
+        context.coordinator.layer?.frame = v.bounds
+        CATransaction.commit()
+    }
+    func makeCoordinator() -> Coordinator { Coordinator() }
+    final class Coordinator { var layer: CALayer? }
+}
+
+/// A four-point sparkle, drawn once.
+func sparkleImage(_ size: CGFloat) -> NSImage {
+    NSImage(size: NSSize(width: size, height: size), flipped: false) { r in
+        let c = CGPoint(x: r.midX, y: r.midY), a = r.width / 2, b = r.width / 9
+        let p = NSBezierPath()
+        p.move(to: CGPoint(x: c.x, y: c.y + a))
+        p.curve(to: CGPoint(x: c.x + a, y: c.y), controlPoint1: CGPoint(x: c.x + b, y: c.y + b), controlPoint2: CGPoint(x: c.x + b, y: c.y + b))
+        p.curve(to: CGPoint(x: c.x, y: c.y - a), controlPoint1: CGPoint(x: c.x + b, y: c.y - b), controlPoint2: CGPoint(x: c.x + b, y: c.y - b))
+        p.curve(to: CGPoint(x: c.x - a, y: c.y), controlPoint1: CGPoint(x: c.x - b, y: c.y - b), controlPoint2: CGPoint(x: c.x - b, y: c.y - b))
+        p.curve(to: CGPoint(x: c.x, y: c.y + a), controlPoint1: CGPoint(x: c.x - b, y: c.y + b), controlPoint2: CGPoint(x: c.x - b, y: c.y + b))
+        NSColor.white.setFill()
+        p.fill()
+        return true
+    }
+}
+
+/// A progress bar that grows from empty when it first shows, then follows its value.
+struct FillBar<Fill: ShapeStyle>: View {
+    let fraction: CGFloat
+    let fill: Fill
+    var track: Color = JT.raise
+    var delay = 0.0
+    @State private var grown = false
+    var body: some View {
+        GeometryReader { g in
+            ZStack(alignment: .leading) {
+                Capsule().fill(track)
+                Capsule().fill(fill).frame(width: g.size.width * (grown ? min(1, max(0, fraction)) : 0))
+            }
+        }
+        .animation(.easeOut(duration: 0.6), value: fraction)
+        .onAppear { withAnimation(.spring(response: 1, dampingFraction: 0.8).delay(delay)) { grown = true } }
+    }
+}
+
+/// Little hearts and music notes drifting up out of the player while music plays.
+struct NoteDrift: NSViewRepresentable {
+    func makeNSView(context: Context) -> NSView {
+        let v = DriftView()
+        v.wantsLayer = true
+        let e = CAEmitterLayer()
+        e.emitterShape = .line
+        e.emitterCells = Self.cells
+        v.emitter = e
+        v.layer?.addSublayer(e)
+        return v
+    }
+    func updateNSView(_ v: NSView, context: Context) {}
+
+    private final class DriftView: NSView {
+        var emitter: CAEmitterLayer?
+        override func hitTest(_ point: NSPoint) -> NSView? { nil }
+        override func layout() {
+            super.layout()
+            emitter?.frame = bounds
+            emitter?.emitterPosition = CGPoint(x: bounds.midX, y: 0)
+            emitter?.emitterSize = CGSize(width: bounds.width * 0.8, height: 1)
+        }
+    }
+
+    private static let cells: [CAEmitterCell] = {
+        func glyph(_ s: String, _ color: NSColor) -> CGImage {
+            let a = NSAttributedString(string: s, attributes: [.font: NSFont.systemFont(ofSize: 28, weight: .bold), .foregroundColor: color])
+            let size = a.size()
+            let img = NSImage(size: size, flipped: false) { _ in a.draw(at: .zero); return true }
+            return img.cgImage(forProposedRect: nil, context: nil, hints: nil)!
+        }
+        let accent = EraTheme.current.accentNS
+        let images = [glyph("♪", accent), glyph("♫", .white), NSImage(named: "jt-heart")?.cgImage(forProposedRect: nil, context: nil, hints: nil)].compactMap { $0 }
+        return images.map { image in
+            let c = CAEmitterCell()
+            c.contents = image
+            c.birthRate = 0.45
+            c.lifetime = 4
+            c.velocity = 28
+            c.velocityRange = 10
+            c.emissionLongitude = .pi / 2 // up
+            c.emissionRange = .pi / 8
+            c.xAcceleration = 0
+            c.spin = 0.4
+            c.spinRange = 1.2
+            c.scale = 13 / CGFloat(image.width)
+            c.alphaSpeed = -0.25
+            return c
+        }
+    }()
 }

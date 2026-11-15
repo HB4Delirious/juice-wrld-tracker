@@ -70,6 +70,7 @@ final class NativeStore: NSObject, ObservableObject, WKScriptMessageHandler {
     @Published var page: NativePage = .collection // the screen showing in the native window
     @Published var eraFilter: String?            // the era picked on the Collection screen (or from ⌘K)
     @Published var showSetup = false
+    @Published var landed: [Int] = [] // songs that just came into the library (for the confetti)
     @Published var version = 0 // bumps with every snapshot, so screens that ask the page for more can refresh
     private var catalog: [NState.CatSong] = []
 
@@ -81,9 +82,11 @@ final class NativeStore: NSObject, ObservableObject, WKScriptMessageHandler {
             catch { NSLog("Juice Tracker: couldn't read the page's snapshot: \(error)"); return }
             DispatchQueue.main.async {
                 if let c = decoded.catalog { self.catalog = c }
+                let before = self.state == nil || self.songs.isEmpty ? nil : Set(self.songs.lazy.filter(\.o).map(\.i))
                 let owned = Set(decoded.owned), wished = Set(decoded.wished)
                 self.songs = self.catalog.map { Song(s: $0, o: owned.contains($0.i), w: wished.contains($0.i)) }
                 self.state = decoded
+                if let before { let new = decoded.owned.filter { !before.contains($0) }; if !new.isEmpty { self.landed = new } }
                 self.version += 1
                 SpotlightIndex.update(self.songs)
                 WidgetFeed.update()
@@ -446,10 +449,13 @@ extension View {
 struct ScreenTitle: View {
     let text: String
     var size: CGFloat = 40
+    @State private var drawn = false
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
             Text(text).font(JT.marker(size)).foregroundColor(JT.mist)
             Image("jt-squiggle").resizable().frame(width: size * 3, height: size * 0.27)
+                .mask(alignment: .leading) { Rectangle().frame(width: drawn ? size * 3 : 0) }
+                .onAppear { withAnimation(.easeOut(duration: 0.8).delay(0.15)) { drawn = true } }
         }
         .rotationEffect(.degrees(-1), anchor: .leading)
     }
@@ -474,6 +480,7 @@ struct NativeRoot: View {
     @ObservedObject private var store = NativeStore.shared
     @ObservedObject private var theme = ThemeWatcher.shared
     @State private var searching = false
+    @State private var toast: String?
     private var page: NativePage { store.page }
 
     var body: some View {
@@ -481,7 +488,7 @@ struct NativeRoot: View {
             SkyBackground().ignoresSafeArea()
             HStack(spacing: 0) {
                 Sidebar(searching: $searching).frame(width: 238)
-                Group {
+                ZStack {
                     if let s = store.state, !store.songs.isEmpty {
                         switch page {
                         case .timeline: TimelineScreen(songs: store.songs)
@@ -497,12 +504,26 @@ struct NativeRoot: View {
                         }
                     } else { SetupView() }
                 }
+                .id(page)
+                .transition(.asymmetric(insertion: .opacity.combined(with: .offset(y: 16)), removal: .opacity))
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
         .font(JT.body(15))
         .foregroundColor(JT.mist)
         .preferredColorScheme(.dark)
+        .animation(.spring(response: 0.38, dampingFraction: 0.86), value: page)
+        .overlay(Confetti().ignoresSafeArea().allowsHitTesting(false))
+        .overlay(alignment: .top) {
+            if let toast { LandedToast(text: toast).padding(.top, 16).transition(.move(edge: .top).combined(with: .opacity)) }
+        }
+        .onChange(of: store.landed) { ids in
+            guard !ids.isEmpty else { return }
+            NotificationCenter.default.post(name: Confetti.fire, object: nil)
+            let text = ids.count == 1 && store.songs.indices.contains(ids[0]) ? "\u{201C}\(store.songs[ids[0]].n)\u{201D} landed in your library" : "\(ids.count) songs landed in your library"
+            withAnimation(.spring(response: 0.42, dampingFraction: 0.7)) { toast = text }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 3.8) { withAnimation(.easeIn(duration: 0.3)) { if toast == text { toast = nil } } }
+        }
         .id(theme.id) // a new era theme redraws everything in its colors
         .sheet(item: $store.openSong) { s in SongCard(opened: s, close: { store.openSong = nil }) }
         .sheet(isPresented: $searching) { QuickSearch(close: { searching = false }) }
@@ -516,16 +537,22 @@ struct Sidebar: View {
     @ObservedObject private var store = NativeStore.shared
     @Binding var searching: Bool
     @State private var hovered: NativePage?
+    @State private var logoHover = false
+    @Namespace private var glide
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             Button { store.page = .collection } label: {
                 HStack(spacing: 10) {
                     Image("jt-logo").resizable().frame(width: 44, height: 44)
+                        .rotationEffect(.degrees(logoHover ? -14 : 0)).scaleEffect(logoHover ? 1.12 : 1)
+                        .shadow(color: JT.lavender.opacity(logoHover ? 0.7 : 0), radius: 10)
+                        .animation(.spring(response: 0.3, dampingFraction: 0.45), value: logoHover)
                     Text("Juice\nTracker").font(JT.marker(23)).lineSpacing(-6).foregroundColor(JT.mist).fixedSize()
                 }
             }
             .buttonStyle(.plain)
+            .onHover { logoHover = $0 }
             .padding(.top, 38).padding(.horizontal, 8).padding(.bottom, 22)
 
             Button { searching = true } label: {
@@ -617,15 +644,18 @@ struct Sidebar: View {
             .background(
                 ZStack {
                     if current {
-                        RoundedRectangle(cornerRadius: 12).fill(JT.raise)
-                        Image("jt-scribble").resizable()
+                        ZStack {
+                            RoundedRectangle(cornerRadius: 12).fill(JT.raise)
+                            Image("jt-scribble").resizable()
+                        }
+                        .matchedGeometryEffect(id: "picked", in: glide)
                     } else if hovered == p {
                         RoundedRectangle(cornerRadius: 12).fill(JT.raise.opacity(0.6))
                     }
                 }
             )
             .overlay(alignment: .leading) {
-                if current { Capsule().fill(LinearGradient(colors: JT.rainbowColors, startPoint: .top, endPoint: .bottom)).frame(width: 3).padding(.vertical, 7) }
+                if current { Capsule().fill(LinearGradient(colors: JT.rainbowColors, startPoint: .top, endPoint: .bottom)).frame(width: 3).padding(.vertical, 7).matchedGeometryEffect(id: "bar", in: glide) }
             }
             .contentShape(Rectangle())
             .animation(.spring(response: 0.25, dampingFraction: 0.55), value: hovered)
@@ -703,6 +733,7 @@ struct CollectionScreen: View {
     @State private var query = ""
     @State private var limit = 200
     @State private var askAll: [Int] = []
+    @State private var shownHave = 0.0
     init(state: NState, songs: [Song]) { self.state = state; self.all = songs }
 
     private var era: String? { store.eraFilter }
@@ -754,9 +785,9 @@ struct CollectionScreen: View {
     private var scoreboard: some View {
         VStack(alignment: .leading, spacing: 0) {
             ZStack(alignment: .topTrailing) {
-                (Text("You have ") + Text(state.have.formatted()).foregroundColor(.clear) + Text(" of \(state.total.formatted()) songs").foregroundColor(JT.muted.opacity(0.95)))
-                    .font(JT.marker(64)).lineSpacing(-6)
-                    .overlay(alignment: .topLeading) { countOverlay }
+                Headline(value: shownHave, total: state.total)
+                    .onAppear { withAnimation(.easeOut(duration: 1.4)) { shownHave = Double(state.have) } }
+                    .onChange(of: state.have) { h in withAnimation(.easeOut(duration: 0.9)) { shownHave = Double(h) } }
                     .shadow(color: JT.lavender.opacity(0.45), radius: 14)
                     .rotationEffect(.degrees(-1.2), anchor: .leading)
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -768,24 +799,15 @@ struct CollectionScreen: View {
         }
     }
 
-    /// The count in rainbow letters, laid exactly over the gap left for it in the headline.
-    private var countOverlay: some View {
-        (Text("You have ").foregroundColor(.clear) + Text(state.have.formatted()).foregroundColor(.white))
-            .font(JT.marker(64))
-            .overlay(JT.countGradient.mask((Text("You have ").foregroundColor(.clear) + Text(state.have.formatted())).font(JT.marker(64))))
-            .foregroundColor(.clear)
-    }
-
     private var meter: some View {
         GeometryReader { g in
-            let pct = CGFloat(state.have) / CGFloat(max(state.total, 1))
+            let pct = CGFloat(shownHave) / CGFloat(max(state.total, 1))
             ZStack(alignment: .leading) {
                 Capsule().fill(JT.raise)
-                JT.rainbow.frame(width: g.size.width).mask(alignment: .leading) { Capsule().frame(width: max(12, g.size.width * pct)) }
-                Image("jt-fly").resizable().frame(width: 32, height: 32).shadow(color: JT.lavender.opacity(0.6), radius: 6)
+                ZStack { JT.rainbow; Shimmer() }.frame(width: g.size.width).mask(alignment: .leading) { Capsule().frame(width: max(12, g.size.width * pct)) }
+                Flapping(image: "jt-fly").frame(width: 32, height: 32)
                     .offset(x: max(0, g.size.width * pct - 16), y: -10)
             }
-            .animation(.easeOut(duration: 0.9), value: state.have)
         }
         .frame(height: 12)
     }
@@ -795,13 +817,7 @@ struct CollectionScreen: View {
             ForEach(Array(state.cats.enumerated()), id: \.element) { n, c in
                 VStack(alignment: .leading, spacing: 10) {
                     HStack { Text(c.name); Spacer(); Text("\(c.have.formatted()) / \(c.total.formatted())").foregroundColor(JT.muted) }.font(JT.body(15.5))
-                    GeometryReader { g in
-                        ZStack(alignment: .leading) {
-                            Capsule().fill(JT.raise)
-                            Capsule().fill(JT.have).frame(width: g.size.width * CGFloat(c.have) / CGFloat(max(c.total, 1)))
-                        }
-                    }
-                    .frame(height: 4)
+                    FillBar(fraction: CGFloat(c.have) / CGFloat(max(c.total, 1)), fill: JT.have, delay: 0.2 + Double(n) * 0.1).frame(height: 4)
                 }
                 .padding(.horizontal, 18).padding(.vertical, 16)
                 .overlay(alignment: .leading) { if n > 0 { Rectangle().fill(JT.line).frame(width: 1) } }
@@ -850,7 +866,7 @@ struct CollectionScreen: View {
             ScreenTitle(text: "Eras", size: 34)
             Text("Pick an era to see its songs below.").font(JT.body(16)).foregroundColor(JT.muted).padding(.bottom, 10)
             LazyVGrid(columns: [GridItem(.adaptive(minimum: 230), spacing: 16)], spacing: 16) {
-                ForEach(Array(state.eras.enumerated()), id: \.element) { n, e in EraCard(era: e, sticker: eraSticker(e.name, fallback: n), seed: n, picked: era == e.name) }
+                ForEach(Array(state.eras.enumerated()), id: \.element) { n, e in EraCard(era: e, sticker: eraSticker(e.name, fallback: n), seed: n, picked: era == e.name, delay: min(Double(n) * 0.035, 0.35)) }
             }
         }
     }
@@ -893,6 +909,26 @@ struct CollectionScreen: View {
     }
 }
 
+/// "You have N of M songs", with N in rainbow letters laid exactly over the gap left for it. N rolls up to the real
+/// count (SwiftUI animates `value`).
+private struct Headline: View, Animatable {
+    var value: Double
+    let total: Int
+    var animatableData: Double { get { value } set { value = newValue } }
+
+    var body: some View {
+        let have = Int(value.rounded()).formatted()
+        return (Text("You have ") + Text(have).foregroundColor(.clear) + Text(" of \(total.formatted()) songs").foregroundColor(JT.muted.opacity(0.95)))
+            .font(JT.marker(64)).lineSpacing(-6)
+            .overlay(alignment: .topLeading) {
+                (Text("You have ").foregroundColor(.clear) + Text(have).foregroundColor(.white))
+                    .font(JT.marker(64))
+                    .overlay(JT.countGradient.mask((Text("You have ").foregroundColor(.clear) + Text(have)).font(JT.marker(64))))
+                    .foregroundColor(.clear)
+            }
+    }
+}
+
 /// The planet and the cracked heart, bobbing. Animated by Core Animation, so the app does nothing per frame
 /// (an endless SwiftUI animation here cost about 13% CPU).
 private struct FloatingDoodles: NSViewRepresentable {
@@ -918,6 +954,25 @@ private struct FloatingDoodles: NSViewRepresentable {
         }
         add("jt-planet", CGRect(x: 40, y: 30, width: 200, height: 200), rise: 8, turn: 0, delay: 0)
         add("jt-heart", CGRect(x: 10, y: 0, width: 46, height: 46), rise: 10, turn: 7, delay: 2)
+        let star = CALayer()
+        star.contents = sparkleImage(16)
+        star.bounds = CGRect(x: 0, y: 0, width: 16, height: 16)
+        star.shadowColor = NSColor.white.cgColor
+        star.shadowOpacity = 0.9
+        star.shadowRadius = 5
+        star.shadowOffset = .zero
+        v.layer?.addSublayer(star)
+        let orbit = CAKeyframeAnimation(keyPath: "position")
+        orbit.path = CGPath(ellipseIn: CGRect(x: 40, y: 95, width: 200, height: 70), transform: nil)
+        orbit.calculationMode = .paced
+        orbit.duration = 7
+        orbit.repeatCount = .infinity
+        let twirl = CABasicAnimation(keyPath: "transform.rotation.z")
+        twirl.toValue = 2 * Double.pi
+        twirl.duration = 2.5
+        twirl.repeatCount = .infinity
+        star.add(orbit, forKey: "orbit")
+        star.add(twirl, forKey: "twirl")
         return v
     }
     func updateNSView(_ nsView: NSView, context: Context) {}
@@ -928,7 +983,11 @@ struct EraCard: View {
     let sticker: String
     let seed: Int
     let picked: Bool
+    var delay = 0.0
     @State private var hover = false
+    @State private var shown = false
+    @State private var stuck = false
+    private var complete: Bool { era.total > 0 && era.have >= era.total }
 
     var body: some View {
         Button { NativeStore.shared.eraFilter = picked ? nil : era.name } label: {
@@ -937,23 +996,31 @@ struct EraCard: View {
                 if !era.time.isEmpty { Text(era.time).font(JT.body(13.5)).foregroundColor(JT.muted).lineLimit(1) }
                 if !era.desc.isEmpty { Text(era.desc).font(JT.body(14)).foregroundColor(JT.muted).lineLimit(2).padding(.top, 10) }
                 Spacer(minLength: 12)
-                GeometryReader { g in
-                    ZStack(alignment: .leading) {
-                        Capsule().fill(picked ? JT.night : JT.raise)
-                        Capsule().fill(JT.have).frame(width: g.size.width * CGFloat(era.have) / CGFloat(max(era.total, 1)))
-                    }
+                Group {
+                    if complete { FillBar(fraction: 1, fill: JT.rainbow, track: picked ? JT.night : JT.raise, delay: delay + 0.2) }
+                    else { FillBar(fraction: CGFloat(era.have) / CGFloat(max(era.total, 1)), fill: JT.have, track: picked ? JT.night : JT.raise, delay: delay + 0.2) }
                 }
-                .frame(height: 4)
+                .frame(height: complete ? 5 : 4)
                 Text("\(era.have.formatted()) of \(era.total.formatted()) \(era.total == 1 ? "song" : "songs")").font(JT.body(13.5)).foregroundColor(JT.muted)
             }
             .padding(.horizontal, 18).padding(.vertical, 16)
             .frame(maxWidth: .infinity, minHeight: 168, alignment: .topLeading)
             .background(DoodleRect(seed: seed).fill(hover || picked ? JT.raise : JT.dusk))
             .overlay(DoodleRect(seed: seed).stroke(picked ? JT.lavender : hover ? JT.lavender.opacity(0.8) : JT.line2, lineWidth: picked ? 2.6 : 1.6))
+            .overlay(alignment: .bottomTrailing) {
+                if complete {
+                    Text("COMPLETE").font(JT.marker(15)).foregroundColor(JT.have)
+                        .padding(.horizontal, 7).padding(.vertical, 2)
+                        .overlay(RoundedRectangle(cornerRadius: 5).stroke(JT.have, lineWidth: 2))
+                        .rotationEffect(.degrees(-10)).opacity(0.9)
+                        .padding(.trailing, 14).padding(.bottom, 12)
+                }
+            }
             .overlay(alignment: .topTrailing) {
                 Image(sticker).resizable().frame(width: 30, height: 30)
                     .shadow(color: .black.opacity(0.45), radius: 4, y: 3)
-                    .rotationEffect(.degrees(hover ? -10 : 14)).scaleEffect(hover ? 1.3 : 1)
+                    .rotationEffect(.degrees(hover ? -10 : stuck ? 14 : 60)).scaleEffect(hover ? 1.3 : stuck ? 1 : 0.1)
+                    .opacity(stuck ? 1 : 0)
                     .offset(x: 9, y: -12)
             }
             .shadow(color: JT.lavender.opacity(picked ? 0.35 : hover ? 0.22 : 0), radius: picked ? 18 : 14, y: hover ? 10 : 0)
@@ -964,6 +1031,11 @@ struct EraCard: View {
         }
         .buttonStyle(.plain)
         .onHover { hover = $0 }
+        .opacity(shown ? 1 : 0).offset(y: shown ? 0 : 22).scaleEffect(shown ? 1 : 0.96)
+        .onAppear {
+            withAnimation(.spring(response: 0.5, dampingFraction: 0.75).delay(delay)) { shown = true }
+            withAnimation(.spring(response: 0.4, dampingFraction: 0.45).delay(delay + 0.3)) { stuck = true }
+        }
     }
 }
 
@@ -972,17 +1044,29 @@ struct SongRow: View {
     let open: () -> Void
     var compact = false // narrow lists (Credits): no category column
     @State private var hover = false
+    @State private var pop = false
+    @ObservedObject private var playing = PlayingRow.shared
 
     var body: some View {
         HStack(spacing: 12) {
-            Button { Task { await NativeStore.shared.act("wish", song.i) } } label: {
+            Button {
+                withAnimation(.spring(response: 0.22, dampingFraction: 0.4)) { pop = true }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { withAnimation(.spring(response: 0.35, dampingFraction: 0.5)) { pop = false } }
+                Task { await NativeStore.shared.act("wish", song.i) }
+            } label: {
                 Image(systemName: song.w ? "star.fill" : "star").foregroundColor(song.w ? Color(red: 1, green: 0.88, blue: 0.29) : JT.muted)
+                    .scaleEffect(pop ? 1.7 : 1).rotationEffect(.degrees(pop ? 72 : 0))
+                    .shadow(color: Color(red: 1, green: 0.88, blue: 0.29).opacity(pop ? 0.9 : 0), radius: 8)
             }
             .buttonStyle(.plain)
             .help(song.w ? "On your wishlist" : "Add to wishlist")
             Button(action: open) {
                 HStack(spacing: 12) {
-                    Text(song.n).lineLimit(1).frame(maxWidth: .infinity, alignment: .leading)
+                    HStack(spacing: 8) {
+                        if playing.index == song.i { EQBars().frame(width: 13, height: 12) }
+                        Text(song.n).lineLimit(1).foregroundColor(playing.index == song.i ? JT.lavenderHi : nil)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
                     Text(song.e).foregroundColor(JT.muted).lineLimit(1).frame(width: compact ? 80 : 110, alignment: .leading)
                     if !compact { Text(song.c).foregroundColor(JT.muted).lineLimit(1).frame(width: 130, alignment: .leading) }
                     Text(song.l).foregroundColor(JT.muted).frame(width: 44, alignment: .trailing)
@@ -993,8 +1077,11 @@ struct SongRow: View {
             status.frame(width: compact ? 100 : 120, alignment: .leading)
         }
         .font(.callout)
+        .offset(x: hover ? 4 : 0)
         .padding(.vertical, 8).padding(.horizontal, 14)
         .background(hover ? Color.white.opacity(0.05) : .clear)
+        .overlay(alignment: .leading) { if hover { Capsule().fill(JT.lavender).frame(width: 3).padding(.vertical, 6).transition(.opacity) } }
+        .animation(.easeOut(duration: 0.15), value: hover)
         .onHover { hover = $0 }
         .overlay(Rectangle().fill(JT.line).frame(height: 0.5), alignment: .bottom)
     }
