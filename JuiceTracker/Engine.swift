@@ -1,8 +1,9 @@
 import Foundation
 
-// The Swift engine (stage 1 of replacing the HTML page): the catalog, reading tags, scanning the music folder and
-// matching files to songs. It is a line-for-line port of the page's logic, so both give the same answers; "Check
-// Swift Engine" (Window menu) compares them. Foundation only, so tests/EngineTests.swift can compile it on its own.
+// The engine's pure logic: the catalog, reading and writing tags, scanning, matching, and the rules behind what the
+// screens show. It was ported line for line from the old HTML page; tests/fixtures holds that page's answers for a
+// set of tricky inputs, and scripts/test-engine.sh checks this code still gives them. Foundation only, so the tests
+// can compile it on its own.
 
 enum Engine {
     static let api = "https://juicewrldapi.com/juicewrld/songs/"
@@ -1316,5 +1317,48 @@ extension Engine {
             else if match.how[f.path] == "close" { out.append(.init(path: f.path, group: "tags", text: "Its title, “\(f.title)”, is close to “\(catalog[songs[0]].name)” but not exact.")) }
         }
         return out
+    }
+}
+
+// MARK: - Reading a snapshot back (stage 5)
+
+extension Engine {
+    /// A CSV file's rows (quotes, doubled quotes, commas and line breaks inside quotes).
+    static func parseCsv(_ text: String) -> [[String]] {
+        var rows: [[String]] = [], row: [String] = [], cell = "", quoted = false
+        let t = Array((text.hasPrefix("\u{FEFF}") ? String(text.dropFirst()) : text).unicodeScalars)
+        var n = 0
+        while n < t.count {
+            let c = t[n]
+            if quoted {
+                if c != "\"" { cell.unicodeScalars.append(c) }
+                else if n + 1 < t.count && t[n + 1] == "\"" { cell += "\""; n += 1 }
+                else { quoted = false }
+            } else if c == "\"" { quoted = true }
+            else if c == "," { row.append(cell); cell = "" }
+            else if c == "\n" || c == "\r" {
+                if c == "\r" && n + 1 < t.count && t[n + 1] == "\n" { n += 1 }
+                row.append(cell); rows.append(row); row = []; cell = ""
+            } else { cell.unicodeScalars.append(c) }
+            n += 1
+        }
+        if !cell.isEmpty || !row.isEmpty { row.append(cell); rows.append(row) }
+        return rows
+    }
+
+    /// The songs a library snapshot had (one per file: the version whose name is the file's title).
+    static func snapshotSongIds(_ text: String) throws -> Set<String> {
+        let rows = parseCsv(text)
+        guard let head = rows.first, let col = head.firstIndex(of: "song_ids") else { throw EngineError("That file isn't a Juice Tracker library snapshot.") }
+        let nameCol = head.firstIndex(of: "song_names"), titleCol = head.firstIndex(of: "title"), pathCol = head.firstIndex(of: "path")
+        func at(_ r: [String], _ i: Int?) -> String { i.map { $0 < r.count ? r[$0] : "" } ?? "" }
+        return Set(rows.dropFirst().compactMap { r -> String? in
+            let list = at(r, col).split(separator: " ").map(String.init), names = at(r, nameCol).components(separatedBy: " / ")
+            let t = at(r, titleCol), title = t.isEmpty ? titleFromFilename(at(r, pathCol)) : t
+            var k = names.firstIndex { cmdkKey($0) == cmdkKey(title) } ?? -1
+            if k < 0 { k = names.firstIndex { normalize($0) == normalize(title) } ?? -1 }
+            let pick = k >= 0 && k < list.count ? k : 0
+            return list.indices.contains(pick) ? list[pick] : nil
+        })
     }
 }

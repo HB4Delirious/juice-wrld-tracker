@@ -12,7 +12,7 @@ struct JuiceTrackerApp: App {
     var body: some Scene {
         Settings { SettingsView() }
             .commands {
-                // One window is enough: the page keeps its own state.
+                // One window is enough.
                 CommandGroup(replacing: .newItem) {}
                 CommandGroup(after: .appInfo) {
                     Button("Check for Updates…") { Task { await Updater.check(userInitiated: true) } }
@@ -22,8 +22,6 @@ struct JuiceTrackerApp: App {
                         .keyboardShortcut("1", modifiers: .command)
                     Button("Mini Player") { MiniPlayer.show() }
                         .keyboardShortcut("3", modifiers: .command)
-                    Divider()
-                    Button("Check Swift Engine…") { EngineCheck.show() } // stage 1 of replacing the page
                 }
                 CommandGroup(replacing: .help) {
                     Button("Open juicewrldapi.com") {
@@ -46,7 +44,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUs
         _ = NowPlaying.shared // follows the player for lyrics, artwork and the visualizer
         // macOS would otherwise quietly quit the app once its window is closed, defeating "Keep running".
         ProcessInfo.processInfo.automaticTerminationSupportEnabled = false
-        _ = WebViewStore.shared // start the engine (the page) right away
+        Task { await EngineState.shared.start() } // the catalog, your data and your library
         showMainWindow()
         UNUserNotificationCenter.current().delegate = self
         SongAlerts.registerActions()
@@ -58,8 +56,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUs
     /// The app's window: the SwiftUI interface.
     func showMainWindow() { showNativeWindow() }
 
-    /// The page (the engine that's still being moved to Swift) runs unseen inside the window.
-    private let engineHost = EngineHostView()
 
     /// The SwiftUI interface. The page (catalog, scanning, matching, tag writing, downloads) runs unseen behind it.
     func showNativeWindow() {
@@ -74,8 +70,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUs
             w.delegate = self
             let root = NSView()
             let hosting = NSHostingView(rootView: NativeRoot())
-            engineHost.frame = NSRect(x: 0, y: 0, width: 4, height: 4)
-            root.addSubview(engineHost) // first, so the interface covers it
             hosting.translatesAutoresizingMaskIntoConstraints = false
             root.addSubview(hosting)
             NSLayoutConstraint.activate([
@@ -87,7 +81,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUs
             w.setFrameAutosaveName("NativeWindow")
             nativeWindow = w
         }
-        engineHost.adopt(WebViewStore.shared.webView)
         nativeWindow?.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
     }
@@ -96,7 +89,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUs
     /// the Dock icon or an alert brings it back. Off: the window closes and the app quits.
     func windowShouldClose(_ sender: NSWindow) -> Bool {
         guard Pref.bool(Pref.keepRunning, default: false) else { return true }
-        WebViewStore.shared.stopAmbient() // music shouldn't keep playing from a hidden window
+        AmbientPlayer.shared.stop(); AmbientPlayer.shared.stopClip() // music shouldn't keep playing from a hidden window
         sender.orderOut(nil)
         return false
     }

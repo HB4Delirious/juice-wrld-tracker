@@ -421,9 +421,8 @@ struct PlayEraIntent: AppIntent {
     @MainActor func perform() async throws -> some IntentResult & ProvidesDialog {
         let store = NativeStore.shared
         guard await store.ready() else { return .result(dialog: IntentDialog(stringLiteral: "Juice Tracker isn't ready yet. Try again in a moment.")) }
-        do {
-            EngineAmbient.setEra(era ?? "")
-        } catch { return .result(dialog: IntentDialog(stringLiteral: "Couldn't start the music: \(error.localizedDescription)")) }
+        guard !EngineAmbient.eras.isEmpty else { return .result(dialog: IntentDialog(stringLiteral: "There are no songs to play yet.")) }
+        EngineAmbient.setEra(era ?? "")
         return .result(dialog: IntentDialog(stringLiteral: "Playing \(era.map { "songs from \($0)" } ?? "your songs")."))
     }
 }

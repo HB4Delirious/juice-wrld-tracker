@@ -30,7 +30,7 @@ for points in [16, 32, 128, 256, 512] {
 render("design/dmg-background.svg", width: 660, height: 420, to: "design/dmg-background.png")
 render("design/dmg-background.svg", width: 1320, height: 840, to: "design/dmg-background@2x.png")
 
-// The classic page's doodles for the SwiftUI interface (design/native, from scripts/extract-native-art.py),
+// The doodles for the SwiftUI interface (design/native, originally the HTML page's art),
 // as 1x and 2x images in the asset catalog: name -> size in points.
 let native: [(String, Int, Int)] = [
     ("planet", 210, 210), ("heart", 46, 46), ("flash", 560, 560), ("sparkles", 520, 520), ("fly", 32, 32),

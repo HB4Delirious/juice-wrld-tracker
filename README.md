@@ -2,9 +2,8 @@
 
 Juice WRLD collection tracker: compares the juicewrldapi.com catalog against your own music folder.
 
-- `web/juice-tracker.html` — the whole tracker, one self-contained file. Works on its own in Chrome/Edge.
-- `JuiceTracker/` — macOS app (macOS 12+) that hosts the same HTML in a WKWebView, with a native file bridge
-  (`bridge.js` + `NativeBridge.swift`) so folder scanning and tag writing work without Chrome.
+- `JuiceTracker/` — the macOS app (macOS 12+), all Swift: a SwiftUI interface (`Native*.swift`) on top of the engine
+  (`Engine*.swift`; the pure logic is `Engine.swift`). It started as an HTML page; that page was retired in v1.24.
 
 ## Build
 
@@ -14,7 +13,10 @@ Open `JuiceTracker.xcodeproj` in Xcode and Run, or build a DMG:
 scripts/make-dmg.sh   # -> dist/JuiceTracker.dmg
 ```
 
-Tests for the matcher, tag writers, link setting and backups: `node --test tests/core.test.mjs` (they load the page's `<script id="core">` block, which must stay free of page, storage and network access). CI runs them before every build.
+Tests: `scripts/test-engine.sh` compiles `Engine.swift` with `tests/EngineTests.swift` and checks it against
+`tests/fixtures`, the old HTML page's own answers for tricky titles, catalog records, tag files (written by its writers
+and by hand), matching, save folders, the tag fixer, duplicates and file health. Tag writes must match byte for byte.
+CI runs them before every build.
 
 The DMG window is themed (background in `design/dmg-background.svg`, layout in `scripts/dmg-settings.py`, built with `dmgbuild` in a local venv). Artwork in `design/` is rendered with `swift scripts/render-art.swift`.
 
@@ -23,20 +25,19 @@ The app's version comes from the latest `v*` tag (override with `VERSION=1.5 scr
 The app is ad-hoc signed ("Sign to Run Locally"), so the first launch from a downloaded DMG needs
 right-click > Open (or System Settings > Privacy & Security > Open Anyway).
 
-The "Support this project" button opens `TIP_URL` (near the end of `web/juice-tracker.html`), currently https://ko-fi.com/hb4delirious.
+The "Support this project" button opens https://ko-fi.com/hb4delirious (the sidebar, `NativeUI.swift`).
 
 CI (`.github/workflows/build.yml`) builds the DMG on every push and PR; pushing a `v*` tag attaches it to a GitHub Release.
 
-In the Mac app, a song's **Download** link saves the file from juicewrldapi.com straight into the folder the tracker suggests inside your music folder, and adds it to your library right away (⌘-click opens the site instead).
+A song's **Download** button saves the file from juicewrldapi.com straight into the folder your era's songs live in, adds it to your library and tags it.
 
-In the Mac app, the sidebar's **Ambient music** toggle plays your matched songs, shuffled, at very low volume. It's on by default and remembers when you turn it off.
+The sidebar's **Ambient music** toggle plays your matched songs, shuffled, at very low volume. It's on by default and remembers when you turn it off.
 
 ## Mac app extras
 
-The Mac app's interface is native SwiftUI (with a Core Animation sky), which uses far less CPU than the HTML page:
-about 2–5% against about 30%. The engine is moving from the old HTML page to Swift in stages: Swift now owns the catalog,
-your wishlist and notes, and what every screen shows; the page still runs unseen behind it for scanning, matching, tag
-writing and downloads. Window > Check Swift Engine… compares the two on your own library.
+The interface is native SwiftUI with a Core Animation sky: about 2–5% CPU, against about 30% for the old HTML page.
+Your data lives in `~/Library/Application Support/JuiceTracker/<app id>/engine/` (catalog, wishlist and notes, tag
+cache, download queue).
 
 
 - **Search:** ⌘K jumps to any song, era, producer/artist/engineer/studio, or page.

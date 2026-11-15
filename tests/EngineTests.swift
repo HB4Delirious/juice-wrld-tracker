@@ -190,6 +190,9 @@ import Foundation
             if got != ["title": "Big Art", "album": "Mainstream", "year": "2019"] { failures += 1; print("FAIL: tags after big cover art: \(got)") }
         }
 
+        // reading snapshots back (stage 5)
+        for c in fx["csvCases"] as! [[Any]] { let t = c[0] as! String; expect(Engine.parseCsv(t) == c[1] as! [[String]], "parseCsv(\(t.debugDescription)) = \(Engine.parseCsv(t))") }
+
         print("\(checks - failures) of \(checks) engine checks match the page")
         if failures > 0 { exit(1) }
     }

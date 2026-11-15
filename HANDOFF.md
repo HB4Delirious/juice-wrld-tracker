@@ -1,112 +1,55 @@
-# Handoff: work in progress
+# Handoff
 
-Started in a Claude chat session; continue in Claude Code on the Mac.
+Juice WRLD Collection Tracker: a native macOS app (macOS 12+) that compares the juicewrldapi.com catalog with your own
+music folder, downloads and tags what's missing, and plays your collection. All Swift since v1.24.
 
-## Goal
-Turn `web/juice-tracker.html` (single-file Juice WRLD collection tracker) into a native macOS app:
-an editable Xcode project, a DMG, and this GitHub repo for history.
+## Layout
 
-## Done
-- `web/juice-tracker.html`: the tracker (bulk file links, save-to folder suggestions, M4A tag editing, manual matches). Still works on its own in Chrome/Edge.
-- `JuiceTracker/JuiceTrackerApp.swift`: SwiftUI app, one window.
-- `JuiceTracker/WebViewStore.swift`: WKWebView host. Loads the bundled HTML via loadFileURL, opens http(s) links in the default browser,
-  handles downloads with a save panel (WKDownload), alert/confirm panels, and <input type=file> open panels.
-- `JuiceTracker/NativeBridge.swift`: WKScriptMessageHandlerWithReply named `jwNative`. Ops: pickFolder, list, stat, exists, read (base64 range),
-  write (base64, atomic), mkdir, copy. Only paths inside folders picked via NSOpenPanel are allowed.
-- `JuiceTracker/bridge.js`: injected at document start. Polyfills showDirectoryPicker and the directory/file handles + createWritable
-  the tracker uses, so tag writing works in the app.
-- `JuiceTracker/Assets.xcassets`: AppIcon (all mac sizes) + AccentColor.
+- **Interface (SwiftUI):** `NativeUI.swift` (window, sky, sidebar, Collection, song card, `NativeStore`),
+  `NativeScreens.swift` (Timeline, Stats, Credits), `NativeTools.swift` (Duplicates, File health), `NativeFixer.swift`
+  (Tag fixer), `NativeExtras.swift` (setup, player, Trivia, Export & backup), `NativeMore.swift` (lyrics, mini player,
+  Spotlight, Shortcuts, widget feed), `NativeJuice.swift` (era stickers and themes, badges, motion).
+- **Engine:**
+  - `Engine.swift`: the pure logic, Foundation only: catalog cleaning, tag reading (ID3v1/v2.2–2.4, FLAC, MP4,
+    Ogg/Opus) and writing (MP3, FLAC, M4A, with safety checks), scanning, matching, save folders, the tag fixer
+    plan, duplicates, file health, export helpers.
+  - `EngineState.swift`: the catalog (12-hour cache, new and newly released songs), your saved data (`personal.json`:
+    wishlist, notes, hand matches, trivia, fixer settings) and the state every screen shows.
+  - `EngineLibrary.swift`: the music folder (bookmark under `lastFolder.plex-music`), tag cache, scan and matching.
+  - `EngineDownloads.swift`: the download queue, drive status, background music, weekly snapshot.
+  - `EngineTools.swift`: tag fixer writing, auto-tag after downloads, duplicate cleanup, file health.
+  - `EngineActions.swift`: backup and restore, the catalog spreadsheet, the collection card.
+  - `EngineRest.swift`: `EngineRouter`, which answers the screens' `NativeStore.act(...)` requests (details, play,
+    play history, trivia, Plex, snapshots, and the tools above).
+- `Player.swift`: the background music player (`AmbientPlayer`) and `Downloader` (site files into the folder).
+- `Services.swift`: settings, Plex, daily song alerts, the updater, snapshots folder. `MenuBar.swift`: menu bar player.
+- `JuiceTrackerWidget/`: the widget (reads `widget.json`, written by `WidgetFeed`).
+- Saved data: `~/Library/Application Support/JuiceTracker/<app id>/engine/` (`catalog.json`, `saved.json`,
+  `personal.json`, `tags.json`, `items.json`, `queue.json`, `settings.json`).
 
-## Also done
-- `JuiceTracker.xcodeproj` (macOS 12+, sandbox off, ad-hoc signed, shared scheme; bridge.js and web/juice-tracker.html bundled by reference).
-- `scripts/make-dmg.sh`, `.github/workflows/build.yml`, README.
-- Tested in the app: catalog loads from juicewrldapi.com, localStorage survives relaunch, folder scan + M4A tag writing via the bridge,
-  CSV export via save panel, target=_blank links open in the default browser.
+## Safety rules for your files
+
+Tags are only rewritten after `TagWriter`'s check passes (audio bytes unchanged, every tag reads back); the original
+is backed up first when a backup folder is set; writes are atomic. Files are only removed by moving them to the Trash.
+Downloads never overwrite, and never leave the music folder.
+
+## Tests
+
+`scripts/test-engine.sh` (run in CI before every build) compiles `Engine.swift` with `tests/EngineTests.swift` and
+checks it against `tests/fixtures`: the old HTML page's own answers for tricky inputs, frozen when the page was
+retired. Tag writes must match the page byte for byte, with the same safety-check results and error text. One case
+goes beyond the page on purpose: tags after large cover art are read (the page missed them).
+
+## History
+
+The app began as a single HTML page in a WKWebView (v1.0–v1.17), got a native SwiftUI interface with the page running
+unseen as its engine (v1.17–v1.21), and the engine was then ported to Swift in stages with parity tests against the
+page (v1.22–v1.24): data and matching, the catalog and the screens' state, backup/export/card, the library, downloads
+and file writes, then the rest; then the page, the web view, the bridge and `web/` were deleted.
+
+Updating from v1.21 or earlier straight to v1.24+ loses what only the page held (its tag cache and queue, and the
+wishlist and notes if v1.22 never ran): v1.22 and v1.23 carried those over. A missing tag cache just means one full
+rescan.
 
 ## Not done yet
 - Unsigned/un-notarized: Gatekeeper warns on first open of a downloaded DMG.
-
-## Moving to SwiftUI (in progress)
-
-Goal: a native SwiftUI interface, which costs far less CPU than the web page (measured: about 4.6% with the native
-window in front, against about 30.5% for the classic window). The classic page stays the engine while screens move over:
-it loads the catalog, scans and matches the library, writes tags (with its tested safety checks) and downloads.
-
-- `JuiceTracker/NativeUI.swift`: the native window (the app's main window; ⌘1). The sky is drawn by Core
-  Animation. `NativeStore` receives the page's snapshot (`jwState` message, sent by `pushNativeState()` after each change)
-  and calls `window.jwNativeAction({ op, i })` for actions (wish, download, play, details, refresh).
-- Screens not moved yet open in the classic window (`showView(...)`).
-
-Stages:
-1. Done: window, native sky, sidebar, Collection (scoreboard, eras, song list with search, filters and wishlist, song card).
-2. Done: Timeline, Stats (without Plex listening yet) and Credits, in `JuiceTracker/NativeScreens.swift`. The snapshot now
-   sends the catalog's fixed details (dates, years, credits) only when they change; owned, wishlist and the queue go each time.
-3. Done: File health and Duplicates, in `JuiceTracker/NativeTools.swift`. Fixes that touch files stay in the page's tested
-   code (`trashExtraCopies(groups, confirmed)`, `runHealthCheck()`, `healthFix(op, path)`); the native screens ask for
-   confirmation in their own dialogs and show the page's result (or its error message).
-4. Done: Tag fixer, in `JuiceTracker/NativeFixer.swift`. Its settings stay in the page's own controls (`fixSet`,
-   `fixGenre`), so both windows agree; writing runs the page's `writeSelectedTags(confirmed)` with its safety checks.
-5. Done: Trivia, Export & backup, the setup screen, the sidebar player, Download all / Complete this era, and notes on
-   song cards (`JuiceTracker/NativeExtras.swift`).
-6. Done: the native window is the app's window. The page runs unseen inside it (`EngineHostView`, in "engine mode" so
-   nothing animates). The Classic window was removed in engine stage 2 (below).
-
-Not done on purpose: the classic interface's code is still there. The page is the engine (its render functions also
-compute state: the fixer plan, health results, duplicates), and it's the only version that runs in a browser.
-Taking the classic screens out means first moving that state into plain functions; worth doing once the native app
-has settled.
-
-## Replacing the HTML engine with Swift (in progress)
-
-The page (`web/juice-tracker.html`) still does the work behind the native window. It's being ported to Swift in
-five stages, each shippable; the page stays in charge until the Swift side matches it.
-
-1. **Data and matching (done).** `JuiceTracker/Engine.swift` ports the catalog fetch and cleaning, tag reading
-   (ID3v1/v2.2–2.4, FLAC, MP4, Ogg/Opus), the folder scan with its tag cache, and matching, line for line.
-   `scripts/test-engine.sh` (in CI) has the page's own code answer tricky inputs and tag files its writers make,
-   then checks Swift gives the same answers. Window > Check Swift Engine… copies your saved data out of the web
-   view into `~/Library/Application Support/JuiceTracker/<app id>/engine/` and compares Swift with the page on
-   your real catalog and folder (read only; report in `check-report.json`).
-2. **Native as the source of truth (done).** `JuiceTracker/EngineState.swift` owns the catalog (12-hour cache,
-   refreshed automatically when stale; new and newly released songs tracked in `saved.json`), your wishlist and notes
-   (`personal.json`), and builds everything the screens show (eras, categories, notices, "on this day", each song's
-   credits and dates). The first launch copies these out of the web view. Swift hands the page its catalog (the
-   `useCatalog` action, with a token the page echoes back as `cv`), so song numbers mean the same songs on both sides,
-   and the wishlist and notes (`setPersonal`). The page's snapshot is now only what you own, the file count, the
-   drive and the queue. The Classic window, the page zoom and Reload Page are gone, and the hidden page can no longer
-   take the keyboard (`EngineWebView`).
-3. **Actions that stand on their own (done).** `JuiceTracker/EngineActions.swift`: backup and restore (the wishlist
-   and notes merge into Swift's, then the page merges the fields it still owns: trivia, hand matches, link and genre
-   settings), the full catalog spreadsheet (your files come from the page's `ownedPaths`), and the collection card
-   (SwiftUI, rendered to a 1200 × 630 PNG). Downloads, the queue, ambient music, snapshots and the drive status
-   turned out to depend on the library (the save folder for a song comes from how your era folders are laid out,
-   and a download is added to the library and auto-tagged), so they move with it in stage 4.
-4. **The library and writing to files**, in steps:
-   - 4a (done): `TagWriter` in `Engine.swift` ports the MP3 (ID3v2.3/2.4), FLAC and M4A writers and their safety
-     checks. `scripts/test-engine.sh` runs the page's writers and Swift's on 24 inputs (new tags, retags, Unicode,
-     64-bit offsets, moov before and after the audio, and every refusal) and requires the same bytes, the same
-     safety-check result and the same error text. Not wired into the app yet.
-   - 4b (done): `JuiceTracker/EngineLibrary.swift` owns the music folder (same saved path and bookmark as before)
-     and the library: it shows the last scan from its own tag cache (`tags.json`, `items.json`, copied from the
-     page the first time), lists the folder in the background, matches, and hands the page the library (the
-     `useLibrary` action; bridge.js sets `jwSwiftLibrary` so the page doesn't scan). The page reports what it
-     changes through `jwLibraryChanged`: tag cache writes (downloads, the tag fixer), its file list (files moved to
-     the Trash) and hand matches. Rescan and Choose folder are Swift's (setup sheet); reconnecting the drive asks
-     Swift (`jwSwiftReload`). What you own now comes from Swift's matching.
-   - 4c (done): `JuiceTracker/EngineDownloads.swift`. The download queue (`queue.json`, carried over from the
-     page; 3 tries each, back of the line after a failure, waits and reconnects when the drive drops) saves each
-     song where `Engine.layout`/`saveFolder` say (ported, parity-tested), then the page's `afterDownload` adds it to
-     the library and auto-tags it. Drive status, the background music (settings in UserDefaults, carried over) and
-     the weekly snapshot (`Engine.snapshotCSV`, parity-tested) are Swift's; the page's versions stand down when
-     `jwSwiftLibrary` is set. The page's own snapshot message to the window is ignored now.
-   - 4d (done): `JuiceTracker/EngineTools.swift`. The tag fixer (plan, picks, hand matches, backup folder, writing),
-     auto-tagging after downloads, duplicate cleanup and the file health check are Swift's, writing with `TagWriter`
-     (safety check first, original backed up when a backup folder is set, atomic write, tags read back) and removing
-     only by moving to the Trash. The rules (`plannedTags`, `buildPlan`, `duplicateGroups`, `bestCopy`,
-     `healthIssues`) are parity-tested against the page. `NativeStore.tryAct` answers the screens' fixer, dups and
-     health requests in Swift with the page's data shapes, so the screens didn't change. Hand matches, the fixer genre
-     and auto-tag live in Swift's `personal.json` and are handed to the page.
-   - Fixed beyond the page: the tag reader read only the first 256 KB of an ID3 tag once it found the title, so
-     frames after large cover art (album, year) were missed and the fixer kept offering them. Swift now reads the
-     whole tag (up to 4 MB) when a frame runs past the first part. Rescan folder re-reads tags cached before this.
-5. **Removal:** Plex, trivia, listening stats; then delete the page, the web view, the Classic window and `web/`.

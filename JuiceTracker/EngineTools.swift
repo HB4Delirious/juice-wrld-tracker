@@ -1,10 +1,9 @@
 import AppKit
 import AVFoundation
 
-// Stage 4d of replacing the HTML engine: the tag fixer (with auto-tagging after downloads), duplicate cleanup and the
-// file health check, in Swift, writing with TagWriter. They answer the same requests the page did, with the same
-// data, so the native screens didn't change. Files are only ever rewritten after TagWriter's safety check passes,
-// backed up first when a backup folder is set, and removed only by moving them to the Trash.
+// The tag fixer (with auto-tagging after downloads), duplicate cleanup and the file health check. Files are only ever
+// rewritten after TagWriter's safety check passes, backed up first when a backup folder is set, and removed only by
+// moving them to the Trash.
 
 @MainActor enum EngineTools {
     static let ops: Set<String> = ["fixer", "fixSet", "fixGenre", "fixSel", "fixAll", "fixNone", "fixMatch", "fixUndoMatches", "fixBackup", "fixWrite",
@@ -96,7 +95,7 @@ import AVFoundation
         return ""
     }
 
-    /// The fixer's screen, in the shape the page sent it.
+    /// The fixer's screen.
     private func json() -> String {
         let library = EngineLibrary.shared, catalog = EngineState.shared.catalog, p = plan()
         let on = Set(fields)
@@ -155,7 +154,6 @@ import AVFoundation
         }
         status = "Updated \(EngineTools.plural(ok, "file", "files")).\(failed.isEmpty ? "" : " \(EngineTools.plural(failed.count, "file", "files")) were left unchanged: \(failed.prefix(5).joined(separator: "; "))\(failed.count > 5 ? "; and more" : "").") In Plex, refresh the library's metadata to see the new tags."
         writing = false // after the message, so the screen's last refresh shows it
-        await EngineLibrary.shared.pushToPage(status: EngineLibrary.shared.status) // the page's copy of your tags
         if ok > 0 { Plex.scheduleRefresh() }
     }
 
