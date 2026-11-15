@@ -38,7 +38,7 @@
             <ControlTemplate.Triggers>
               <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="B" Property="Background" Value="#4DFFFFFF" /></Trigger>
               <Trigger Property="IsPressed" Value="True"><Setter TargetName="B" Property="Background" Value="#26FFFFFF" /></Trigger>
-              <Trigger Property="IsKeyboardFocused" Value="True"><Setter TargetName="B" Property="BorderBrush" Value="{StaticResource Lavender}" /></Trigger>
+              <Trigger Property="IsKeyboardFocused" Value="True"><Setter TargetName="B" Property="BorderBrush" Value="{DynamicResource Lavender}" /></Trigger>
               <Trigger Property="IsEnabled" Value="False"><Setter Property="Opacity" Value="0.45" /></Trigger>
             </ControlTemplate.Triggers>
           </ControlTemplate>
@@ -46,7 +46,7 @@
       </Setter>
     </Style>
     <Style x:Key="Link" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
-      <Setter Property="Foreground" Value="{StaticResource Lavender}" />
+      <Setter Property="Foreground" Value="{DynamicResource Lavender}" />
       <Setter Property="Padding" Value="0" />
       <Setter Property="Template">
         <Setter.Value>
@@ -69,7 +69,7 @@
       <Setter Property="FontSize" Value="14" />
       <Setter Property="Foreground" Value="{StaticResource Mist}" />
       <Setter Property="CaretBrush" Value="{StaticResource Mist}" />
-      <Setter Property="SelectionBrush" Value="{StaticResource Lavender}" />
+      <Setter Property="SelectionBrush" Value="{DynamicResource Lavender}" />
       <Setter Property="Background" Value="#1AFFFFFF" />
       <Setter Property="BorderBrush" Value="{StaticResource Line2}" />
       <Setter Property="Padding" Value="8,5" />
@@ -80,7 +80,7 @@
               <ScrollViewer x:Name="PART_ContentHost" Margin="{TemplateBinding Padding}" />
             </Border>
             <ControlTemplate.Triggers>
-              <Trigger Property="IsKeyboardFocused" Value="True"><Setter TargetName="B" Property="BorderBrush" Value="{StaticResource Lavender}" /></Trigger>
+              <Trigger Property="IsKeyboardFocused" Value="True"><Setter TargetName="B" Property="BorderBrush" Value="{DynamicResource Lavender}" /></Trigger>
             </ControlTemplate.Triggers>
           </ControlTemplate>
         </Setter.Value>
@@ -125,7 +125,7 @@
             <ControlTemplate.Triggers>
               <Trigger Property="IsChecked" Value="True">
                 <Setter TargetName="Tick" Property="Visibility" Value="Visible" />
-                <Setter TargetName="Box" Property="Background" Value="{StaticResource Lavender}" />
+                <Setter TargetName="Box" Property="Background" Value="{DynamicResource Lavender}" />
               </Trigger>
             </ControlTemplate.Triggers>
           </ControlTemplate>

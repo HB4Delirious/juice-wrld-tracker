@@ -231,6 +231,30 @@ foreach (var c in fx["csvCases"]!.AsArray())
     Expect(Engine.ErasNamed("fighting demons", eraNames).Count == 0, () => "era names: no fit, nothing");
 }
 
+// Cover art (beyond the page): added to each format, tags and audio untouched, and refused the second time.
+{
+    byte[] jpeg = [0xFF, 0xD8, 0xFF, 0xE0, .. Enumerable.Repeat((byte)0x42, 5000), 0xFF, 0xD9];
+    foreach (var name in new[] { "written.mp3", "written.flac", "written.m4a" })
+    {
+        var file = Path.Combine(dir, "files", name); var ext = Engine.ExtOf(name);
+        var orig = File.ReadAllBytes(file); var before = TagReader.Read(file, ext);
+        try
+        {
+            var output = CoverArt.AddArt(orig, ext, jpeg, 600, 600);
+            var copy = Path.Combine(Path.GetTempPath(), $"jt-art-{Guid.NewGuid():N}.{ext}");
+            File.WriteAllBytes(copy, output);
+            Expect(CoverArt.HasArt(copy, ext), () => $"{name}: cover art reads back from disk");
+            var after = TagReader.Read(copy, ext);
+            Expect(SameTags(after, before), () => $"{name}: tags unchanged by adding cover art ({Show(after)} vs {Show(before)})");
+            File.Delete(copy);
+            Expect(!CoverArt.HasArt(orig, ext), () => $"{name}: the original had no art");
+            bool refused = false; try { CoverArt.AddArt(output, ext, jpeg, 600, 600); } catch (EngineError) { refused = true; }
+            Expect(refused, () => $"{name}: a second picture is refused");
+        }
+        catch (EngineError e) { Expect(false, () => $"{name}: adding cover art failed: {e.Message}"); }
+    }
+}
+
 Console.WriteLine($"{checks - failures} of {checks} engine checks match the page");
 return failures > 0 ? 1 : 0;
 

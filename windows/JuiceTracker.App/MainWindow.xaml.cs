@@ -7,7 +7,7 @@ using System.Windows.Shapes;
 
 namespace JuiceTracker.App;
 
-public enum Page { Collection, Fixer }
+public enum Page { Collection, Hunt, Playlists, Fixer, Duplicates, Health, Organize, Credits, Stats, Timeline, Badges, Trivia, Export }
 
 public partial class MainWindow : Window
 {
@@ -24,7 +24,43 @@ public partial class MainWindow : Window
         Store.Shared.Changed += Refresh;
         Player.Shared.Changed += () => sidebar?.UpdatePlayer();
         KeyDown += OnKey;
+        PreviewTextInput += (_, e) => { typed = (typed + e.Text)[^Math.Min(3, (typed + e.Text).Length)..]; if (typed == "999") { typed = ""; Fx.Shower999(); } };
+        Fx.Attach(FxLayer);
+        Store.Shared.Landed += n =>
+        {
+            Fx.Confetti();
+            Toast(n == 1 ? "1 song landed in your library" : $"{n:N0} songs landed in your library");
+            if (Store.Shared.Owned.Count.ToString().Contains("999")) Fx.Shower999();
+        };
+        // with "keep running" on, closing hides the window; the notification-area icon brings it back or quits
+        Closing += (_, e) => { if (Store.Shared.Me.KeepRunning && !Tray.Quitting) { e.Cancel = true; Hide(); } };
+        Restyle();
+    }
+    string typed = "";
+
+    /// Applies the look settings: theme colors (the whole window is drawn again with them) and compact mode.
+    public void Restyle()
+    {
+        SkyLayer.Restyle();
+        Body.LayoutTransform = Store.Shared.Me.Compact ? new ScaleTransform(0.88, 0.88) : Transform.Identity;
+        sidebar = null; shownPage = null;
         Refresh();
+    }
+
+    /// A short note that slides in at the bottom and fades away.
+    public void Toast(string text)
+    {
+        var t = new Border
+        {
+            Background = JT.Brush(Color.FromArgb(235, 30, 16, 60)), BorderBrush = JT.Brush(JT.Lavender), BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(14),
+            Padding = new Thickness(18, 10, 18, 10), Child = UI.Text(text, 15), Effect = UI.Glow(JT.Lavender),
+        };
+        FxLayer.Children.Add(t);
+        t.Loaded += (_, _) => { Canvas.SetLeft(t, (FxLayer.ActualWidth - t.ActualWidth) / 2); };
+        Canvas.SetTop(t, FxLayer.ActualHeight - 90);
+        var fade = new DoubleAnimationUsingKeyFrames { Duration = TimeSpan.FromSeconds(4), KeyFrames = { new LinearDoubleKeyFrame(0, KeyTime.FromPercent(0)), new LinearDoubleKeyFrame(1, KeyTime.FromPercent(0.08)), new LinearDoubleKeyFrame(1, KeyTime.FromPercent(0.8)), new LinearDoubleKeyFrame(0, KeyTime.FromPercent(1)) } };
+        fade.Completed += (_, _) => FxLayer.Children.Remove(t);
+        t.BeginAnimation(OpacityProperty, fade);
     }
 
     Sidebar? sidebar;
@@ -36,6 +72,9 @@ public partial class MainWindow : Window
         else if (e.Key == Key.Escape && Overlay.Visibility == Visibility.Visible) { CloseOverlay(); e.Handled = true; }
         else if (e.Key == Key.OemComma && Keyboard.Modifiers == ModifierKeys.Control) { SettingsWindow.Open(); e.Handled = true; }
     }
+
+    public FrameworkElement? CurrentPage => shownPage;
+    public static IEnumerable<Page> AvailablePages => Sidebar.Available;
 
     public void Show(Page p)
     {
@@ -51,6 +90,13 @@ public partial class MainWindow : Window
         SidebarHost.Content = sidebar;
         sidebar.Update(page);
         var store = Store.Shared;
+        // download progress on the taskbar button
+        if (TaskbarItemInfo is { } bar)
+        {
+            if (store.Me.TaskbarProgress && store.Job is { } job && job.Total > 0)
+            { bar.ProgressState = job.Waiting ? System.Windows.Shell.TaskbarItemProgressState.Paused : System.Windows.Shell.TaskbarItemProgressState.Normal; bar.ProgressValue = (double)job.Done / job.Total; }
+            else bar.ProgressState = System.Windows.Shell.TaskbarItemProgressState.None;
+        }
         bool setup = store.Catalog.Count == 0 || store.Root is null || (store.Files.Count == 0 && store.Match.Owned.Count == 0 && !store.Scanning && store.FolderStatus.Length == 0);
         if (setup)
         {
@@ -62,7 +108,11 @@ public partial class MainWindow : Window
         if (shownPage is null || pageNeedsSetup || shownPage is SetupPage)
         {
             pageNeedsSetup = false;
-            shownPage = page switch { Page.Fixer => new FixerPage(), _ => new CollectionPage() };
+            shownPage = page switch
+            {
+                Page.Fixer => new FixerPage(), Page.Duplicates => new DuplicatesPage(), Page.Health => new HealthPage(), Page.Organize => new OrganizePage(),
+                Page.Export => new ExportPage(), _ => MorePages.Make(page) ?? new CollectionPage(),
+            };
             PageHost.Content = shownPage;
             UI.FadeIn(shownPage);
         }
@@ -146,7 +196,15 @@ public sealed class Sidebar : Grid
         sc.BeginAnimation(ScaleTransform.ScaleYProperty, new DoubleAnimation(on ? 1.12 : 1, dur) { EasingFunction = ease });
     }
 
-    static readonly (Page Page, string Title, string Icon)[] Pages = [(Page.Collection, "Collection", ""), (Page.Fixer, "Tag fixer", "")];
+    static readonly (Page Page, string Title, string Icon)[] AllPages =
+    [
+        (Page.Collection, "Collection", "\uE8D6"), (Page.Hunt, "Hunt", "\uE7B3"), (Page.Playlists, "Playlists", "\uE90B"), (Page.Fixer, "Tag fixer", "\uE8EC"),
+        (Page.Duplicates, "Duplicates", "\uE8C8"), (Page.Health, "File health", "\uE9D9"), (Page.Organize, "Organize", "\uE8B7"), (Page.Credits, "Credits", "\uE716"),
+        (Page.Stats, "Stats", "\uE9D2"), (Page.Timeline, "Timeline", "\uE81C"), (Page.Badges, "Badges", "\uE7C1"), (Page.Trivia, "Trivia", "\uE9CE"), (Page.Export, "Export & backup", "\uE7B8"),
+    ];
+    public static IEnumerable<Page> Available => Pages.Select(p => p.Page);
+    /// The pages this build has (each stage adds its own).
+    static IEnumerable<(Page Page, string Title, string Icon)> Pages => AllPages.Where(p => p.Page is Page.Collection or Page.Fixer or Page.Duplicates or Page.Health or Page.Organize or Page.Export || MorePages.Has(p.Page));
 
     public void Update(Page current)
     {

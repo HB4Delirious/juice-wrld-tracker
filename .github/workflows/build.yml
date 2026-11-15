@@ -41,6 +41,13 @@ jobs:
           v=$(git describe --tags --abbrev=0 --match 'v*' 2>/dev/null || echo v0.0); v=${v#v}
           dotnet publish windows/JuiceTracker.App -c Release -r win-x64 --self-contained true \
             -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:EnableCompressionInSingleFile=true -p:Version=$v.0 -o dist/windows
+      # open the built app and every screen, then quit: a layout or resource that fails to load fails the build
+      - shell: pwsh
+        timeout-minutes: 3
+        run: |
+          $p = Start-Process dist/windows/JuiceTracker.exe -ArgumentList '--smoke-test' -PassThru -Wait
+          Get-Content "$env:TEMP/juicetracker-smoke.txt" -ErrorAction SilentlyContinue
+          if ($p.ExitCode -ne 0) { Write-Error "The app failed its smoke test (exit $($p.ExitCode))"; exit 1 }
       - uses: actions/upload-artifact@v4
         with:
           name: JuiceTracker-windows
