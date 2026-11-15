@@ -1,63 +1,11 @@
 import AppKit
 import WebKit
 
-/// Height of the invisible title-bar strip; the page leaves the same space via --top-inset in juice-tracker.html.
-let titleBarInset: CGFloat = 28
-
-/// Fills the window with the web view, running it under the (hidden) title bar.
-final class WKWebViewContainer: NSView {
-    private let strip = TitleBarDragView()
-
-    init(webView: WKWebView) {
-        super.init(frame: .zero)
-        strip.translatesAutoresizingMaskIntoConstraints = false
-        adopt(webView)
-    }
-
-    /// Puts the web view in this window (it moves between the classic window and the native one's engine host).
-    func adopt(_ webView: WKWebView) {
-        guard webView.superview !== self else { return }
-        webView.removeFromSuperview()
-        webView.alphaValue = 1
-        webView.translatesAutoresizingMaskIntoConstraints = false
-        addSubview(webView, positioned: .below, relativeTo: nil)
-        if strip.superview == nil { addSubview(strip) } // above the web view, which would otherwise swallow the clicks
-        NSLayoutConstraint.activate([
-            webView.leadingAnchor.constraint(equalTo: leadingAnchor),
-            webView.trailingAnchor.constraint(equalTo: trailingAnchor),
-            webView.topAnchor.constraint(equalTo: topAnchor),
-            webView.bottomAnchor.constraint(equalTo: bottomAnchor),
-            strip.leadingAnchor.constraint(equalTo: leadingAnchor),
-            strip.trailingAnchor.constraint(equalTo: trailingAnchor),
-            strip.topAnchor.constraint(equalTo: topAnchor),
-            strip.heightAnchor.constraint(equalToConstant: titleBarInset),
-        ])
-    }
-    required init?(coder: NSCoder) { fatalError("init(coder:) is not used") }
-
-    /// No title bar: the page's night sky runs to the top edge and the window buttons float over the sidebar.
-    override func viewDidMoveToWindow() {
-        super.viewDidMoveToWindow()
-        guard let window else { return }
-        window.styleMask.insert(.fullSizeContentView)
-        window.titlebarAppearsTransparent = true
-        window.titleVisibility = .hidden
-        window.appearance = NSAppearance(named: .darkAqua)
-        window.backgroundColor = NSColor(srgbRed: 7 / 255, green: 4 / 255, blue: 15 / 255, alpha: 1) // #07040f, top of the page's sky
-    }
-}
-
-/// Invisible strip where the title bar was: drag to move the window, double-click to zoom.
-final class TitleBarDragView: NSView {
-    override func mouseDown(with event: NSEvent) {
-        if event.clickCount == 2 {
-            // Follow System Settings > Desktop & Dock > "Double-click a window's title bar to".
-            let action = UserDefaults.standard.string(forKey: "AppleActionOnDoubleClick") ?? "Maximize"
-            if action == "Minimize" { window?.performMiniaturize(nil) } else if action != "None" { window?.performZoom(nil) }
-        } else {
-            window?.performDrag(with: event)
-        }
-    }
+/// The page runs unseen behind the native window, so it must never take the keyboard: it has its own ⌘K and other
+/// shortcuts, which would open its (invisible) dialogs and swallow what you type.
+final class EngineWebView: WKWebView {
+    override var acceptsFirstResponder: Bool { false }
+    override func performKeyEquivalent(with event: NSEvent) -> Bool { false }
 }
 
 /// Owns the WKWebView that runs web/juice-tracker.html, plus everything a browser would normally do for it:
@@ -79,7 +27,7 @@ final class WebViewStore: NSObject {
         }
         config.userContentController = content
 
-        webView = WKWebView(frame: .zero, configuration: config)
+        webView = EngineWebView(frame: .zero, configuration: config)
         super.init()
 
         content.addScriptMessageHandler(bridge, contentWorld: .page, name: "jwNative")
@@ -87,7 +35,6 @@ final class WebViewStore: NSObject {
         bridge.webView = webView
         webView.navigationDelegate = self
         webView.uiDelegate = self
-        webView.allowsMagnification = true
         if #available(macOS 13.3, *) { webView.isInspectable = true } // Safari > Develop menu can inspect the page
         load()
     }
@@ -100,10 +47,7 @@ final class WebViewStore: NSObject {
         webView.loadFileURL(url, allowingReadAccessTo: url.deletingLastPathComponent())
     }
 
-    func reload() { webView.reload() }
     func stopAmbient() { bridge.stopAmbient() }
-    func setZoom(_ value: CGFloat) { webView.pageZoom = value }
-    func zoom(by delta: CGFloat) { webView.pageZoom = min(max(webView.pageZoom + delta, 0.5), 2.5) }
 
     private static func isWeb(_ url: URL?) -> Bool {
         guard let scheme = url?.scheme?.lowercased() else { return false }
@@ -114,9 +58,10 @@ final class WebViewStore: NSObject {
 // MARK: - Navigation and downloads
 
 extension WebViewStore: WKNavigationDelegate {
-    /// After each load (including ⌘R), tell the page whether it's on screen or running unseen as the engine.
+    /// The page runs unseen as the engine: nothing in it needs to animate.
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
-        webView.evaluateJavaScript("window.jwEngineMode && window.jwEngineMode(\(AppDelegate.shared?.classicVisible == true ? "false" : "true"))")
+        webView.evaluateJavaScript("window.jwEngineMode && window.jwEngineMode(true)")
+        Task { @MainActor in await EngineState.shared.start() } // Swift's catalog, wishlist and notes, handed to the page
     }
 
     func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction,

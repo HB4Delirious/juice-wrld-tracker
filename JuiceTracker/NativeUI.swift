@@ -73,26 +73,42 @@ final class NativeStore: NSObject, ObservableObject, WKScriptMessageHandler {
     @Published var landed: [Int] = [] // songs that just came into the library (for the confetti)
     @Published var version = 0 // bumps with every snapshot, so screens that ask the page for more can refresh
     private var catalog: [NState.CatSong] = []
+    private var live: PageLive?
+    private var catalogToken = -1 // the EngineState catalog that `catalog` was built from
 
+    /// The page's snapshot: what you own, the files, the drive and the queue. Everything else comes from Swift.
     func userContentController(_ controller: WKUserContentController, didReceive message: WKScriptMessage) {
         guard let json = message.body as? String else { return }
         DispatchQueue.global(qos: .userInitiated).async {
-            let decoded: NState
-            do { decoded = try JSONDecoder().decode(NState.self, from: Data(json.utf8)) }
+            let decoded: PageLive
+            do { decoded = try JSONDecoder().decode(PageLive.self, from: Data(json.utf8)) }
             catch { NSLog("Juice Tracker: couldn't read the page's snapshot: \(error)"); return }
             DispatchQueue.main.async {
-                if let c = decoded.catalog { self.catalog = c }
-                let before = self.state == nil || self.songs.isEmpty ? nil : Set(self.songs.lazy.filter(\.o).map(\.i))
-                let owned = Set(decoded.owned), wished = Set(decoded.wished)
-                self.songs = self.catalog.map { Song(s: $0, o: owned.contains($0.i), w: wished.contains($0.i)) }
-                self.state = decoded
-                if let before { let new = decoded.owned.filter { !before.contains($0) }; if !new.isEmpty { self.landed = new } }
-                self.version += 1
-                SpotlightIndex.update(self.songs)
-                WidgetFeed.update()
-                if let id = SpotlightIndex.pending, let s = self.songs.first(where: { $0.s.id == id }) { SpotlightIndex.pending = nil; self.openSong = s }
+                // song numbers in a snapshot taken before the page had Swift's catalog would mean other songs
+                guard decoded.cv == EngineState.shared.token else { return }
+                self.live = decoded
+                self.rebuild()
             }
         }
+    }
+
+    /// Rebuilds the screens' state from Swift's data and the page's last snapshot.
+    @MainActor func rebuild() {
+        let engine = EngineState.shared
+        guard let live, !engine.catalog.isEmpty, live.cv == engine.token else { return }
+        let decoded = engine.build(live, includeCatalog: catalogToken != engine.token)
+        catalogToken = engine.token
+        if let c = decoded.catalog { catalog = c }
+        // by song id, not list position: a new catalog can shift every position
+        let before = state == nil || songs.isEmpty ? nil : Set(songs.lazy.filter(\.o).map(\.s.id))
+        let owned = Set(decoded.owned), wished = Set(decoded.wished)
+        songs = catalog.map { Song(s: $0, o: owned.contains($0.i), w: wished.contains($0.i)) }
+        state = decoded
+        if let before { let new = songs.filter { $0.o && !before.contains($0.s.id) }.map(\.i); if !new.isEmpty { landed = new } }
+        version += 1
+        SpotlightIndex.update(songs)
+        WidgetFeed.update()
+        if let id = SpotlightIndex.pending, let s = songs.first(where: { $0.s.id == id }) { SpotlightIndex.pending = nil; openSong = s }
     }
 
     /// The song card opened from any screen.
@@ -104,6 +120,12 @@ final class NativeStore: NSObject, ObservableObject, WKScriptMessageHandler {
     }
 
     /// Like act, but passes on the page's error (for file fixes, whose failures the screen shows).
+    /// Waits (up to `seconds`) for the page's first snapshot, e.g. when Shortcuts just launched the app.
+    @MainActor func ready(seconds: Int = 20) async -> Bool {
+        for _ in 0..<seconds * 4 where state == nil { try? await Task.sleep(nanoseconds: 250_000_000) }
+        return state != nil
+    }
+
     @MainActor func tryAct(_ op: String, _ i: Int = -1, _ extra: [String: Any] = [:]) async throws -> String {
         var a: [String: Any] = ["op": op, "i": i]
         a.merge(extra) { _, new in new }
@@ -124,11 +146,6 @@ final class NativeStore: NSObject, ObservableObject, WKScriptMessageHandler {
         return try? JSONDecoder().decode(SongDetails.self, from: Data(json.utf8))
     }
 
-    /// Opens a screen in the classic window.
-    @MainActor func openClassic(_ view: String) {
-        AppDelegate.shared?.showClassicWindow()
-        WebViewStore.shared.webView.evaluateJavaScript("showView('\(view)')")
-    }
 }
 
 // MARK: - The sky, drawn by Core Animation (it runs on the graphics chip, not in the app)
@@ -391,7 +408,6 @@ enum JT {
     static let have = Color(red: 201 / 255, green: 242 / 255, blue: 74 / 255)
     static let new = Color(red: 1, green: 160 / 255, blue: 74 / 255)
     static let missing = Color(red: 1, green: 93 / 255, blue: 108 / 255)
-    static let yellow = Color(red: 1, green: 225 / 255, blue: 74 / 255)
     static let rainbowColors = [Color(red: 1, green: 93 / 255, blue: 108 / 255), Color(red: 1, green: 160 / 255, blue: 74 / 255),
                                 Color(red: 1, green: 225 / 255, blue: 74 / 255), Color(red: 201 / 255, green: 242 / 255, blue: 74 / 255),
                                 Color(red: 79 / 255, green: 216 / 255, blue: 1), Color(red: 106 / 255, green: 168 / 255, blue: 1),
@@ -617,9 +633,6 @@ struct Sidebar: View {
                 }
                 (Text("Your files stay on this computer. Only song info comes from ") + Text("juicewrldapi.com").foregroundColor(JT.lavender).underline() + Text("."))
                     .font(JT.body(12.5)).foregroundColor(JT.muted).lineLimit(3).minimumScaleFactor(0.9)
-                Button { store.openClassic(store.page.rawValue) } label: { Label("Classic window", systemImage: "macwindow") }
-                    .buttonStyle(.borderless).font(JT.body(12)).foregroundColor(JT.muted.opacity(0.8))
-                    .help("The original HTML interface (⌘2)")
             }
             .padding(.bottom, 16)
         }
@@ -1052,7 +1065,7 @@ struct SongRow: View {
             Button {
                 withAnimation(.spring(response: 0.22, dampingFraction: 0.4)) { pop = true }
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { withAnimation(.spring(response: 0.35, dampingFraction: 0.5)) { pop = false } }
-                Task { await NativeStore.shared.act("wish", song.i) }
+                EngineState.shared.toggleWish(song.s.id)
             } label: {
                 Image(systemName: song.w ? "star.fill" : "star").foregroundColor(song.w ? Color(red: 1, green: 0.88, blue: 0.29) : JT.muted)
                     .scaleEffect(pop ? 1.7 : 1).rotationEffect(.degrees(pop ? 72 : 0))
@@ -1133,7 +1146,7 @@ struct SongCard: View {
                         TextEditor(text: $note).frame(minHeight: 54).font(.callout)
                             .overlay(RoundedRectangle(cornerRadius: 6).stroke(JT.line))
                             .onChange(of: note) { text in
-                                Task { try? await Task.sleep(nanoseconds: 500_000_000); if text == note { await NativeStore.shared.act("note", song.i, ["text": text]) } }
+                                Task { try? await Task.sleep(nanoseconds: 500_000_000); if text == note { EngineState.shared.setNote(song.s.id, text) } }
                             }
                         Text("Your library").font(.headline).padding(.top, 6)
                         if d.files.isEmpty { Text("Not in your library.").foregroundColor(JT.muted) }
@@ -1142,7 +1155,7 @@ struct SongCard: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                 }
                 HStack {
-                    Button { Task { await NativeStore.shared.act("wish", song.i) } } label: { Label(song.w ? "On your wishlist" : "Add to wishlist", systemImage: song.w ? "star.fill" : "star") }
+                    Button { EngineState.shared.toggleWish(song.s.id) } label: { Label(song.w ? "On your wishlist" : "Add to wishlist", systemImage: song.w ? "star.fill" : "star") }
                     if d.playable { Button { Task { await NativeStore.shared.act("play", song.i) } } label: { Label("Play", systemImage: "play.fill") } }
                     if !song.o && song.f { Button { Task { await NativeStore.shared.act("download", song.i) } } label: { Label("Download", systemImage: "arrow.down.circle") } }
                     Spacer()
@@ -1156,7 +1169,7 @@ struct SongCard: View {
         .frame(width: 640, height: 560)
         .background(Color(red: 20 / 255, green: 10 / 255, blue: 44 / 255))
         .preferredColorScheme(.dark)
-        .task { d = await NativeStore.shared.details(song.i); note = d?.note ?? "" }
+        .task { note = EngineState.shared.notes[song.s.id] ?? ""; d = await NativeStore.shared.details(song.i) }
     }
 
     private func facts(_ d: SongDetails) -> [(String, String)] {

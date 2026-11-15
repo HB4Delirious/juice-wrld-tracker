@@ -43,10 +43,11 @@ private struct Note: View {
 
 // MARK: - Setup (no catalog or folder yet)
 
-private struct SetupData: Decodable { let catalog: Bool; let folder: String; let catalogStatus: String; let folderStatus: String }
+private struct SetupData: Decodable { let folder: String; let folderStatus: String }
 
 struct SetupView: View {
     @ObservedObject private var store = NativeStore.shared
+    @ObservedObject private var engine = EngineState.shared
     @State private var data: SetupData?
 
     var body: some View {
@@ -55,8 +56,8 @@ struct SetupView: View {
             Text("Two steps and your collection shows up here: load the song catalog from juicewrldapi.com, and choose your music folder. Your files stay on this Mac.")
                 .foregroundColor(JT.muted).frame(maxWidth: 620, alignment: .leading)
             HStack(alignment: .top, spacing: 16) {
-                step(1, "Load the song catalog", done: data?.catalog == true, status: data?.catalogStatus ?? "",
-                     button: data?.catalog == true ? "Reload catalog" : "Load catalog") { await store.act("loadCatalog") }
+                step(1, "Load the song catalog", done: !engine.catalog.isEmpty, status: engine.status,
+                     button: engine.loading ? "Loading…" : engine.catalog.isEmpty ? "Load catalog" : "Reload catalog") { await engine.reload() }
                 step(2, "Choose your music folder", done: !(data?.folder ?? "").isEmpty, status: data?.folderStatus ?? "",
                      button: (data?.folder ?? "").isEmpty ? "Choose folder" : "Choose another folder") { await store.act("pickFolder") }
             }
@@ -351,8 +352,7 @@ struct ExportScreen: View {
         }
         .task {
             await loadSnap()
-            let url = await store.act("card") // a data: URL with the PNG in base64
-            if let comma = url.firstIndex(of: ","), let data = Data(base64Encoded: String(url[url.index(after: comma)...])) { card = NSImage(data: data) }
+            card = EngineState.shared.collectionCard()
             plex = (try? JSONDecoder().decode([PlexSource].self, from: Data(await store.act("plexSources").utf8))) ?? []
             if plexPick.isEmpty { plexPick = plex.first?.id ?? "" }
         }
@@ -375,18 +375,18 @@ struct ExportScreen: View {
     }
 
     private func exportCatalog() async {
-        let csv = await store.act("exportCatalog")
+        let csv = await EngineState.shared.catalogCSV()
         if Files.save(Data(csv.utf8), name: "juice-wrld-full-catalog-\(Files.today).csv", type: .commaSeparatedText) { message = ("Exported the full catalog.", false) }
     }
 
     private func backup() async {
-        let json = await store.act("backupData")
+        let json = await EngineState.shared.backupJSON()
         if Files.save(Data(json.utf8), name: "juice-wrld-tracker-backup-\(Files.today).json", type: .json) { message = ("Saved your backup.", false) }
     }
 
     private func restore() async {
         guard let text = Files.openText(types: [.json]) else { return }
-        do { message = (try await store.tryAct("restoreData", -1, ["text": text]), false) }
+        do { message = (try await EngineState.shared.restore(text), false) }
         catch { message = ("That file isn't a backup from this tracker.", true) }
     }
 

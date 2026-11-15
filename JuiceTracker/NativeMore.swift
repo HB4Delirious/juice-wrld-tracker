@@ -372,16 +372,17 @@ struct ListeningSection: View {
 // MARK: - Spotlight: your songs show up in ⌘Space search
 
 enum SpotlightIndex {
-    private static var lastKey = ""
+    private static var indexed: Set<String>? // song ids in the index; nil until the first update this launch
     static let prefix = "jt-song-"
 
-    /// Indexes the songs you have (title, other titles, era). Only when the set changes.
+    /// Indexes the songs you have (title, other titles, era): everything once per launch, then only what changed.
     static func update(_ songs: [Song]) {
-        let owned = songs.filter(\.o)
-        let key = "\(owned.count)-\(owned.first?.s.id ?? "")-\(owned.last?.s.id ?? "")"
-        guard key != lastKey, !owned.isEmpty else { return }
-        lastKey = key
-        let items = owned.map { s -> CSSearchableItem in
+        let owned = songs.filter(\.o), ids = Set(owned.map(\.s.id))
+        guard ids != indexed else { return }
+        let index = CSSearchableIndex.default()
+        let old = indexed
+        indexed = ids
+        let items = owned.filter { old?.contains($0.s.id) != true }.map { s -> CSSearchableItem in
             let a = CSSearchableItemAttributeSet(contentType: .audio)
             a.title = s.n
             a.contentDescription = "Juice WRLD · \(s.e) · \(s.c)"
@@ -389,8 +390,13 @@ enum SpotlightIndex {
             a.artist = "Juice WRLD"
             return CSSearchableItem(uniqueIdentifier: prefix + s.s.id, domainIdentifier: "songs", attributeSet: a)
         }
-        let index = CSSearchableIndex.default()
-        index.deleteSearchableItems(withDomainIdentifiers: ["songs"]) { _ in index.indexSearchableItems(items, completionHandler: nil) }
+        if let old {
+            let gone = old.subtracting(ids).map { prefix + $0 }
+            if !gone.isEmpty { index.deleteSearchableItems(withIdentifiers: gone, completionHandler: nil) }
+            if !items.isEmpty { index.indexSearchableItems(items, completionHandler: nil) }
+        } else { // first update: clear what an earlier launch left, then add everything
+            index.deleteSearchableItems(withDomainIdentifiers: ["songs"]) { _ in index.indexSearchableItems(items, completionHandler: nil) }
+        }
     }
 
     /// Opens the song a Spotlight result points to.
@@ -413,8 +419,12 @@ struct PlayEraIntent: AppIntent {
     static var openAppWhenRun = true
     @Parameter(title: "Era", description: "Leave empty for all eras") var era: String?
     @MainActor func perform() async throws -> some IntentResult & ProvidesDialog {
-        await NativeStore.shared.act("ambientSet", -1, ["on": true])
-        await NativeStore.shared.act("ambientSet", -1, ["era": era ?? ""])
+        let store = NativeStore.shared
+        guard await store.ready() else { return .result(dialog: IntentDialog(stringLiteral: "Juice Tracker isn't ready yet. Try again in a moment.")) }
+        do {
+            _ = try await store.tryAct("ambientSet", -1, ["on": true])
+            _ = try await store.tryAct("ambientSet", -1, ["era": era ?? ""])
+        } catch { return .result(dialog: IntentDialog(stringLiteral: "Couldn't start the music: \(error.localizedDescription)")) }
         return .result(dialog: IntentDialog(stringLiteral: "Playing \(era.map { "songs from \($0)" } ?? "your songs")."))
     }
 }
@@ -423,9 +433,9 @@ struct PlayEraIntent: AppIntent {
 struct WhatsPlayingIntent: AppIntent {
     static var title: LocalizedStringResource = "What's Playing in Juice Tracker"
     @MainActor func perform() async throws -> some IntentResult & ProvidesDialog & ReturnsValue<String> {
-        let title = AmbientPlayer.shared.title
+        let p = AmbientPlayer.shared, title = p.title
         // Built as plain text first: older Xcode versions don't accept a computed string as a dialog.
-        let text = title.map { "\($0) by Juice WRLD." } ?? "Nothing is playing."
+        let text = title.map { p.isPlaying ? "\($0) by Juice WRLD." : "\($0) by Juice WRLD is paused." } ?? "Nothing is playing."
         return .result(value: title ?? "", dialog: IntentDialog(stringLiteral: text))
     }
 }
@@ -448,7 +458,10 @@ struct DownloadWishlistIntent: AppIntent {
     static var description = IntentDescription("Downloads the songs on your wishlist that you don't have yet and that have a file on the site.")
     static var openAppWhenRun = true
     @MainActor func perform() async throws -> some IntentResult & ProvidesDialog {
-        let n = Int(await NativeStore.shared.act("downloadWishlist")) ?? 0
+        let store = NativeStore.shared
+        guard await store.ready(), let raw = try? await store.tryAct("downloadWishlist"), let n = Int(raw) else {
+            return .result(dialog: IntentDialog(stringLiteral: "Juice Tracker isn't ready yet. Try again in a moment."))
+        }
         let text = n > 0 ? "Downloading \(n) wishlist \(n == 1 ? "song" : "songs")." : "Nothing on your wishlist to download right now."
         return .result(dialog: IntentDialog(stringLiteral: text))
     }
@@ -482,7 +495,8 @@ import WidgetKit
             let names = row.songs.prefix(2).compactMap { NativeStore.shared.songs.indices.contains($0) ? NativeStore.shared.songs[$0].n : nil }
             return names.isEmpty ? nil : "\(row.head) \(names.joined(separator: ", "))"
         }
-        let summary = Summary(have: s.have, total: s.total, playing: AmbientPlayer.shared.title, today: today)
+        let p = AmbientPlayer.shared
+        let summary = Summary(have: s.have, total: s.total, playing: p.isPlaying ? p.title : nil, today: today)
         guard summary.have != last?.have || summary.playing != last?.playing || summary.today != last?.today || summary.total != last?.total else { return }
         last = summary
         let dir = FileManager.default.homeDirectoryForCurrentUser

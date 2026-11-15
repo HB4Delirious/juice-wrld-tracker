@@ -378,7 +378,7 @@ struct NoteDrift: NSViewRepresentable {
         v.wantsLayer = true
         let e = CAEmitterLayer()
         e.emitterShape = .line
-        e.emitterCells = Self.cells
+        e.emitterCells = Self.cells() // made per view, so a new era theme's color shows
         v.emitter = e
         v.layer?.addSublayer(e)
         return v
@@ -396,7 +396,7 @@ struct NoteDrift: NSViewRepresentable {
         }
     }
 
-    private static let cells: [CAEmitterCell] = {
+    private static func cells() -> [CAEmitterCell] {
         func glyph(_ s: String, _ color: NSColor) -> CGImage {
             let a = NSAttributedString(string: s, attributes: [.font: NSFont.systemFont(ofSize: 28, weight: .bold), .foregroundColor: color])
             let size = a.size()
@@ -421,5 +421,5 @@ struct NoteDrift: NSViewRepresentable {
             c.alphaSpeed = -0.25
             return c
         }
-    }()
+    }
 }

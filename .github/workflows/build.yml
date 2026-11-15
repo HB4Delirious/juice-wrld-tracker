@@ -18,6 +18,7 @@ jobs:
         with:
           fetch-depth: 0  # tags and history, so make-dmg.sh can read the version and build number
       - run: node --test tests/core.test.mjs
+      - run: scripts/test-engine.sh  # the Swift engine must give the page's answers
       - run: scripts/make-dmg.sh
       - uses: actions/upload-artifact@v4
         with:

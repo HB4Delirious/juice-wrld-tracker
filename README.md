@@ -34,8 +34,9 @@ In the Mac app, the sidebar's **Ambient music** toggle plays your matched songs,
 ## Mac app extras
 
 The Mac app's interface is native SwiftUI (with a Core Animation sky), which uses far less CPU than the HTML page:
-about 2–5% against about 30%. The HTML page still runs unseen behind it and does the work (catalog, scanning, matching,
-tag writing, downloads). Window > Classic Window (⌘2) shows the original HTML interface.
+about 2–5% against about 30%. The engine is moving from the old HTML page to Swift in stages: Swift now owns the catalog,
+your wishlist and notes, and what every screen shows; the page still runs unseen behind it for scanning, matching, tag
+writing and downloads. Window > Check Swift Engine… compares the two on your own library.
 
 
 - **Search:** ⌘K jumps to any song, era, producer/artist/engineer/studio, or page.
