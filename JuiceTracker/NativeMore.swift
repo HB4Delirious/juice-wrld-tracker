@@ -96,6 +96,8 @@ struct SongExtras {
                 }
             }
         }
+        let row = p.isPlaying ? song?.i : nil
+        if PlayingRow.shared.index != row { PlayingRow.shared.index = row }
         tickWhenNeeded()
     }
 

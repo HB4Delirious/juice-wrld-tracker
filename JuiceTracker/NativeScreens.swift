@@ -168,10 +168,9 @@ struct StatsScreen: View {
                         HStack(spacing: 12) {
                             Text(e.name).lineLimit(1).frame(width: 170, alignment: .leading)
                             GeometryReader { g in
-                                ZStack(alignment: .leading) {
-                                    Capsule().fill(Color.white.opacity(0.08)).frame(width: g.size.width * CGFloat(e.total) / CGFloat(peak))
-                                    Capsule().fill(JT.have).frame(width: g.size.width * CGFloat(e.have) / CGFloat(peak))
-                                }
+                                // the era's length is the track; what you have grows into it
+                                FillBar(fraction: CGFloat(e.have) / CGFloat(max(e.total, 1)), fill: JT.have, track: Color.white.opacity(0.08), delay: 0.1)
+                                    .frame(width: g.size.width * CGFloat(e.total) / CGFloat(peak))
                             }
                             .frame(height: 10)
                             Text("\(e.have) / \(e.total)").font(.caption.monospacedDigit()).foregroundColor(JT.muted).frame(width: 74, alignment: .trailing)
