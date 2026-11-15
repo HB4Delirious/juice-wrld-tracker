@@ -277,6 +277,11 @@ extension EngineLibrary {
         on ? player.play() : player.stop()
     }
 
+    /// Your eras a spoken name fits (by short or full name, see `Engine.erasNamed`).
+    static func erasNamed(_ spoken: String) -> [String] {
+        let info = EngineState.shared.eras
+        return Engine.erasNamed(spoken, eras: eras.map { (name: $0, full: info[$0]?.description ?? "") })
+    }
     static func setOn(_ value: Bool) { on = value; sync() }
     static func setEra(_ name: String) { era = name; on = true; sync(); AmbientPlayer.shared.skip() } // the new mix starts now
     static func setInOrder(_ value: Bool) { inOrder = value; sync(); if !era.isEmpty { AmbientPlayer.shared.skip() } }

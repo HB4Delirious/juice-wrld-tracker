@@ -42,7 +42,7 @@ import AppKit
         overrides = (EngineState.shared.personalAny("matchOverrides") as? [String: Any] ?? [:]).compactMapValues { $0 as? String }
         guard let url = await Self.restoreFolder() else { return }
         use(url)
-        let items = EngineFiles.read("items.json").flatMap { try? JSONDecoder().decode([String].self, from: $0) } ?? []
+        let items = readItems()
         if !items.isEmpty {
             files = items.compactMap { libraryFile($0, cache[$0]) }.sorted { $0.path.localizedCompare($1.path) == .orderedAscending }
             loaded = true
@@ -165,7 +165,7 @@ import AppKit
         cache[path] = c
         saveCache()
         if !files.contains(where: { $0.path == path }) { // a new file (the folder watcher): keep it after a relaunch
-            var items = EngineFiles.read("items.json").flatMap { try? JSONDecoder().decode([String].self, from: $0) } ?? []
+            var items = readItems()
             if !items.contains(path) { items.append(path); saveItems(items) }
         }
         if let f = libraryFile(path, c) {
@@ -181,7 +181,7 @@ import AppKit
         guard !paths.isEmpty else { return }
         let gone = Set(paths)
         files.removeAll { gone.contains($0.path) }
-        let items = (EngineFiles.read("items.json").flatMap { try? JSONDecoder().decode([String].self, from: $0) } ?? []).filter { !gone.contains($0) }
+        let items = readItems().filter { !gone.contains($0) }
         saveItems(items)
         rematch()
     }
@@ -206,7 +206,7 @@ import AppKit
     /// A library entry from cached tags, or nil when it isn't a Juice WRLD file (and only those count).
     private func libraryFile(_ path: String, _ c: Engine.CachedTags?) -> LibraryFile? {
         let tags = c?.tags ?? [:]
-        guard !onlyJuice || Engine.hasArtist(path) || Engine.hasArtist("\(tags["artist"] ?? "") \(tags["albumartist"] ?? "")") else { return nil }
+        guard !onlyJuice || Engine.countsAsJuice(path: path, tags: tags) else { return nil }
         let title = (tags["title"] ?? "").isEmpty ? Engine.titleFromFilename(path) : tags["title"]!
         return LibraryFile(path: path, ext: Engine.extOf(path), tags: tags, title: title, key: Engine.normalize(title), stem: Engine.stemOf(path),
                            fromTags: !(tags["title"] ?? "").isEmpty, size: c?.size ?? 0)
@@ -216,6 +216,7 @@ import AppKit
                           tags: (v["tags"] as? [String: Any] ?? [:]).compactMapValues { $0 as? String })
     }
     private func saveCache() { if let data = try? JSONEncoder().encode(cache) { try? EngineFiles.write("tags.json", data) } }
+    private func readItems() -> [String] { EngineFiles.read("items.json").flatMap { try? JSONDecoder().decode([String].self, from: $0) } ?? [] }
     private func saveItems(_ items: [String]) { if let data = try? JSONEncoder().encode(items) { try? EngineFiles.write("items.json", data) } }
 }
 
@@ -298,6 +299,9 @@ extension EngineLibrary {
         var done: [(from: String, to: String)] = [], failed: [String] = []
         for m in moves {
             guard let src = url(of: m.from), let dst = url(of: m.to) else { failed.append("\(Engine.baseName(m.from)): outside the music folder"); continue }
+            guard !onlyJuice || Engine.countsAsJuice(path: m.to, tags: cache[m.from]?.tags ?? [:]) else {
+                failed.append("\(Engine.baseName(m.from)): it would no longer count as a Juice WRLD file there"); continue
+            }
             let error = await Task.detached { () -> String? in
                 let fm = FileManager.default
                 guard fm.fileExists(atPath: src.path) else { return "isn't there any more" }
@@ -318,7 +322,7 @@ extension EngineLibrary {
         guard !done.isEmpty else { return (done, failed) }
         files.sort { $0.path.localizedCompare($1.path) == .orderedAscending }
         let renamed = Dictionary(done.map { ($0.from, $0.to) }, uniquingKeysWith: { a, _ in a })
-        let items = (EngineFiles.read("items.json").flatMap { try? JSONDecoder().decode([String].self, from: $0) } ?? []).map { renamed[$0] ?? $0 }
+        let items = readItems().map { renamed[$0] ?? $0 }
         saveItems(items)
         saveCache()
         rematch()
@@ -345,19 +349,21 @@ extension EngineLibrary {
     // MARK: Inbox
 
     /// A folder outside the library: audio files dropped there are matched, moved into the folder the tracker picks
-    /// for their era, and tagged when they match exactly one song. Files it can't place stay in the inbox.
+    /// for their era, and tagged with the catalog's details. Files it can't place stay in the inbox.
     static var inbox: URL? {
         get { UserDefaults.standard.string(forKey: "inboxFolder").map { URL(fileURLWithPath: $0) } }
         set { UserDefaults.standard.set(newValue?.path, forKey: "inboxFolder") }
     }
     static var inboxNote = ""
     private static var inboxStream: FSEventStreamRef?
+    private static var sorting = false, sortAgain = false // one run at a time; changes during a run start another
+    private static var untaggable: Set<String> = []        // "name|size" put back once already; not tried again this launch
 
     func watchInbox() {
         if let s = Self.inboxStream { FSEventStreamStop(s); FSEventStreamInvalidate(s); FSEventStreamRelease(s); Self.inboxStream = nil }
         guard let inbox = Self.inbox else { return }
         let callback: FSEventStreamCallback = { _, _, _, _, _, _ in
-            Task { @MainActor in try? await Task.sleep(nanoseconds: 2_000_000_000); await EngineLibrary.shared.sortInbox() } // let a copy finish
+            Task { @MainActor in await EngineLibrary.shared.sortInbox() }
         }
         var context = FSEventStreamContext(version: 0, info: nil, retain: nil, release: nil, copyDescription: nil)
         guard let s = FSEventStreamCreate(nil, callback, &context, [inbox.path] as CFArray, FSEventStreamEventId(kFSEventStreamEventIdSinceNow), 3,
@@ -370,18 +376,43 @@ extension EngineLibrary {
 
     func sortInbox() async {
         guard let inbox = Self.inbox, root != nil, !EngineState.shared.catalog.isEmpty else { return }
-        let found = await Task.detached { () -> [(URL, Tags, Int)] in
-            let urls = (try? FileManager.default.contentsOfDirectory(at: inbox, includingPropertiesForKeys: [.fileSizeKey], options: [.skipsHiddenFiles])) ?? []
-            return urls.filter { Engine.audioExts.contains(Engine.extOf($0.path)) }.compactMap { u in
-                guard let size = (try? u.resourceValues(forKeys: [.fileSizeKey]))?.fileSize, size > 0 else { return nil }
-                return (u, TagReader.read(u, ext: Engine.extOf(u.path)), size)
+        if Self.sorting { Self.sortAgain = true; return }
+        Self.sorting = true
+        defer {
+            Self.sorting = false
+            if Self.sortAgain { Self.sortAgain = false; Task { await sortInbox() } }
+        }
+        // Only files that have finished arriving: a copy from a USB stick or the network can take minutes, and moving a
+        // half-copied file would put a cut-off song in the library.
+        let (found, waiting) = await Task.detached { () -> ([(URL, Tags, Int)], Bool) in
+            func look() -> [URL: (Int, Date)] {
+                let keys: [URLResourceKey] = [.fileSizeKey, .contentModificationDateKey]
+                let urls = (try? FileManager.default.contentsOfDirectory(at: inbox, includingPropertiesForKeys: keys, options: [.skipsHiddenFiles])) ?? []
+                var out: [URL: (Int, Date)] = [:]
+                for u in urls where Engine.audioExts.contains(Engine.extOf(u.path)) {
+                    let v = try? u.resourceValues(forKeys: Set(keys))
+                    out[u] = (v?.fileSize ?? 0, v?.contentModificationDate ?? Date())
+                }
+                return out
             }
+            let before = look()
+            guard !before.isEmpty else { return ([], false) }
+            Thread.sleep(forTimeInterval: 3)
+            let now = look(), date = Date()
+            let ready = now.filter { u, v in Engine.settled(sizeBefore: before[u]?.0 ?? -1, sizeNow: v.0, modified: v.1, now: date) }
+            // Look again only for files still arriving; an empty file (a failed download, say) just stays in the inbox.
+            let arriving = now.contains { u, v in ready[u] == nil && v.0 > 0 }
+            return (ready.map { ($0.key, TagReader.read($0.key, ext: Engine.extOf($0.key.path)), $0.value.0) }, arriving)
         }.value
+        if waiting { // look again once the rest has had time to finish
+            Task { try? await Task.sleep(nanoseconds: 8_000_000_000); await sortInbox() }
+        }
         guard !found.isEmpty else { return }
         let catalog = EngineState.shared.catalog
-        var moved = 0, left: [String] = []
+        var moved = 0, left: [String] = [], putBack: [String] = []
         for (u, tags, size) in found {
             let name = u.lastPathComponent, tmp = "inbox/\(name)"
+            if Self.untaggable.contains("\(name)|\(size)") { putBack.append(name); continue }
             let title = (tags["title"] ?? "").isEmpty ? Engine.titleFromFilename(tmp) : tags["title"]!
             let lf = LibraryFile(path: tmp, ext: Engine.extOf(name), tags: tags, title: title, key: Engine.normalize(title), stem: Engine.stemOf(tmp),
                                  fromTags: !(tags["title"] ?? "").isEmpty, size: size)
@@ -389,7 +420,8 @@ extension EngineLibrary {
             // Several versions can match one title; primarySong settles which one it is, or leaves it in the inbox.
             guard let songs = m.songsFor[tmp], m.how[tmp] != "close", let primary = Engine.primarySong(songs, catalog: catalog) else { left.append(name); continue }
             let rel = "\(Engine.saveFolder(catalog[primary], layout))/\(name)"
-            guard let dst = url(of: rel) else { left.append(name); continue }
+            // It must still count as a Juice WRLD file there: by its path or tags, or by the tags written below.
+            guard let dst = url(of: rel), Engine.countsAsJuice(path: rel, tags: tags) || Engine.editableExts.contains(Engine.extOf(name)) else { left.append(name); continue }
             let ok = await Task.detached { () -> Bool in
                 let fm = FileManager.default
                 guard !fm.fileExists(atPath: dst.path) else { return false }
@@ -398,10 +430,27 @@ extension EngineLibrary {
             }.value
             guard ok else { left.append(name); continue }
             updateFile(rel, tags: tags, size: size)
-            if songs.count == 1 { _ = await EngineFixer.shared.autoTag(rel, song: songs[0], always: true) } // tags only when it's sure which version
+            // The versions primarySong chose between share one name, so its tags are right for the title either way.
+            _ = await EngineFixer.shared.autoTag(rel, song: primary, inbox: tags)
+            // If its tags couldn't be written (an old ID3 version, say, or "only fill blank tags" kept another artist),
+            // the library wouldn't list it there: back to the inbox, where you can see it.
+            if onlyJuice, !Engine.countsAsJuice(path: rel, tags: cache[rel]?.tags ?? tags) {
+                Self.untaggable.insert("\(name)|\(size)")
+                let back = await Task.detached { () -> Bool in
+                    guard !FileManager.default.fileExists(atPath: u.path) else { return false }
+                    do { try FileManager.default.moveItem(at: dst, to: u); return true } catch { return false }
+                }.value
+                if back {
+                    cache[rel] = nil; saveCache()
+                    await removeFiles([rel])
+                    putBack.append(name)
+                    continue
+                }
+            }
             moved += 1
         }
-        Self.inboxNote = "Inbox: moved \(EngineTools.plural(moved, "song", "songs")) into your library\(left.isEmpty ? "" : "; \(left.count) left in the inbox (not recognized, or already in the library)")."
+        Self.inboxNote = "Inbox: moved \(EngineTools.plural(moved, "song", "songs")) into your library\(left.isEmpty ? "" : "; \(left.count) left in the inbox (not recognized, or already in the library)")"
+            + (putBack.isEmpty ? "." : "; \(putBack.count) left because their tags can't be set to Juice WRLD (\(putBack.prefix(3).joined(separator: ", "))). Tag them as Juice WRLD, or put them in the music folder yourself.")
         if moved > 0 { Plex.scheduleRefresh() }
         NativeStore.shared.rebuild()
     }

@@ -197,9 +197,13 @@ import AVFoundation
     }
 
     /// After a download: tag it with the fixer's settings (when auto-tagging is on). Returns a note if it failed.
-    func autoTag(_ path: String, song: Int, always: Bool = false) async -> String {
-        guard autoTag || always, Engine.editableExts.contains(Engine.extOf(path)), let file = EngineLibrary.shared.files.first(where: { $0.path == path }) else { return "" }
-        let it = Engine.fixFor(tags: file.tags, song: EngineState.shared.catalog[song], fields: fields, onlyBlanks: onlyBlanks, genre: genre)
+    /// `inbox`: a file from the inbox folder, tagged even when auto-tag is off and before the library lists it (with
+    /// the artist always, so the library counts it as a Juice WRLD file).
+    func autoTag(_ path: String, song: Int, inbox tags: Tags? = nil) async -> String {
+        guard autoTag || tags != nil, Engine.editableExts.contains(Engine.extOf(path)),
+              let current = tags ?? EngineLibrary.shared.files.first(where: { $0.path == path })?.tags else { return "" }
+        let wanted = tags == nil || fields.contains("artist") ? fields : fields + ["artist"]
+        let it = Engine.fixFor(tags: current, song: EngineState.shared.catalog[song], fields: wanted, onlyBlanks: onlyBlanks, genre: genre)
         guard !it.changes.isEmpty else { return "" }
         do { try await write(path, it.desired); return "" } catch { return "Its tags weren't updated: \(error.localizedDescription)." }
     }
@@ -246,7 +250,7 @@ import AVFoundation
 
 @MainActor final class EngineHealth {
     static let shared = EngineHealth()
-    static let playable: Set<String> = ["mp3", "m4a", "m4b", "aac", "alac", "flac", "wav", "aif", "aiff"]
+    static let playable = EngineAmbient.playable
     private var probes: [String: Engine.Probe] = [:]
     private var running = false, done = false
     var stopping = false

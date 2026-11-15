@@ -82,11 +82,17 @@ final class AmbientPlayer: NSObject, AVAudioPlayerDelegate {
     private var loud: Float { min(1, volume * gain) }
     static var matchVolume: Bool { UserDefaults.standard.object(forKey: "matchVolume") as? Bool ?? true }
     private static var levels: [String: Double] = [:] // measured once per file per launch
-    /// How much to scale a file to reach a typical level (-20 dBFS), at most 9 dB either way.
-    private static func gain(for url: URL) -> Float {
+    private static let levelsLock = NSLock()            // songs load on background threads, sometimes two at once
+    /// How much to scale a file to reach a typical level (-20 dBFS), at most 9 dB either way. `measure: false` only
+    /// answers from what's known (nil when the file hasn't been measured yet).
+    private static func gain(for url: URL, measure: Bool) -> Float? {
         guard matchVolume else { return 1 }
-        if levels[url.path] == nil, let l = EngineHealth.loudness(url) { levels[url.path] = l }
-        guard let l = levels[url.path] else { return 1 }
+        levelsLock.lock(); var level = levels[url.path]; levelsLock.unlock()
+        if level == nil, measure, let l = EngineHealth.loudness(url) {
+            level = l
+            levelsLock.lock(); levels[url.path] = l; levelsLock.unlock()
+        }
+        guard let l = level else { return measure ? 1 : nil }
         return Float(pow(10, max(-9, min(9, -20 - l)) / 20))
     }
     /// The song's length, and moving within it (the seek bars).
@@ -305,7 +311,9 @@ final class AmbientPlayer: NSObject, AVAudioPlayerDelegate {
             let loaded = try? AVAudioPlayer(contentsOf: item.url)
             loaded?.prepareToPlay() // reads the first buffers here, not on the main thread (slow network drives)
             let cover = loaded == nil ? nil : Self.cover(of: item.url)
-            let gain = loaded == nil ? 1 : Self.gain(for: item.url)
+            // Only a level measured earlier: measuring reads the file, and on a network drive that would hold up the start
+            // (a crossfade would dip to silence). A new file is measured once it plays.
+            let known = loaded == nil ? 1 : Self.gain(for: item.url, measure: false)
             DispatchQueue.main.async { [weak self] in
                 guard let self, gen == self.generation else { return }
                 guard let loaded else { self.next(failures: failures + 1); return }
@@ -313,9 +321,19 @@ final class AmbientPlayer: NSObject, AVAudioPlayerDelegate {
                 loaded.isMeteringEnabled = true
                 loaded.volume = 0
                 loaded.play()
-                self.gain = gain
+                self.gain = known ?? 1
                 loaded.setVolume(self.loud, fadeDuration: fade > 0 ? fade : 3)
                 self.player = loaded
+                if known == nil { // measure now, then glide to the matched level
+                    DispatchQueue.global(qos: .utility).async {
+                        let g = Self.gain(for: item.url, measure: true) ?? 1
+                        DispatchQueue.main.async { [weak self] in
+                            guard let self, self.player === loaded, self.gain != g else { return }
+                            self.gain = g
+                            loaded.setVolume(self.loud, fadeDuration: max(1, fade))
+                        }
+                    }
+                }
                 self.crossfading = false
                 self.title = item.title
                 self.currentPath = item.url.path

@@ -115,6 +115,14 @@ import AppKit
         for list in producersOf { for n in list { counts[n.lowercased(), default: (n, 0)].n += 1 } }
         let producers = counts.values.sorted { $0.n != $1.n ? $0.n > $1.n : $0.name.localizedCompare($1.name) == .orderedAscending }.map(\.name)
         let allYears = Array(Set(yearsOf.flatMap { $0 })).sorted()
+        // A name can belong to songs from several eras or years ("On The Low" is in DRFL and jute): none of those may
+        // be offered as a wrong answer.
+        var erasOfName: [String: Set<String>] = [:], yearsOfName: [String: Set<Int>] = [:]
+        for (i, s) in catalog.enumerated() {
+            let k = s.name.lowercased()
+            erasOfName[k, default: []].insert(s.era)
+            yearsOfName[k, default: []].formUnion(yearsOf[i])
+        }
         let hasReleased = catalog.contains(where: Engine.isReleased), hasUnreleased = catalog.contains { !Engine.isReleased($0) }
         func playable(_ i: Int) -> URL? { (owned[i] ?? []).first { EngineAmbient.playable.contains(Engine.extOf($0)) }.flatMap(library.url(of:)) }
         func versionKey(_ name: String) -> String {
@@ -123,8 +131,8 @@ import AppKit
         typealias Q = (prompt: String, answer: String, options: [String], clip: String)
         let builders: [String: (ok: (Int) -> Bool, make: (Int) -> Q)] = [
             "era": ({ Engine.hasValue(catalog[$0].era) && eraNames.count >= 4 }, { i in
-                let s = catalog[i]
-                return ("Which era is “\(s.name)” from?", s.era, ([s.era] + eraNames.filter { $0 != s.era }.shuffled().prefix(3)).shuffled(), "")
+                let s = catalog[i], also = erasOfName[s.name.lowercased()] ?? [s.era]
+                return ("Which era is “\(s.name)” from?", s.era, ([s.era] + eraNames.filter { !also.contains($0) }.shuffled().prefix(3)).shuffled(), "")
             }),
             "producer": ({ !producersOf[$0].isEmpty && producers.count >= 6 }, { i in
                 let s = catalog[i], own = producersOf[i], ownKeys = Set(own.map { $0.lowercased() })
@@ -134,8 +142,8 @@ import AppKit
                 return (own.count > 1 ? "Which of these producers worked on “\(s.name)”?" : "Who produced “\(s.name)”?", answer, ([answer] + decoys).shuffled(), "")
             }),
             "year": ({ yearsOf[$0].count == 1 && allYears.count >= 2 }, { i in
-                let s = catalog[i], y = yearsOf[i][0]
-                let near = [y - 2, y - 1, y + 1, y + 2].filter { $0 >= allYears.first! - 1 && $0 <= allYears.last! + 1 }
+                let s = catalog[i], y = yearsOf[i][0], also = yearsOfName[s.name.lowercased()] ?? [y]
+                let near = [y - 3, y - 2, y - 1, y + 1, y + 2, y + 3].filter { $0 >= allYears.first! - 1 && $0 <= allYears.last! + 1 && !also.contains($0) }
                 return ("What year was “\(s.name)” recorded?", String(y), ([y] + near.shuffled().prefix(3)).shuffled().map(String.init), "")
             }),
             "listen": ({ owned.count >= 4 && playable($0) != nil }, { i in
@@ -243,7 +251,11 @@ import AppKit
 
     /// Play counts for Stats: the total, the top 15, songs never played, and the most played eras.
     static func listening() async throws -> String {
-        try await loadCounts()
+        // "Load play counts" always asks Plex again (only the first token read can prompt); if Plex can't be reached,
+        // the counts from before stay, so Export's Plex lists don't disappear.
+        let before = (counts, missing)
+        counts = nil
+        do { try await loadCounts() } catch { (counts, missing) = before; throw error }
         let catalog = EngineState.shared.catalog, l = lists()
         var eras: [String: Int] = [:]
         for (i, n) in l.plays { eras[Engine.eraName(catalog[i]), default: 0] += n }
