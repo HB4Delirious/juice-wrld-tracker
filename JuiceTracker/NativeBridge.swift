@@ -24,6 +24,12 @@ final class NativeBridge: NSObject, WKScriptMessageHandlerWithReply {
         }
     }
 
+    /// A folder the page may use (the music folder Swift opened from its bookmark).
+    func allow(_ path: String) {
+        let p = URL(fileURLWithPath: path).standardizedFileURL.path
+        if !roots.contains(p) { roots.append(p) }
+    }
+
     // Closing the window: the music and any trivia clip stop.
     func stopAmbient() { ambient.stop(); ambient.stopClip() }
 
@@ -152,6 +158,23 @@ final class NativeBridge: NSObject, WKScriptMessageHandlerWithReply {
             NSWorkspace.shared.open(folder)
             replyHandler(folder.path, nil)
             return
+        case "libraryChanged":
+            // Files the page added, retagged or trashed, and hand matches: Swift's library follows (stage 4b).
+            let change = body
+            DispatchQueue.main.async { EngineLibrary.shared.pageChanged(change) }
+            replyHandler(true, nil)
+            return
+        case "swiftDownload":
+            // Songs to download: Swift's queue (stage 4c).
+            let ids = (body["ids"] as? [Any] ?? []).map { "\($0)" }
+            Task { @MainActor in _ = EngineDownloads.shared.add(ids) }
+            replyHandler(true, nil)
+            return
+        case "swiftReload":
+            // The music drive came back: Swift reopens the folder and looks again.
+            Task { @MainActor in await EngineLibrary.shared.reconnect() }
+            replyHandler(true, nil)
+            return
         case "restoreFolder":
             restoreFolder(id: body["id"] as? String ?? "", reply: replyHandler)
             return
@@ -254,6 +277,21 @@ final class NativeBridge: NSObject, WKScriptMessageHandlerWithReply {
 
     /// Downloads to a temporary file and moves it into place only when complete, so a dropped connection
     /// never leaves half a song in the library. Never overwrites: an existing file is reported, not replaced.
+    /// The same download, for Swift's queue: whether the file was there already, and its size. Throws with the
+    /// reason (a missing music folder says "isn't available", which makes the queue wait for the drive).
+    static func downloadFile(_ url: URL, to dest: URL, root: String) async throws -> (existed: Bool, size: Int) {
+        try await withCheckedThrowingContinuation { cont in
+            download(url, to: dest, root: root) { result, failure in
+                if let failure {
+                    cont.resume(throwing: EngineError(failure.replacingOccurrences(of: #"^\w+Error: "#, with: "", options: .regularExpression)))
+                } else {
+                    let r = result as? [String: Any] ?? [:]
+                    cont.resume(returning: (r["existed"] as? Bool ?? false, (r["size"] as? NSNumber)?.intValue ?? 0))
+                }
+            }
+        }
+    }
+
     private static func download(_ url: URL, to dest: URL, root: String, reply: @escaping (Any?, String?) -> Void) {
         let finish = { (result: Any?, failure: String?) in DispatchQueue.main.async { reply(result, failure) } }
         let fm = FileManager.default

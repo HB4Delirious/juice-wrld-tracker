@@ -73,30 +73,16 @@ final class NativeStore: NSObject, ObservableObject, WKScriptMessageHandler {
     @Published var landed: [Int] = [] // songs that just came into the library (for the confetti)
     @Published var version = 0 // bumps with every snapshot, so screens that ask the page for more can refresh
     private var catalog: [NState.CatSong] = []
-    private var live: PageLive?
     private var catalogToken = -1 // the EngineState catalog that `catalog` was built from
 
-    /// The page's snapshot: what you own, the files, the drive and the queue. Everything else comes from Swift.
-    func userContentController(_ controller: WKUserContentController, didReceive message: WKScriptMessage) {
-        guard let json = message.body as? String else { return }
-        DispatchQueue.global(qos: .userInitiated).async {
-            let decoded: PageLive
-            do { decoded = try JSONDecoder().decode(PageLive.self, from: Data(json.utf8)) }
-            catch { NSLog("Juice Tracker: couldn't read the page's snapshot: \(error)"); return }
-            DispatchQueue.main.async {
-                // song numbers in a snapshot taken before the page had Swift's catalog would mean other songs
-                guard decoded.cv == EngineState.shared.token else { return }
-                self.live = decoded
-                self.rebuild()
-            }
-        }
-    }
+    /// The page's own snapshot isn't needed any more: everything the screens show comes from Swift (stage 4c).
+    func userContentController(_ controller: WKUserContentController, didReceive message: WKScriptMessage) {}
 
     /// Rebuilds the screens' state from Swift's data and the page's last snapshot.
     @MainActor func rebuild() {
         let engine = EngineState.shared
-        guard let live, !engine.catalog.isEmpty, live.cv == engine.token else { return }
-        let decoded = engine.build(live, includeCatalog: catalogToken != engine.token)
+        guard !engine.catalog.isEmpty, EngineLibrary.shared.loaded else { return }
+        let decoded = engine.build(includeCatalog: catalogToken != engine.token)
         catalogToken = engine.token
         if let c = decoded.catalog { catalog = c }
         // by song id, not list position: a new catalog can shift every position
@@ -127,6 +113,8 @@ final class NativeStore: NSObject, ObservableObject, WKScriptMessageHandler {
     }
 
     @MainActor func tryAct(_ op: String, _ i: Int = -1, _ extra: [String: Any] = [:]) async throws -> String {
+        // The tag fixer, duplicates and file health are Swift's now (stage 4d); the screens ask the same way.
+        if let answer = try await EngineTools.handle(op, extra) { return answer }
         var a: [String: Any] = ["op": op, "i": i]
         a.merge(extra) { _, new in new }
         do {
@@ -598,7 +586,7 @@ struct Sidebar: View {
                         HStack {
                             Text(q.waiting ? "Waiting for the music drive…" : "Downloading \(min(q.done + 1, q.total)) of \(q.total)").font(JT.body(12))
                             Spacer()
-                            Button("Stop") { Task { await store.act("stopQueue") } }.buttonStyle(.borderless).font(JT.body(12))
+                            Button("Stop") { EngineDownloads.shared.stop() }.buttonStyle(.borderless).font(JT.body(12))
                         }
                         if !q.current.isEmpty { Text(q.current).font(JT.body(11)).foregroundColor(JT.muted).lineLimit(1) }
                         GeometryReader { g in
@@ -612,7 +600,7 @@ struct Sidebar: View {
                     .padding(10).overlay(RoundedRectangle(cornerRadius: 10).stroke(JT.line))
                 }
                 if let d = store.state?.drive {
-                    Button { Task { await store.act("driveCheck") } } label: {
+                    Button { Task { await EngineLibrary.shared.driveClicked() } } label: {
                         HStack(spacing: 8) {
                             Circle().fill(d.kind == "ok" ? JT.have : d.kind == "slow" ? JT.new : d.kind == "off" ? JT.missing : JT.muted).frame(width: 8, height: 8)
                             Text(d.text).font(JT.body(12.5)).foregroundColor(JT.muted).lineLimit(1)
@@ -908,7 +896,7 @@ struct CollectionScreen: View {
                 }
             }
             .alert("Download \(askAll.count) songs into your music folder?", isPresented: Binding(get: { !askAll.isEmpty }, set: { if !$0 { askAll = [] } })) {
-                Button("Download") { let ids = askAll; Task { await NativeStore.shared.act("downloadMany", -1, ["ids": ids]) } }
+                Button("Download") { let ids = askAll; EngineDownloads.shared.add(ids.compactMap { all.indices.contains($0) ? all[$0].s.id : nil }) }
                 Button("Cancel", role: .cancel) {}
             } message: { Text("They download one at a time into the folders the tracker picks for each era, and carry on after a restart or if the drive drops.") }
             LazyVStack(spacing: 0) {
@@ -1103,7 +1091,7 @@ struct SongRow: View {
         if song.o {
             Label("In library", systemImage: "checkmark").foregroundColor(JT.have)
         } else if song.f {
-            Button { Task { await NativeStore.shared.act("download", song.i) } } label: { Label("Download", systemImage: "arrow.down.circle") }
+            Button { EngineDownloads.shared.add([song.s.id]) } label: { Label("Download", systemImage: "arrow.down.circle") }
                 .buttonStyle(.borderless).foregroundColor(JT.lavender)
         } else {
             Text("No file").foregroundColor(JT.muted.opacity(0.7))
@@ -1157,7 +1145,7 @@ struct SongCard: View {
                 HStack {
                     Button { EngineState.shared.toggleWish(song.s.id) } label: { Label(song.w ? "On your wishlist" : "Add to wishlist", systemImage: song.w ? "star.fill" : "star") }
                     if d.playable { Button { Task { await NativeStore.shared.act("play", song.i) } } label: { Label("Play", systemImage: "play.fill") } }
-                    if !song.o && song.f { Button { Task { await NativeStore.shared.act("download", song.i) } } label: { Label("Download", systemImage: "arrow.down.circle") } }
+                    if !song.o && song.f { Button { EngineDownloads.shared.add([song.s.id]) } label: { Label("Download", systemImage: "arrow.down.circle") } }
                     Spacer()
                     if let url = URL(string: d.siteUrl), !d.siteUrl.isEmpty { Link("Open the file on the site", destination: url) }
                 }

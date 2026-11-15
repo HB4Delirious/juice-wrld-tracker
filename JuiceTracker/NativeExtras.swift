@@ -43,12 +43,11 @@ private struct Note: View {
 
 // MARK: - Setup (no catalog or folder yet)
 
-private struct SetupData: Decodable { let folder: String; let folderStatus: String }
 
 struct SetupView: View {
     @ObservedObject private var store = NativeStore.shared
     @ObservedObject private var engine = EngineState.shared
-    @State private var data: SetupData?
+    @ObservedObject private var library = EngineLibrary.shared
 
     var body: some View {
         VStack(alignment: .leading, spacing: 22) {
@@ -58,31 +57,29 @@ struct SetupView: View {
             HStack(alignment: .top, spacing: 16) {
                 step(1, "Load the song catalog", done: !engine.catalog.isEmpty, status: engine.status,
                      button: engine.loading ? "Loading…" : engine.catalog.isEmpty ? "Load catalog" : "Reload catalog") { await engine.reload() }
-                step(2, "Choose your music folder", done: !(data?.folder ?? "").isEmpty, status: data?.folderStatus ?? "",
-                     button: (data?.folder ?? "").isEmpty ? "Choose folder" : "Choose another folder") { await store.act("pickFolder") }
+                step(2, "Choose your music folder", done: library.root != nil && library.loaded, status: library.status,
+                     button: library.root == nil ? "Choose folder" : "Choose another folder",
+                     rescan: library.root == nil ? nil : { await library.rescan() }) { await library.pick() }
             }
             Text("Loading the catalog takes about a minute the first time. After that it's saved and loads instantly.")
                 .font(.caption).foregroundColor(JT.muted)
         }
         .padding(.horizontal, 34).padding(.top, 40)
         .frame(maxWidth: 1080, maxHeight: .infinity, alignment: .topLeading)
-        .task {
-            while !Task.isCancelled {
-                let json = await store.act("setup")
-                data = try? JSONDecoder().decode(SetupData.self, from: Data(json.utf8))
-                try? await Task.sleep(nanoseconds: 1_200_000_000)
-            }
-        }
     }
 
-    private func step(_ n: Int, _ title: String, done: Bool, status: String, button: String, run: @escaping () async -> Void) -> some View {
+    private func step(_ n: Int, _ title: String, done: Bool, status: String, button: String, rescan: (() async -> Void)? = nil,
+                      run: @escaping () async -> Void) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
                 Image(systemName: done ? "checkmark.circle.fill" : "\(n).circle").foregroundColor(done ? JT.have : JT.lavender).font(.title2)
                 Text(title).font(.headline)
             }
             if !status.isEmpty { Text(status).font(.callout).foregroundColor(JT.muted).fixedSize(horizontal: false, vertical: true) }
-            Button(button) { Task { await run() } }.controlSize(.large)
+            HStack {
+                Button(button) { Task { await run() } }.controlSize(.large)
+                if let rescan { Button(library.scanning ? "Scanning…" : "Rescan folder") { Task { await rescan() } }.controlSize(.large).disabled(library.scanning) }
+            }
         }
         .padding(18).frame(maxWidth: .infinity, minHeight: 150, alignment: .topLeading).doodled(14)
     }
@@ -116,7 +113,7 @@ struct PlayerPanel: View {
                             }
                         }
                         Spacer()
-                        Toggle("", isOn: Binding(get: { info.on }, set: { on in Task { await store.act("ambientSet", -1, ["on": on]); await load() } }))
+                        Toggle("", isOn: Binding(get: { info.on }, set: { on in EngineAmbient.setOn(on); load() }))
                             .toggleStyle(.switch).labelsHidden().controlSize(.mini)
                     }
                     if info.on {
@@ -124,7 +121,7 @@ struct PlayerPanel: View {
                             Button { AmbientPlayer.shared.togglePause() } label: { Image(systemName: paused ? "play.fill" : "pause.fill") }
                                 .buttonStyle(.borderless).help(paused ? "Play" : "Pause")
                             Button { AmbientPlayer.shared.skip() } label: { Image(systemName: "forward.fill") }.buttonStyle(.borderless).help("Next song")
-                            Slider(value: $volume, in: 0...100) { editing in if !editing { AmbientPlayer.shared.volume = Float(volume / 100) } }
+                            Slider(value: $volume, in: 0...100) { editing in if !editing { AmbientPlayer.shared.volume = Float(volume / 100); EngineAmbient.volume = volume } }
                                 .controlSize(.mini)
                             Button { MiniPlayer.show() } label: { Image(systemName: "pip.enter") }.buttonStyle(.borderless).help("Mini player (⌘3)")
                         }
@@ -144,12 +141,12 @@ struct PlayerPanel: View {
                 }
             }
         }
-        .task(id: store.version) { await load() }
+        .task(id: store.version) { load() }
         .onReceive(changed) { _ in read() }
         .onAppear { read() }
     }
 
-    private func setEra(_ era: String) { Task { await store.act("ambientSet", -1, ["era": era]); await load() } }
+    private func setEra(_ era: String) { EngineAmbient.setEra(era); load() }
 
     private func read() {
         let p = AmbientPlayer.shared
@@ -158,8 +155,9 @@ struct PlayerPanel: View {
         volume = Double(p.volume * 100)
     }
 
-    private func load() async {
-        info = try? JSONDecoder().decode(AmbientInfo.self, from: Data(await store.act("ambientInfo").utf8))
+    private func load() {
+        let eras = EngineAmbient.eras
+        info = AmbientInfo(on: EngineAmbient.on, era: EngineAmbient.era, eras: eras, songs: eras.isEmpty ? 0 : 1)
     }
 }
 
@@ -327,14 +325,14 @@ struct ExportScreen: View {
                             Text(snap.map { $0.last > 0 ? "Last snapshot: \(Date(timeIntervalSince1970: $0.last / 1000).formatted(date: .abbreviated, time: .omitted))." : "No snapshot yet." } ?? "")
                                 .font(.caption).foregroundColor(JT.muted)
                             HStack {
-                                Button("Save a snapshot now") { Task { message = (await store.act("snapshotNow"), false); await loadSnap() } }
-                                Button("Show snapshots") { Task { await store.act("snapshotFolder") } }
+                                Button("Save a snapshot now") { Task { message = (await EngineSnapshot.save(), false); loadSnap() } }
+                                Button("Show snapshots") { try? FileManager.default.createDirectory(at: Snapshots.folder, withIntermediateDirectories: true); NSWorkspace.shared.open(Snapshots.folder) }
                             }
                             Button("Download from a snapshot…") { Task { await fromSnapshot() } }
                             if !lost.isEmpty {
                                 let withFile = lost.filter { store.songs.indices.contains($0) && store.songs[$0].f }
                                 Text("\(lost.count) songs from that snapshot aren't in your library now; \(withFile.count) have a file on the site.").font(.caption)
-                                Button("Download \(withFile.count) songs") { Task { await store.act("downloadMany", -1, ["ids": withFile]); lost = [] } }
+                                Button("Download \(withFile.count) songs") { EngineDownloads.shared.add(withFile.compactMap { store.songs.indices.contains($0) ? store.songs[$0].s.id : nil }); lost = [] }
                                     .disabled(withFile.isEmpty)
                             }
                         }
@@ -351,7 +349,7 @@ struct ExportScreen: View {
             .frame(maxWidth: 1080, alignment: .leading)
         }
         .task {
-            await loadSnap()
+            loadSnap()
             card = EngineState.shared.collectionCard()
             plex = (try? JSONDecoder().decode([PlexSource].self, from: Data(await store.act("plexSources").utf8))) ?? []
             if plexPick.isEmpty { plexPick = plex.first?.id ?? "" }
@@ -367,7 +365,7 @@ struct ExportScreen: View {
         .padding(16).frame(maxWidth: .infinity, minHeight: 150, alignment: .topLeading).doodled(14)
     }
 
-    private func loadSnap() async { snap = try? JSONDecoder().decode(SnapInfo.self, from: Data(await store.act("snapshotInfo").utf8)) }
+    private func loadSnap() { snap = SnapInfo(available: true, last: (EngineSnapshot.last?.timeIntervalSince1970 ?? 0) * 1000) }
 
     private func saveCard() {
         guard let card, let tiff = card.tiffRepresentation, let png = NSBitmapImageRep(data: tiff)?.representation(using: .png, properties: [:]) else { return }

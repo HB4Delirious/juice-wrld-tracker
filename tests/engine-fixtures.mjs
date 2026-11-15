@@ -239,5 +239,80 @@ tryWrite("m4a no stco fails the check", "m4a", new Uint8Array(readFileSync(join(
 tryWrite("m4a no moov refused", "m4a", new Uint8Array(readFileSync(join(dir, "files", "nomoov.m4a"))), { title: "x" });
 tryWrite("m4a fragmented refused", "m4a", cat(ftyp, moovFor(0), box("moof", new Uint8Array(8)), box("mdat", audio(50))), { title: "x" });
 
-writeFileSync(join(dir, "fixtures.json"), JSON.stringify({ text, catalog, files, matching, derived, eras, exportCases, writes }, null, 1));
+// ---- where missing songs are saved (stage 4c): the page's layout rule on a few libraries
+vm.runInContext(["safeName", "mostCommon", "computeLayout", "saveFolder", "saveFileName", "snapshotCsv"].map(grab).join("\n"), ctx);
+const layoutSongs = [
+  { id: "1", name: "Lucid Dreams", era: "GB&GR" }, { id: "2", name: "Armed & Dangerous", era: "GB&GR" }, { id: "3", name: "Robbery", era: "DRFL", filePath: "x/Robbery (OG).mp3" },
+  { id: "4", name: "Hear Me Calling", era: "DRFL" }, { id: "5", name: "Righteous", era: "LND" }, { id: "6", name: "Wishing Well", era: "LND" },
+  { id: "7", name: "Bandit", era: "" }, { id: "8", name: "What? / Why: <odd> name...", era: "WOD: Part *2*" }, { id: "9", name: "Lucid Dreams", era: "Snippets" },
+  { id: "10", name: "Conversations", era: "LND" },
+].map(r => g("cleanSong")(r));
+const libraries = {
+  eraFolders: ["Music/Juice WRLD/GB&GR/Lucid Dreams.mp3", "Music/Juice WRLD/GB&GR/Armed & Dangerous.mp3", "Music/Juice WRLD/Death Race for Love/Robbery.mp3",
+    "Music/Juice WRLD/LND/Righteous.mp3", "Music/Other/Righteous (dup).mp3"],
+  flat: ["Tunes/All Juice/Robbery.mp3", "Tunes/All Juice/Righteous.mp3", "Tunes/All Juice/Bandit.mp3", "Tunes/Elsewhere/Wishing Well.mp3"],
+  empty: [],
+  mixed: ["Lib/Lucid Dreams.mp3", "Lib/a/Hear Me Calln.mp3", "Lib/b/Conversations.mp3", "Lib/b/Wishing Well.mp3", "Lib/DRFL/Robbery.mp3"],
+};
+const layouts = Object.entries(libraries).map(([name, paths]) => {
+  const lib = paths.map((p, n) => { const title = g("titleFromFilename")(p);
+    return { path: p, title, key: g("normalize")(title), stem: g("stemOf")(p), ext: g("extOf")(p), size: 1000 + n, tags: n % 2 ? { title, artist: "Juice WRLD", year: "2018" } : {} }; });
+  st.catalog = layoutSongs; st.library = lib;
+  st.owned = g("matchLibrary")(layoutSongs, lib, {}).owned;
+  g("computeLayout")();
+  return { name, files: lib.map(f => ({ path: f.path, title: f.title, key: f.key, stem: f.stem, tags: f.tags, size: f.size })),
+    snapshot: g("snapshotCsv")().replace(/^\ufeff/, ""),
+    folders: layoutSongs.map(s => g("saveFolder")(s)), fileNames: layoutSongs.map(s => g("saveFileName")(s)) };
+});
+
+// ---- the tag fixer, duplicates and file health (stage 4d): the page's functions with stand-ins for its controls
+vm.runInContext(`var __fx = { fields: [], blanks: false, genre: "" };
+function selectedFields() { return __fx.fields; }
+function $(id) { return { checked: __fx.blanks, value: __fx.genre }; }
+const fixGenre = () => __fx.genre.trim() || DEFAULT_GENRE;
+var health = { probed: new Map() };`, ctx);
+vm.runInContext(["fixFor", "buildPlan", "duplicateGroups", "healthIssues", "fmtTime", "formatSize"].map(grab).join("\n"), ctx);
+const toolSongs = [
+  { id: "1", name: "Lucid Dreams", era: { name: "GB&GR" }, category: "released", release_date: "May 4, 2018", record_dates: "Recorded\nMarch 2017.", producers: "Nick Mira", length: "3:59", path: "GB&GR/Lucid Dreams.flac", bitrate: "Original Files\n1411kbps (.flac)" },
+  { id: "2", name: "Lucid Dreams", era: { name: "Snippets" }, category: "unsurfaced", length: "1:10" },
+  { id: "3", name: "Robbery", era: { name: "DRFL" }, category: "recording_session", record_dates: "Recorded: December 2018", credited_artists: "Lil Yachty", length: "4:00", path: "DRFL/Robbery.mp3", bitrate: "320kbps (.mp3)" },
+  { id: "4", name: "Wishing Well", era: { name: "LND" }, category: "released", release_date: "2020", length: "3:14", path: "LND/Wishing Well.mp3", bitrate: "320 kbps (.mp3)" },
+  { id: "5", name: "Righteous", era: "", category: "unknown", artists: "Juice WRLD", producers: "Nick Mira & Charlie Handsome", length: "0:30" },
+].map(r => g("cleanSong")(r));
+const toolLib = [
+  ["M/Lucid Dreams.mp3", { title: "Lucid Dreams", artist: "Juice WRLD" }, 4000000],
+  ["M/Robbery.mp3", { title: "Robbery", artist: "Juice WRLD", album: "DRFL", year: "2019" }, 2500000],
+  ["M/Robbery copy.mp3", { title: "Robbery" }, 9600000],
+  ["M/Wishing Well.ogg", { title: "Wishing Well" }, 5000000],
+  ["M/Wishing Well.mp3", {}, 200000],
+  ["M/Righteous.m4a", { title: "Righteous", genre: "Rap" }, 3000000],
+  ["M/Righteous (Remix).m4a", { title: "Righteous (Remix)" }, 3100000],
+  ["M/Unknown Song.mp3", { title: "Unknown Song" }, 3000000],
+  ["M/Unknown Song (2).mp3", { title: "Unknown Song" }, 3200000],
+  ["M/Lucid Dreams.flac", { title: "Lucid Dreams" }, 30000000],
+].map(([p, tags, size]) => { const title = tags.title || g("titleFromFilename")(p);
+  return { path: p, ext: g("extOf")(p), tags, title, key: g("normalize")(title), stem: g("stemOf")(p), fromTags: Boolean(tags.title), size }; });
+const toolOverrides = { "M/Lucid Dreams.flac": "1" };
+st.catalog = toolSongs; st.library = toolLib;
+const tm = g("matchLibrary")(toolSongs, toolLib, toolOverrides);
+st.owned = tm.owned; st.unmatched = tm.unmatched;
+const fx = g("__fx");
+const plans = [[["title", "artist", "albumartist", "album", "year", "producer"], false, ""], [["title", "genre", "comment"], true, "Rap"], [["artist", "year", "comment", "producer"], false, " Emo "]]
+  .map(([fields, blanks, genre]) => { fx.fields = fields; fx.blanks = blanks; fx.genre = genre; const p = g("buildPlan")();
+    return { fields, blanks, genre: genre.trim() || "Hip-Hop/Rap", same: p.same, skipped: p.skipped.map(x => [x.f.path, x.reason]),
+      changes: p.changes.map(it => ({ path: it.f.path, song: g("state").catalog.indexOf(it.song), changes: it.changes.map(c => [c.k, c.from, c.to]) })) }; });
+const dupGroups = g("duplicateGroups")().map(gr => ({ song: gr.i, title: gr.title, files: gr.files.map(f => f.path), extra: gr.extra,
+  exact: g("isExactDuplicate")(gr), keep: g("bestCopy")(gr.files).path }));
+const hp = g("health").probed;
+hp.set("M/Robbery.mp3", { ok: true, seconds: 100, size: 2500000 }); hp.set("M/Righteous.m4a", { ok: true, seconds: 3.4, size: 3000000 });
+hp.set("M/Unknown Song.mp3", { ok: false, seconds: 0, size: 3000000 }); hp.set("M/Lucid Dreams.mp3", { ok: true, seconds: 239.6, size: 0 });
+const healthOut = g("healthIssues")().map(x => [x.f.path, x.group, x.text]);
+const tools = { songs: plain(toolSongs), lib: toolLib, overrides: toolOverrides, plans, dupGroups, probes: Object.fromEntries(hp), health: healthOut,
+  planned: toolSongs.map(so => plain(g("plannedTags")(so, "Hip-Hop/Rap"))),
+  sizes: [0, 999, 1500, 307199, 1e6, 12345678, 2.5e9].map(n => [n, g("formatSize")(n)]), times: [0, 3.4, 59.4, 59.6, 61, 239.6].map(n => [n, g("fmtTime")(n)]),
+  kbps: [["Original Files\n2117kbps (.wav)\n320kpbs (.mp3)", "mp3"], ["2117kbps (.wav)\n320kbps (.mp3)", ""], ["nothing", "mp3"]].map(([t, e]) => [t, e, g("siteKbps")(t, e)]),
+  lengths: ["4:26", "1:02:03", " 3:05 ", "3:5", "abc", ""].map(t => [t, g("lengthSeconds")(t)]),
+  keys: ["Lucid Dreams (Forget Me)", "Café—Déjà  Vu!!", "  ", "ÆON"].map(t => [t, g("cmdkKey")(t)]) };
+
+writeFileSync(join(dir, "fixtures.json"), JSON.stringify({ text, catalog, files, matching, derived, eras, exportCases, writes, layouts, layoutSongs: plain(layoutSongs), tools }, null, 1));
 console.log(`wrote ${files.length} tag files and fixtures to ${dir}`);

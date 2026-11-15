@@ -184,5 +184,12 @@
     else Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
   } catch (e) { /* keep the browser's own clipboard */ }
 
+  // The library is Swift's (stage 4b): the page is handed it instead of scanning, and reports what it changes.
+  window.jwSwiftLibrary = true;
+  window.jwDirHandle = (path, name) => new NativeDirectoryHandle(path, name);
+  window.jwLibraryChanged = change => call("libraryChanged", change).catch(() => {});
+  window.jwSwiftReload = () => call("swiftReload").catch(() => {});
+  window.jwSwiftDownload = ids => call("swiftDownload", { ids }).catch(() => {}); // the queue is Swift's (stage 4c)
+
   window.jwNativeApp = true;
 })();

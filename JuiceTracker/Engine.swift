@@ -392,8 +392,12 @@ enum TagReader {
         guard h.count >= 10, latin1(h[0..<3]) == "ID3" else { return nil }
         let size = synchsafe(h, 6), first = 256 * 1024
         var p = parseId3(file.bytes(0, UInt64(10 + min(size, first))))
-        // Most files put text tags before the cover art; read the whole tag only when the title wasn't in the first part.
-        if let q = p, size > first, (tagsFromId3(q)["title"] ?? "").isEmpty { p = parseId3(file.bytes(0, UInt64(10 + min(size, 4 * 1024 * 1024)))) }
+        // Most files put text tags before the cover art, so the first 256 KB is usually enough. Read the whole tag (up to
+        // 4 MB) when the title wasn't there, or when a frame ran past it: then more frames (album, year) follow the art.
+        // (The page only did the first; files with big cover art first kept "missing" their album in the Tag fixer.)
+        if let q = p, size > first, (tagsFromId3(q)["title"] ?? "").isEmpty || q.damaged {
+            p = parseId3(file.bytes(0, UInt64(10 + min(size, 4 * 1024 * 1024))))
+        }
         return p.map(tagsFromId3)
     }
     static func readId3v1(_ file: Reader) -> Tags? {
@@ -540,7 +544,7 @@ extension Engine {
     /// WRLD ones (by folder name or artist tag) unless `onlyJuice` is off. Returns the files sorted by path and the
     /// tags read fresh, for the cache.
     static func scan(root: URL, onlyJuice: Bool, cache: [String: CachedTags], reread: Bool,
-                     progress: ((Int, Int) -> Void)? = nil) async -> (files: [LibraryFile], audioCount: Int, fresh: [String: CachedTags]) {
+                     progress: ((Int, Int) -> Void)? = nil) async -> (files: [LibraryFile], audioCount: Int, fresh: [String: CachedTags], paths: [String]) {
         let audio = listAudio(root: root)
         var fresh: [String: CachedTags] = [:], found: [LibraryFile] = [], done = 0
         await withTaskGroup(of: (LibraryFile?, CachedTags?, String).self) { group in
@@ -575,7 +579,7 @@ extension Engine {
             }
         }
         progress?(audio.count, audio.count)
-        return (found.sorted { $0.path.localizedCompare($1.path) == .orderedAscending }, audio.count, fresh)
+        return (found.sorted { $0.path.localizedCompare($1.path) == .orderedAscending }, audio.count, fresh, audio.map(\.path))
     }
 }
 
@@ -1069,5 +1073,248 @@ enum TagWriter {
         guard let before = try? chunkOffsets(orig, r.moovStart, r.oldMoovEnd), let after = try? chunkOffsets(r.out, moov.start, moov.end) else { throw fail("audio offsets unreadable") }
         if before.isEmpty || before.count != after.count || zip(before, after).contains(where: { v, a in a != (v > r.moovStart ? v + r.delta : v) }) { throw fail("audio offsets") }
         try checkTags(TagReader.parseMoov(Array(r.out[moov.start + moov.hdr..<moov.end])), d)
+    }
+}
+
+// MARK: - Where a missing song is saved (stage 4c): learned from where your matched files already live
+
+extension Engine {
+    struct Layout: Equatable {
+        var byEra: [(era: String, folder: String)] = []
+        var eraRoot: String?       // the folder that holds era-named folders ("" for the top of the music folder)
+        var topParent: String?     // where most Juice WRLD files sit
+        var fallback = "Music/Juice WRLD"
+        static func == (a: Layout, b: Layout) -> Bool {
+            a.byEra.map { $0.era + "\u{0}" + $0.folder } == b.byEra.map { $0.era + "\u{0}" + $0.folder } && a.eraRoot == b.eraRoot && a.topParent == b.topParent && a.fallback == b.fallback
+        }
+    }
+
+    static func parentOf(_ path: String) -> String { path.split(separator: "/", omittingEmptySubsequences: false).dropLast().joined(separator: "/") }
+    /// A name that's safe as a file or folder name.
+    static func safeName(_ s: String) -> String {
+        var t = String(String.UnicodeScalarView(s.unicodeScalars.filter { !"\\/:*?\"<>|".unicodeScalars.contains($0) && $0.value > 0x1f }))
+        t = t.replacingOccurrences(of: #"\s+"#, with: " ", options: .regularExpression).trimmingCharacters(in: .whitespacesAndNewlines)
+        t = t.replacingOccurrences(of: #"[. ]+$"#, with: "", options: .regularExpression)
+        return t.isEmpty ? "Unknown" : t
+    }
+    /// Counts in first-seen order; the most common (the first of equals).
+    private struct Counts {
+        var order: [String] = [], n: [String: Int] = [:]
+        mutating func bump(_ k: String) { if n[k] == nil { order.append(k) }; n[k, default: 0] += 1 }
+        var mostCommon: String? { var best: String?, top = 0; for k in order where n[k]! > top { best = k; top = n[k]! }; return best }
+    }
+
+    /// How the library is laid out: where each era's songs live, whether folders are named after eras, and where
+    /// most Juice WRLD files sit. Only files matched to exactly one song, not by a close title, count.
+    static func layout(catalog: [EngineSong], files: [LibraryFile], match: Match) -> Layout {
+        var songOrder: [Int] = [], seen = Set<Int>(), filesOf: [Int: [String]] = [:]
+        for f in files { for i in match.songsFor[f.path] ?? [] { if seen.insert(i).inserted { songOrder.append(i) }; filesOf[i, default: []].append(f.path) } }
+        var perEraOrder: [String] = [], perEra: [String: Counts] = [:], parents = Counts()
+        for i in songOrder {
+            let era = eraName(catalog[i])
+            for path in filesOf[i]! {
+                guard match.songsFor[path]?.count == 1, match.how[path] != "close" else { continue }
+                let p = parentOf(path)
+                guard !p.isEmpty else { continue }
+                if perEra[era] == nil { perEraOrder.append(era); perEra[era] = Counts() }
+                perEra[era]!.bump(p)
+                parents.bump(p)
+            }
+        }
+        var out = Layout()
+        out.byEra = perEraOrder.map { ($0, perEra[$0]!.mostCommon!) }
+        var roots = Counts(), eraLike = 0
+        for (era, folder) in out.byEra {
+            let a = normalize(baseName(folder)), b = normalize(era)
+            if !a.isEmpty && !b.isEmpty && (a == b || a.contains(b) || b.contains(a)) { eraLike += 1; roots.bump(parentOf(folder)) }
+        }
+        let rootName = files.first.map { String($0.path.split(separator: "/", omittingEmptySubsequences: false).first ?? "") } ?? ""
+        out.eraRoot = eraLike > 0 && Double(eraLike) >= Double(out.byEra.count) / 2 ? roots.mostCommon : nil
+        out.topParent = parents.mostCommon
+        out.fallback = "\(rootName.isEmpty ? "Music" : rootName)/Juice WRLD"
+        return out
+    }
+    /// The folder (library-style path, starting with the music folder's name) a missing song is saved into.
+    static func saveFolder(_ song: EngineSong, _ l: Layout) -> String {
+        let era = eraName(song)
+        if let f = l.byEra.first(where: { $0.era == era }) { return f.folder }
+        if let root = l.eraRoot { return root.isEmpty ? safeName(era) : "\(root)/\(safeName(era))" }
+        if let top = l.topParent { return top }
+        return "\(l.fallback)/\(safeName(era))"
+    }
+    static func saveFileName(_ song: EngineSong) -> String { song.filePath.isEmpty ? "\(safeName(song.name)).mp3" : baseName(song.filePath) }
+}
+
+extension Engine {
+    /// The library snapshot: every file with its tags, size and the songs it matched.
+    static func snapshotCSV(files: [LibraryFile], match: Match, catalog: [EngineSong]) -> String {
+        var lines = [["path", "title", "artist", "album", "year", "format", "size_bytes", "song_ids", "song_names", "era"]]
+        for f in files {
+            let songs = (match.songsFor[f.path] ?? []).filter(catalog.indices.contains).map { catalog[$0] }
+            lines.append([f.path, f.tags["title"] ?? "", f.tags["artist"] ?? "", f.tags["album"] ?? "", f.tags["year"] ?? "", f.ext, "\(f.size)",
+                          songs.map(\.id).joined(separator: " "), songs.map(\.name).joined(separator: " / "), songs.first.map(eraName) ?? ""])
+        }
+        return csvText(lines)
+    }
+}
+
+// MARK: - The tag fixer, duplicates and file health (stage 4d): the page's rules
+
+extension Engine {
+    static let defaultGenre = "Hip-Hop/Rap"
+    static let editableExts: Set<String> = ["mp3", "flac", "m4a"]
+    static let lossless: Set<String> = ["flac", "wav", "aiff", "aif", "alac"]
+
+    static func stripLabel(_ value: String, _ label: String) -> String {
+        value.replacingOccurrences(of: "^\\s*\(label)\\s*[:\\-–]?\\s*", with: "", options: [.regularExpression, .caseInsensitive]).trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+    /// A short comment like "Unreleased. Recorded March 2018."
+    static func catalogComment(_ s: EngineSong) -> String {
+        let cat = s.category.trimmingCharacters(in: .whitespacesAndNewlines)
+        var parts: [String] = []
+        if hasValue(cat) && cat.lowercased() != "unknown" { parts.append(cat.prefix(1).uppercased() + String(cat.dropFirst()).replacingOccurrences(of: "_", with: " ")) }
+        var rec = stripLabel(s.recordDates, "Recorded").replacingOccurrences(of: #"\s+"#, with: " ", options: .regularExpression)
+        rec = rec.replacingOccurrences(of: #"[.,;\s]+$"#, with: "", options: .regularExpression)
+        if hasValue(rec) { parts.append("Recorded \(rec.utf16.count > 120 ? String(decoding: Array(rec.utf16.prefix(120)), as: UTF16.self) + "…" : rec)") }
+        return parts.isEmpty ? "" : parts.joined(separator: ". ") + "."
+    }
+    /// The tags the fixer would write for a catalog song.
+    static func plannedTags(_ s: EngineSong, genre: String = defaultGenre) -> Tags {
+        var artist = "Juice WRLD"
+        if hasValue(s.artists) { artist = hasArtist(s.artists) ? s.artists : "Juice WRLD, \(s.artists)" }
+        let rel = isReleased(s) ? yearOf(s.release) : ""
+        let year = !rel.isEmpty ? rel : !yearOf(s.recordDates).isEmpty ? yearOf(s.recordDates) : yearOf(s.release)
+        return ["title": s.name, "artist": artist, "albumartist": "Juice WRLD", "album": hasValue(s.era) ? s.era : "", "year": year,
+                "producer": hasValue(s.producers) ? s.producers : "", "genre": genre, "comment": catalogComment(s)]
+    }
+
+    struct FixChange: Equatable { var key: String; var from: String; var to: String }
+    /// The changes the fixer would make to one file's tags: the fields chosen, skipping ones already right (and, with
+    /// onlyBlanks, ones that have something in them).
+    static func fixFor(tags: Tags, song: EngineSong, fields: [String], onlyBlanks: Bool, genre: String) -> (changes: [FixChange], desired: Tags) {
+        let want = plannedTags(song, genre: genre)
+        var changes: [FixChange] = [], desired: Tags = [:]
+        for k in fields {
+            let to = (want[k] ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !to.isEmpty else { continue }
+            let from = (tags[k] ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            if (onlyBlanks && !from.isEmpty) || from == to { continue }
+            changes.append(FixChange(key: k, from: from, to: to)); desired[k] = to
+        }
+        return (changes, desired)
+    }
+    struct FixItem { var path: String; var song: Int; var changes: [FixChange]; var desired: Tags }
+    /// Every matched file whose tags would change (files that fit several songs are picked by hand instead).
+    static func buildPlan(files: [LibraryFile], match: Match, catalog: [EngineSong], fields: [String], onlyBlanks: Bool, genre: String)
+        -> (changes: [FixItem], skipped: [(path: String, reason: String)], same: Int) {
+        var changes: [FixItem] = [], skipped: [(String, String)] = [], same = 0
+        for f in files {
+            guard let songs = match.songsFor[f.path], songs.count == 1 else { continue }
+            if !editableExts.contains(f.ext) { skipped.append((f.path, ".\(f.ext) files can't be edited yet")); continue }
+            let it = fixFor(tags: f.tags, song: catalog[songs[0]], fields: fields, onlyBlanks: onlyBlanks, genre: genre)
+            if it.changes.isEmpty { same += 1; continue }
+            changes.append(FixItem(path: f.path, song: songs[0], changes: it.changes, desired: it.desired))
+        }
+        return (changes, skipped, same)
+    }
+
+    /// "4:26" or "1:02:03" to seconds.
+    static func lengthSeconds(_ text: String) -> Double? {
+        guard let g = groups(#"^\s*(?:(\d+):)?(\d{1,2}):(\d{2})\s*$"#, text).first else { return nil }
+        return Double(Int(g[1] ?? "0")! * 3600 + Int(g[2]!)! * 60 + Int(g[3]!)!)
+    }
+    /// The best bitrate the site lists for a format ("2117kbps (.wav)"), or 0.
+    static func siteKbps(_ text: String, _ ext: String) -> Int {
+        groups(#"(\d{2,5})\s*k[bp]{1,2}s\s*\(\.(\w+)\)"#, text, options: .caseInsensitive)
+            .filter { ext.isEmpty || $0[2]!.lowercased() == ext }.map { Int($0[1]!)! }.max() ?? 0
+    }
+    static func formatSize(_ bytes: Int) -> String {
+        if bytes >= 1_000_000_000 { return String(format: "%.2f GB", Double(bytes) / 1e9) }
+        if bytes >= 1_000_000 { return String(format: "%.1f MB", Double(bytes) / 1e6) }
+        return "\(max(1, Int((Double(bytes) / 1e3).rounded()))) KB"
+    }
+    static func fmtTime(_ s: Double) -> String {
+        let secs = Int((s.truncatingRemainder(dividingBy: 60)).rounded())
+        return "\(Int(s / 60)):\(secs < 10 ? "0" : "")\(secs)"
+    }
+    /// Lower case, no accents, words separated by single spaces (search keys; a duplicate's "same title").
+    static func cmdkKey(_ text: String) -> String {
+        let t = String(String.UnicodeScalarView(text.lowercased().decomposedStringWithCompatibilityMapping.unicodeScalars.filter { !(0x300...0x36F).contains($0.value) }))
+        return t.replacingOccurrences(of: "[^a-z0-9]+", with: " ", options: .regularExpression).trimmingCharacters(in: .whitespaces)
+    }
+
+    // Duplicates
+    struct DupGroup { var song: Int?; var title: String; var files: [LibraryFile]; var extra: Int }
+    /// Lossless beats lossy; then the biggest file (the first of equals).
+    static func bestCopy(_ files: [LibraryFile]) -> LibraryFile {
+        files.enumerated().min { a, b in
+            let la = lossless.contains(a.element.ext), lb = lossless.contains(b.element.ext)
+            if la != lb { return la }
+            if a.element.size != b.element.size { return a.element.size > b.element.size }
+            return a.offset < b.offset
+        }!.element
+    }
+    /// Only files that read as exactly the same title, so a remix or "v2" is never treated as a copy.
+    static func isExactDuplicate(_ g: DupGroup) -> Bool { Set(g.files.map { cmdkKey($0.title) }).count == 1 }
+    /// The files to move to the Trash: each extra copy once, never a kept one.
+    static func extraCopies(_ groups: [DupGroup]) -> [LibraryFile] {
+        let kept = Set(groups.map { bestCopy($0.files).path })
+        var seen = Set<String>(), out: [LibraryFile] = []
+        for g in groups { for f in g.files where !kept.contains(f.path) && seen.insert(f.path).inserted { out.append(f) } }
+        return out
+    }
+    /// Songs with more than one file, and unmatched files that share a title.
+    static func duplicateGroups(files: [LibraryFile], match: Match, catalog: [EngineSong]) -> [DupGroup] {
+        let byPath = Dictionary(files.map { ($0.path, $0) }, uniquingKeysWith: { a, _ in a })
+        var order: [Int] = [], seen = Set<Int>(), filesOf: [Int: [String]] = [:]
+        for f in files { for i in match.songsFor[f.path] ?? [] { if seen.insert(i).inserted { order.append(i) }; if !(filesOf[i] ?? []).contains(f.path) { filesOf[i, default: []].append(f.path) } } }
+        var groups: [DupGroup] = order.compactMap { i in
+            let fs = filesOf[i]!.compactMap { byPath[$0] }
+            return fs.count > 1 ? DupGroup(song: i, title: catalog[i].name, files: fs, extra: 0) : nil
+        }
+        var keyOrder: [String] = [], byKey: [String: [LibraryFile]] = [:]
+        for p in match.unmatched { guard let f = byPath[p], !f.key.isEmpty else { continue }; if byKey[f.key] == nil { keyOrder.append(f.key) }; byKey[f.key, default: []].append(f) }
+        for k in keyOrder where byKey[k]!.count > 1 { groups.append(DupGroup(song: nil, title: byKey[k]![0].title, files: byKey[k]!, extra: 0)) }
+        for n in groups.indices {
+            groups[n].files = groups[n].files.enumerated().sorted { $0.element.size != $1.element.size ? $0.element.size > $1.element.size : $0.offset < $1.offset }.map(\.element)
+            groups[n].extra = groups[n].files.dropFirst().reduce(0) { $0 + $1.size }
+        }
+        return groups.enumerated().sorted { a, b in
+            if a.element.files.count != b.element.files.count { return a.element.files.count > b.element.files.count }
+            if a.element.extra != b.element.extra { return a.element.extra > b.element.extra }
+            let c = a.element.title.localizedCompare(b.element.title)
+            return c != .orderedSame ? c == .orderedAscending : a.offset < b.offset
+        }.map(\.element)
+    }
+
+    // File health
+    struct Probe: Codable { var ok: Bool; var seconds: Double; var size: Int }
+    struct HealthIssue: Equatable { var path: String; var group: String; var text: String }
+    /// What to look at: files that may be damaged or cut off, better copies on the site, and tags to fix.
+    static func healthIssues(files: [LibraryFile], match: Match, catalog: [EngineSong], probes: [String: Probe]) -> [HealthIssue] {
+        var out: [HealthIssue] = []
+        for f in files {
+            let songs = match.songsFor[f.path] ?? [], song = songs.count == 1 ? catalog[songs[0]] : nil
+            let p = probes[f.path], before = out.count
+            let size = (p?.size ?? 0) > 0 ? p!.size : f.size
+            if let p, !p.ok { out.append(.init(path: f.path, group: "damaged", text: "Doesn't open as audio. It may be damaged.")) }
+            else if let p, song != nil || p.seconds < 5 {
+                let want = song.flatMap { lengthSeconds($0.length) } ?? 0 // 0: no length listed
+                if (want != 0 && want >= 45 && p.seconds < want * 0.6) || p.seconds < 5 {
+                    out.append(.init(path: f.path, group: "damaged", text: "Plays for \(fmtTime(p.seconds))\(want != 0 ? ", but “\(song!.name)” is \(song!.length)" : ""). It may be cut off."))
+                }
+            }
+            if out.count == before && size < 300 * 1024 { out.append(.init(path: f.path, group: "damaged", text: "Very small for a song (\(formatSize(size))).")) }
+            if let song, out.count == before, !lossless.contains(f.ext), !song.filePath.isEmpty {
+                let siteExt = extOf(song.filePath), want = lengthSeconds(song.length), site = siteKbps(song.bitrate, siteExt)
+                let mine = (want ?? 0) != 0 && size > 0 ? Double(size) * 8 / 1000 / want! : 0
+                if lossless.contains(siteExt) { out.append(.init(path: f.path, group: "upgrade", text: "The site has a lossless copy (\(siteExt.uppercased())); yours is \(f.ext.uppercased()).")) }
+                else if mine > 0 && site > 0 && mine < Double(site) * 0.7 { out.append(.init(path: f.path, group: "upgrade", text: "Yours is about \(Int(mine.rounded())) kbps; the site's copy is \(site) kbps.")) }
+            }
+            if !f.fromTags { out.append(.init(path: f.path, group: "tags", text: "No title tag, so it's matched by its file name.")) }
+            else if songs.isEmpty { out.append(.init(path: f.path, group: "tags", text: "Its title, “\(f.title)”, isn't in the catalog.")) }
+            else if match.how[f.path] == "close" { out.append(.init(path: f.path, group: "tags", text: "Its title, “\(f.title)”, is close to “\(catalog[songs[0]].name)” but not exact.")) }
+        }
+        return out
     }
 }

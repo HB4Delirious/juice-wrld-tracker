@@ -52,19 +52,13 @@ enum EngineFiles {
         var problems = 0, report: [String: Any] = [:]
         do {
             // 1. Saved data, copied out of the web view.
-            say("Copying the folder settings and tag cache out of the web view…")
+            say("Reading the folder settings…")
             let export = try await store.tryAct("engineExport")
             guard let ex = try JSONSerialization.jsonObject(with: Data(export.utf8)) as? [String: Any] else { throw EngineError("The page gave no saved data.") }
             // (the catalog, wishlist and notes are Swift's own since stage 2; see EngineState)
             try EngineFiles.write("settings.json", JSONSerialization.data(withJSONObject: ["onlyJuice": ex["onlyJuice"] ?? true, "root": ex["root"] ?? ""]))
-            let rawCache = (try JSONSerialization.jsonObject(with: Data(try await store.tryAct("engineTagCache").utf8)) as? [String: [String: Any]]) ?? [:]
-            var cache: [String: Engine.CachedTags] = [:]
-            for (path, v) in rawCache {
-                let tags = (v["tags"] as? [String: Any] ?? [:]).compactMapValues { $0 as? String }
-                cache[path] = Engine.CachedTags(size: (v["size"] as? NSNumber)?.intValue ?? 0, mtime: (v["mtime"] as? NSNumber)?.doubleValue ?? 0, tags: tags)
-            }
-            try EngineFiles.write("tags.json", JSONEncoder().encode(cache))
-            say("  Saved: settings and \(cache.count) cached tags. In \(EngineFiles.dir.path).")
+            let cache = EngineFiles.tagCache() // Swift's own since stage 4b (see EngineLibrary)
+            say("  \(cache.count) cached tags, in \(EngineFiles.dir.path).")
 
             // 2. The page's answers.
             let parityRaw = try await store.tryAct("engineParity")

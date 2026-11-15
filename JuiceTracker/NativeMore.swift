@@ -422,8 +422,7 @@ struct PlayEraIntent: AppIntent {
         let store = NativeStore.shared
         guard await store.ready() else { return .result(dialog: IntentDialog(stringLiteral: "Juice Tracker isn't ready yet. Try again in a moment.")) }
         do {
-            _ = try await store.tryAct("ambientSet", -1, ["on": true])
-            _ = try await store.tryAct("ambientSet", -1, ["era": era ?? ""])
+            EngineAmbient.setEra(era ?? "")
         } catch { return .result(dialog: IntentDialog(stringLiteral: "Couldn't start the music: \(error.localizedDescription)")) }
         return .result(dialog: IntentDialog(stringLiteral: "Playing \(era.map { "songs from \($0)" } ?? "your songs")."))
     }
@@ -459,9 +458,10 @@ struct DownloadWishlistIntent: AppIntent {
     static var openAppWhenRun = true
     @MainActor func perform() async throws -> some IntentResult & ProvidesDialog {
         let store = NativeStore.shared
-        guard await store.ready(), let raw = try? await store.tryAct("downloadWishlist"), let n = Int(raw) else {
+        guard await store.ready(), EngineLibrary.shared.root != nil else {
             return .result(dialog: IntentDialog(stringLiteral: "Juice Tracker isn't ready yet. Try again in a moment."))
         }
+        let n = EngineDownloads.shared.downloadWishlist()
         let text = n > 0 ? "Downloading \(n) wishlist \(n == 1 ? "song" : "songs")." : "Nothing on your wishlist to download right now."
         return .result(dialog: IntentDialog(stringLiteral: text))
     }
