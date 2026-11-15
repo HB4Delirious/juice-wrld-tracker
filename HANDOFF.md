@@ -33,6 +33,23 @@ music folder, downloads and tags what's missing, and plays your collection. All 
   `personal.json` (also ratings, `wishOrder` and `playlists`, all in backups), `tags.json`, `items.json`, `queue.json`,
   `settings.json`, `lastOrganize.json`).
 
+## Windows app (`windows/`)
+
+- `JuiceTracker.Core` (net10.0, any OS): a line-for-line C# port of `Engine.swift`: catalog cleaning, tag reading
+  and writing (byte for byte the same as the page, same safety checks), scanning, matching, save folders, the fixer
+  plan, duplicates, health, the organizer and the newer rules. Cover art writing isn't ported yet.
+- `JuiceTracker.Tests`: a plain console program (no test framework) running the same fixture checks as
+  `tests/EngineTests.swift` (all but the cover-art ones). CI runs it on Windows.
+- `JuiceTracker.App` (WPF, net10.0-windows; builds anywhere with `EnableWindowsTargeting`): `Store.cs` (catalog,
+  personal data, library, downloads, tag writes), `Player.cs` (WPF MediaPlayer), `Theme.cs` (palette, fonts,
+  `DoodleBorder`, the animated `Sky`), `MainWindow` + `Sidebar`, `CollectionPage`, `SongCard`, `FixerPage`,
+  `SettingsWindow`, `PlayerPanel`/`SetupPage`. Screens are built in C# with small helpers (`UI.cs`), mirroring the
+  SwiftUI code. Art and fonts are copied from `Assets.xcassets` into `Assets/`.
+- Data: `%LOCALAPPDATA%\JuiceTracker` (`catalog.json`, `saved.json`, `personal.json`, `tags.json`, `items.json`,
+  `queue.json`, `heard.txt`, `plays.tsv`). Library paths use the Mac form, "<folder name>/<path inside>", with `/`.
+- Release: CI's `windows` job publishes a compressed, self-contained single `JuiceTracker.exe`; the release job
+  attaches it next to the DMG. Not code-signed (SmartScreen warns).
+
 ## Safety rules for your files
 
 Tags and cover art are only written after `TagWriter`'s check passes (audio bytes unchanged, every tag reads back); the original

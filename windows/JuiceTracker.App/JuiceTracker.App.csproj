@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- The Windows app (WPF). Builds on any OS (EnableWindowsTargeting), runs on Windows 10/11. -->
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>JuiceTracker.App</RootNamespace>
+    <AssemblyName>JuiceTracker</AssemblyName>
+    <ApplicationIcon>Assets\app.ico</ApplicationIcon>
+    <Product>Juice Tracker</Product>
+    <Version>1.0.0</Version>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\JuiceTracker.Core\JuiceTracker.Core.csproj" />
+    <Resource Include="Assets\**\*.png" />
+    <Resource Include="Assets\Fonts\*.ttf" />
+  </ItemGroup>
+</Project>

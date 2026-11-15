@@ -4,6 +4,10 @@ Juice WRLD collection tracker: compares the juicewrldapi.com catalog against you
 
 - `JuiceTracker/` — the macOS app (macOS 12+), all Swift: a SwiftUI interface (`Native*.swift`) on top of the engine
   (`Engine*.swift`; the pure logic is `Engine.swift`). It started as an HTML page; that page was retired in v1.24.
+- `windows/` — the Windows app (Windows 10/11), native .NET/WPF, with the Mac app's look: the same night sky, stickers,
+  fonts and hand-drawn outlines. `JuiceTracker.Core` is the engine in C#, checked against the same frozen answers as
+  the Swift engine; `JuiceTracker.App` is the app. Each release has `JuiceTracker.exe`, one self-contained file
+  (no install, no .NET needed).
 
 ## Build
 
@@ -32,6 +36,22 @@ CI (`.github/workflows/build.yml`) builds the DMG on every push and PR; pushing 
 A song's **Download** button saves the file from juicewrldapi.com straight into the folder your era's songs live in, adds it to your library and tags it.
 
 The sidebar's **Ambient music** toggle plays your matched songs, shuffled, at very low volume. It's on by default and remembers when you turn it off.
+
+## Windows app
+
+Stage 1 has the Collection screen (counts, "You have N of M", categories, notices, On this day, era cards, the song
+list with tabs and search), the song card (details, hearts, rarity, lyrics shown live from the site, your note, your
+files, other versions), downloads (queued, never overwriting, auto-tagged), the Tag fixer (safety check, backups),
+the background music player (era picker, seek bar) and Settings (Ctrl+,). Ctrl+K searches. The other screens
+(Hunt, Playlists, Organize, File health, Duplicates, Stats, Timeline, Badges, Trivia, Export) come in later stages.
+
+```bash
+dotnet run --project windows/JuiceTracker.Tests      # engine checks (any OS)
+dotnet build windows/JuiceTracker.App                # builds on any OS; runs on Windows
+```
+
+Your data is in `%LOCALAPPDATA%\JuiceTracker`. The exe isn't code-signed, so Windows SmartScreen may warn on first
+open ("More info", then "Run anyway").
 
 ## Mac app extras
 
