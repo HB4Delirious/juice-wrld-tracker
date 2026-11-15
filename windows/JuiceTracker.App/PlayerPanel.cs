@@ -16,6 +16,10 @@ public sealed class PlayerPanel : DoodleBorder
     readonly TextBlock time = UI.Text("0:00", 10.5, JT.Muted), length = UI.Text("0:00", 10.5, JT.Muted);
     readonly ComboBox era = new() { FontSize = 12, Margin = new Thickness(0, 6, 0, 0) };
     readonly StackPanel controls = new();
+    readonly CheckBox inOrder = new() { Content = "Play an era in recording order", FontSize = 11.5, Margin = new Thickness(0, 6, 0, 0) };
+    readonly DockPanel upNext = new() { Margin = new Thickness(0, 6, 0, 0) };
+    readonly TextBlock upNextText = UI.Text("", 11, JT.Muted);
+    readonly Button sleep;
     bool updating, dragging;
 
     public PlayerPanel()
@@ -32,18 +36,22 @@ public sealed class PlayerPanel : DoodleBorder
         seek.AddHandler(Thumb.DragCompletedEvent, new DragCompletedEventHandler((_, _) => { dragging = false; Player.Shared.Seek(TimeSpan.FromSeconds(seek.Value)); }));
         seek.PreviewMouseLeftButtonUp += (_, _) => { if (!dragging) Player.Shared.Seek(TimeSpan.FromSeconds(seek.Value)); };
         UI.AutomationName(seek, "Position in the song");
+        inOrder.Click += (_, _) => Player.Shared.SetInOrder(inOrder.IsChecked == true);
+        sleep = UI.IconButton("\uE708", "Sleep timer", () => { var m = Listen.SleepMenu(); m.PlacementTarget = sleep; m.IsOpen = true; }, 13);
+        var clear = UI.IconButton("\uE711", "Clear up next", Player.Shared.ClearUpNext, 11); DockPanel.SetDock(clear, Dock.Right);
+        upNext.Children.Add(clear); upNext.Children.Add(upNextText);
         era.SelectionChanged += (_, _) => { if (!updating && era.SelectedItem is string e) Player.Shared.SetEra(e == "All eras" ? "" : e); };
         UI.AutomationName(era, "Which era the background music plays from");
 
         var head = new DockPanel();
         DockPanel.SetDock(onOff, Dock.Right); head.Children.Add(onOff);
         head.Children.Add(UI.Row(8, UI.Icon("", 13, JT.Lavender), UI.Column(1, UI.Text("Ambient music", 12, weight: FontWeights.Bold), title)));
-        var buttons = UI.Row(8, playPause, next, volume);
+        var buttons = UI.Row(8, playPause, next, volume, UI.IconButton("\uE8BD", "Lyrics", LyricsWindow.Open, 13), UI.IconButton("\uE8A7", "Mini player", MiniPlayer.Open, 13), sleep);
         var seekRow = new DockPanel { Margin = new Thickness(0, 6, 0, 0) };
         DockPanel.SetDock(time, Dock.Left); DockPanel.SetDock(length, Dock.Right);
         time.Margin = new Thickness(0, 0, 6, 0); length.Margin = new Thickness(6, 0, 0, 0);
         seekRow.Children.Add(time); seekRow.Children.Add(length); seekRow.Children.Add(seek);
-        controls.Children.Add(buttons); controls.Children.Add(seekRow); controls.Children.Add(era);
+        controls.Children.Add(buttons); controls.Children.Add(seekRow); controls.Children.Add(era); controls.Children.Add(inOrder); controls.Children.Add(upNext);
         controls.Margin = new Thickness(0, 8, 0, 0);
         Child = UI.Column(0, head, controls);
     }
@@ -67,6 +75,11 @@ public sealed class PlayerPanel : DoodleBorder
         var items = new List<string> { "All eras" }; items.AddRange(eras);
         if (!era.Items.Cast<string>().SequenceEqual(items)) { era.Items.Clear(); foreach (var e in items) era.Items.Add(e); }
         era.SelectedItem = eras.Contains(store.Me.AmbientEra) ? store.Me.AmbientEra : "All eras";
+        inOrder.IsChecked = store.Me.InOrder;
+        upNext.Visibility = p.UpNext.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+        upNextText.Text = "Up next: " + string.Join(", ", p.UpNext.Take(2).Select(x => x.Title)) + (p.UpNext.Count > 2 ? $" +{p.UpNext.Count - 2}" : "");
+        ((TextBlock)sleep.Content).Foreground = JT.Brush(p.SleepAt is not null || p.SleepAtEnd ? JT.Lavender : JT.Mist);
+        sleep.ToolTip = p.SleepAt is { } at ? $"Sleep timer: stops at {at:t}" : p.SleepAtEnd ? "Sleep timer: stops after this song" : "Sleep timer";
         Sky.Current?.SetGlow(p.IsPlaying ? 0.35 + 0.15 * Math.Sin(DateTime.Now.TimeOfDay.TotalSeconds * 2) : 0);
         updating = false;
     }

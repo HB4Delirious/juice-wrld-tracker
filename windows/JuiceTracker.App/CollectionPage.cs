@@ -179,7 +179,9 @@ public sealed class CollectionPage : ScrollViewer, IRefresh
             var b = UI.Button(label, () => AskDownload(missing), "");
             DockPanel.SetDock(b, Dock.Right); line.Children.Add(b);
         }
-        line.Children.Add(UI.Text($"{songs.Count:N0} songs", 12.5, JT.Muted));
+        var countRow = UI.Row(12, UI.Text($"{songs.Count:N0} songs", 12.5, JT.Muted));
+        if (tab == "wish" && songs.Count > 0) countRow.Children.Add(UI.Link("Rank wishlist…", () => MainWindow.Current?.ShowOverlay(new WishRankSheet()), 12.5).Also(l => l.Margin = new Thickness(12, 0, 0, 0)));
+        line.Children.Add(countRow);
         list.Children.Add(line);
         var rows = new StackPanel();
         foreach (var s in songs.Take(limit)) rows.Children.Add(new SongRow(s));
@@ -361,7 +363,14 @@ public sealed class SongRow : Grid
         MouseLeftButtonUp += (_, e) => { if (e.OriginalSource is not DependencyObject d || FindButton(d) is null) MainWindow.Current?.OpenSong(s); };
         var menu = new ContextMenu();
         var open = new MenuItem { Header = "Open song card" }; open.Click += (_, _) => MainWindow.Current?.OpenSong(s); menu.Items.Add(open);
-        if (s.Owned) { var play = new MenuItem { Header = "Play" }; play.Click += (_, _) => SongCard.Play(s); menu.Items.Add(play); }
+        if (s.Owned)
+        {
+            var play = new MenuItem { Header = "Play" }; play.Click += (_, _) => SongCard.Play(s); menu.Items.Add(play);
+            var next = new MenuItem { Header = "Play next" }; next.Click += (_, _) => Listen.PlayNext(s); menu.Items.Add(next);
+        }
+        var add = new MenuItem { Header = "Add to playlist…" };
+        add.Click += (_, _) => { var m = Listen.PlaylistMenu([s.S.Id]); m.PlacementTarget = this; m.IsOpen = true; };
+        menu.Items.Add(add);
         ContextMenu = menu;
         UI.AutomationName(this, $"{s.Name}, {s.Era}, {(s.Owned ? "in your library" : s.HasFile ? "can be downloaded" : "no file")}");
     }
@@ -371,5 +380,47 @@ public sealed class SongRow : Grid
     {
         for (var x = d; x is not null; x = x is Visual or System.Windows.Media.Media3D.Visual3D ? VisualTreeHelper.GetParent(x) : LogicalTreeHelper.GetParent(x)) if (x is Button b) return b;
         return null;
+    }
+}
+
+/// Put your wishlist in order; "Download wishlist" and wishlist alerts download the top songs first.
+public sealed class WishRankSheet : Border
+{
+    readonly StackPanel rows = new();
+    public WishRankSheet()
+    {
+        Width = 560; Height = 560; Background = JT.Brush(Color.FromRgb(20, 10, 44)); CornerRadius = new CornerRadius(14);
+        BorderBrush = JT.Brush(JT.Line2); BorderThickness = new Thickness(1); Padding = new Thickness(24);
+        var bottom = new DockPanel { Margin = new Thickness(0, 12, 0, 0) };
+        var done = UI.Button("Done", () => MainWindow.Current?.CloseOverlay()); done.IsCancel = true; DockPanel.SetDock(done, Dock.Right); bottom.Children.Add(done);
+        bottom.Children.Add(UI.Button("Download wishlist", () => Store.Shared.DownloadWishlist()).Also(b => b.HorizontalAlignment = HorizontalAlignment.Left));
+        var dock = new DockPanel();
+        var head = UI.Column(6, new TextBlock { Text = "Rank your wishlist", FontFamily = JT.Marker, FontSize = 28 }, UI.Muted("Move the songs you want most to the top. Wishlist downloads go in this order.", 13));
+        DockPanel.SetDock(head, Dock.Top); DockPanel.SetDock(bottom, Dock.Bottom);
+        dock.Children.Add(head); dock.Children.Add(bottom);
+        dock.Children.Add(new ScrollViewer { Content = rows, Margin = new Thickness(0, 12, 0, 0), VerticalScrollBarVisibility = ScrollBarVisibility.Auto });
+        Child = dock;
+        Draw();
+    }
+    void Draw()
+    {
+        var store = Store.Shared; var ids = store.WishRanked; var byId = store.Songs.GroupBy(s => s.S.Id).ToDictionary(g => g.Key, g => g.First());
+        rows.Children.Clear();
+        for (int n = 0; n < ids.Count; n++)
+        {
+            int k = n; var row = new DockPanel { Margin = new Thickness(0, 4, 0, 4) };
+            var tools = UI.Row(4, UI.IconButton("\uE70E", "Move up", () => Move(ids, k, -1), 12), UI.IconButton("\uE70D", "Move down", () => Move(ids, k, 1), 12));
+            DockPanel.SetDock(tools, Dock.Right); row.Children.Add(tools);
+            var s = byId.GetValueOrDefault(ids[n]);
+            row.Children.Add(UI.Row(10, UI.Text($"{n + 1}", 13, JT.Muted), UI.Text(s?.Name ?? $"Song {ids[n]}", 14),
+                UI.Text(s is null ? "" : s.Owned ? "In library" : s.HasFile ? "On the site" : "No file yet", 12, JT.Muted)));
+            rows.Children.Add(row);
+        }
+    }
+    void Move(List<string> ids, int at, int by)
+    {
+        int to = at + by; if (to < 0 || to >= ids.Count) return;
+        (ids[at], ids[to]) = (ids[to], ids[at]);
+        Store.Shared.Me.WishOrder = ids; Store.Shared.SavePersonal(); Draw();
     }
 }

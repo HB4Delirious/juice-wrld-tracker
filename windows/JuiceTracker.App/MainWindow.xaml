@@ -4,9 +4,12 @@
         xmlns:local="clr-namespace:JuiceTracker.App"
         Title="Juice Tracker" Width="1180" Height="820" MinWidth="900" MinHeight="600"
         WindowStartupLocation="CenterScreen" Background="#0A0618">
+  <Window.TaskbarItemInfo>
+    <TaskbarItemInfo />
+  </Window.TaskbarItemInfo>
   <Grid>
     <local:Sky x:Name="SkyLayer" />
-    <Grid>
+    <Grid x:Name="Body">
       <Grid.ColumnDefinitions>
         <ColumnDefinition Width="238" />
         <ColumnDefinition Width="*" />
@@ -16,5 +19,7 @@
     </Grid>
     <!-- song cards and other sheets sit over everything, with the window dimmed behind them -->
     <Grid x:Name="Overlay" Visibility="Collapsed" Background="#99000000" />
+    <!-- confetti and the 999 shower fall over everything -->
+    <Canvas x:Name="FxLayer" IsHitTestVisible="False" ClipToBounds="True" />
   </Grid>
 </Window>

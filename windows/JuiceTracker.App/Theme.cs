@@ -13,7 +13,9 @@ public static class JT
     static Color C(byte r, byte g, byte b, double a = 1) => Color.FromArgb((byte)Math.Round(a * 255), r, g, b);
     public static readonly Color Night = C(10, 6, 24), Mist = C(255, 246, 251), Muted = C(195, 178, 227);
     public static readonly Color Dusk = C(24, 12, 52, 0.82), Raise = C(58, 30, 108, 0.82), Line = C(190, 150, 255, 0.2), Line2 = C(210, 170, 255, 0.38);
-    public static readonly Color Lavender = C(255, 106, 213), LavenderHi = C(255, 148, 226);
+    /// The accent and the sky's glows follow the era theme picked in Settings (pink in the original Cosmic theme).
+    public static Color Lavender = C(255, 106, 213), LavenderHi = C(255, 148, 226);
+    public static Color[] Glows = [C(232, 110, 70, 0.30), C(214, 48, 140, 0.42), C(80, 130, 255, 0.32), C(140, 40, 190, 0.36)];
     public static readonly Color Have = C(201, 242, 74), New = C(255, 160, 74), Missing = C(255, 93, 108), Gold = C(255, 217, 77);
     public static readonly Color[] Rainbow = [C(255, 93, 108), C(255, 160, 74), C(255, 225, 74), C(201, 242, 74), C(79, 216, 255), C(106, 168, 255), C(183, 123, 255), C(255, 106, 213)];
     public static readonly Color[] Count = [C(255, 160, 74), C(255, 225, 74), C(201, 242, 74), C(79, 216, 255), C(255, 106, 213)];
@@ -113,6 +115,9 @@ public sealed class Sky : Canvas
         Current = this;
     }
 
+    /// Redraws with the current theme's colors.
+    public void Restyle() { if (builtFor.Width > 0) Build(builtFor); }
+
     /// Brightens the glow with the music's loudness (0...1).
     public void SetGlow(double level) => glow.Opacity = level * 0.55;
 
@@ -131,8 +136,7 @@ public sealed class Sky : Canvas
 
         // nebula glows that breathe slowly
         (double X, double Y, double S, Color C)[] glows =
-            [(0.52, 0.34, 0.42, Color.FromArgb(77, 232, 110, 70)), (0.06, 0.70, 0.50, Color.FromArgb(107, 214, 48, 140)),
-             (0.88, 0.14, 0.45, Color.FromArgb(82, 80, 130, 255)), (0.70, 0.90, 0.60, Color.FromArgb(92, 140, 40, 190))];
+            [(0.52, 0.34, 0.42, JT.Glows[0]), (0.06, 0.70, 0.50, JT.Glows[1]), (0.88, 0.14, 0.45, JT.Glows[2]), (0.70, 0.90, 0.60, JT.Glows[3])];
         for (int n = 0; n < glows.Length; n++)
         {
             var g = glows[n]; double size = Math.Max(b.Width, b.Height) * g.S;

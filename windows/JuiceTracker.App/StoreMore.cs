@@ -271,7 +271,7 @@ public sealed partial class Store
     {
         var byFile = PlayLog().GroupBy(e => e.File, StringComparer.OrdinalIgnoreCase).ToDictionary(g => g.Key, g => g.Count(), StringComparer.OrdinalIgnoreCase);
         var output = new Dictionary<int, int>();
-        foreach (var (i, paths) in Match.Owned) output[i] = paths.Select(FullPath).OfType<string>().Sum(f => byFile.GetValueOrDefault(f));
+        foreach (var (i, paths) in Match.Owned) output[i] = paths.Select(FullPath).OfType<string>().Sum(f => byFile.GetValueOrDefault(f)) + Plex.Counts.GetValueOrDefault(i);
         return output;
     }
 

@@ -42,7 +42,12 @@ public sealed class SongCard : Border
 
         var actions = new WrapPanel { Margin = new Thickness(0, 14, 0, 0) };
         actions.Children.Add(UI.Button(s.Wished ? "On your wishlist" : "Add to wishlist", () => { store.ToggleWish(s.S.Id); MainWindow.Current?.OpenSong(store.Songs[s.I]); }, s.Wished ? "" : ""));
-        if (s.Owned) actions.Children.Add(Spaced(UI.Button("Play", () => Play(s), "")));
+        if (s.Owned)
+        {
+            actions.Children.Add(Spaced(UI.Button("Play", () => Play(s), "\uE768")));
+            actions.Children.Add(Spaced(UI.Button("Play next", () => Listen.PlayNext(s), "\uE8A5")));
+        }
+        actions.Children.Add(Spaced(Listen.MenuButton("Add to playlist", () => Listen.PlaylistMenu([s.S.Id]), "\uE710")));
         if (!s.Owned && s.HasFile) actions.Children.Add(Spaced(UI.Button("Download", () => store.AddDownloads([s.S.Id]), "")));
         var site = $"https://juicewrldapi.com/juicewrld/songs/{s.S.Id}/";
 
@@ -96,7 +101,21 @@ public sealed class SongCard : Border
         {
             var row = new DockPanel { Margin = new Thickness(0, 0, 0, 8) };
             var key = UI.Text(k, 14, JT.Muted); key.Width = 110; DockPanel.SetDock(key, Dock.Left); row.Children.Add(key);
-            row.Children.Add(new TextBox { Text = v.Trim(), IsReadOnly = true, Background = Brushes.Transparent, BorderThickness = new Thickness(0), Padding = new Thickness(0), TextWrapping = TextWrapping.Wrap, FontSize = 14 });
+            var role = k switch { "Producers" => "pr", "Artists" => "ar", "Engineers" => "en", "Studios" => "st", _ => null };
+            if (role is not null && MorePages.Has(Page.Credits))
+            {
+                // each name opens Credits on that person or studio
+                var names = new WrapPanel();
+                var list = role == "st" ? Engine.SplitStudios(v) : Engine.SplitNames(v);
+                for (int n = 0; n < list.Count; n++)
+                {
+                    var name = list[n];
+                    var link = UI.Link(name + (n < list.Count - 1 ? "," : ""), () => { MorePages.CreditsFocus = (role, name); MainWindow.Current?.CloseOverlay(); MainWindow.Current?.Show(Page.Credits); }, 14);
+                    link.Margin = new Thickness(0, 0, 6, 2); names.Children.Add(link);
+                }
+                row.Children.Add(names);
+            }
+            else row.Children.Add(new TextBox { Text = v.Trim(), IsReadOnly = true, Background = Brushes.Transparent, BorderThickness = new Thickness(0), Padding = new Thickness(0), TextWrapping = TextWrapping.Wrap, FontSize = 14 });
             details.Children.Add(row);
         }
         var notes = string.Join("\n\n", new[] { full.Notes, full.Info }.Where(x => x.Length > 0));
@@ -127,7 +146,12 @@ public sealed class SongCard : Border
         var others = store.Songs.Where(o => o.I != song.I && Engine.Normalize(o.Name) == key0).ToList();
         if (others.Count > 0)
         {
-            details.Children.Add(Heading($"Other versions ({others.Count})"));
+            var vh = new DockPanel(); var owned = new[] { song }.Concat(others).Where(o => o.Owned).ToList();
+            if (owned.Count >= 2) { var ab = UI.Button("Compare A/B", () => ABWindow.Open(owned, song.Owned ? song : owned[0])); DockPanel.SetDock(ab, Dock.Right); vh.Children.Add(ab); }
+            var missing = others.Where(o => !o.Owned && o.HasFile).ToList();
+            if (missing.Count > 0) { var dl = UI.Button($"Download {missing.Count} missing", () => store.AddDownloads(missing.Select(o => o.S.Id))); dl.Margin = new Thickness(0, 0, 8, 0); DockPanel.SetDock(dl, Dock.Right); vh.Children.Add(dl); }
+            vh.Children.Add(Heading($"Other versions ({others.Count})"));
+            details.Children.Add(vh);
             foreach (var o in others)
             {
                 var row = new DockPanel { Margin = new Thickness(0, 2, 0, 2) };

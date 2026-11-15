@@ -89,6 +89,8 @@ public sealed partial class Store
         public bool TaskbarProgress { get; set; } = true;
         public bool DiscordOn { get; set; }
         public string DiscordAppId { get; set; } = "";
+        public string? PlexServer { get; set; }
+        public bool KeepRunning { get; set; }
     }
     public sealed record Playlist(string Id, string Name, List<string> Songs);
     public Personal Me { get; private set; } = new();
@@ -148,6 +150,7 @@ public sealed partial class Store
     {
         Directory.CreateDirectory(DataDir);
         Me = Read<Personal>("personal.json") ?? new();
+        Themes.Apply(); MainWindow.Current?.Restyle();
         saved = Read<Saved>("saved.json") ?? new();
         if (Read<CatalogFile>("catalog.json") is { } cf) { Catalog = cf.Songs; Eras = cf.Eras; FetchedAt = cf.FetchedAt; }
         cache = Read<Dictionary<string, Engine.CachedTags>>("tags.json") ?? [];
@@ -183,6 +186,14 @@ public sealed partial class Store
     // MARK: The catalog
 
     /// Downloads the catalog, notes which songs are new or newly released since the last time, and saves it.
+    /// Names of the songs added to the catalog at the last check (for the tray menu).
+    public List<string> NewSongNames { get { var n = saved.NewIds.ToHashSet(); return Catalog.Where(s => n.Contains(s.Id)).Select(s => s.Name).ToList(); } }
+    /// Wished songs that were released or got a file at the last check (for the alert).
+    public List<string> WishedReleasedNames { get { var r = saved.ReleasedIds.Concat(saved.NewIds).ToHashSet(); return Catalog.Where(s => r.Contains(s.Id) && Me.Wish.ContainsKey(s.Id)).Select(s => s.Name).ToList(); } }
+    public event Action? CatalogChecked;
+    /// Songs saved by a finished download run (confetti, the chime, a Plex rescan).
+    public event Action<int>? Landed;
+
     public async Task ReloadCatalogAsync()
     {
         if (LoadingCatalog) return;
@@ -210,6 +221,7 @@ public sealed partial class Store
             Write("catalog.json", new CatalogFile(now, songs, fetched.Eras));
             CatalogStatus = $"{songs.Count:N0} songs loaded.";
             Rematch();
+            CatalogChecked?.Invoke();
         }
         catch (Exception e) { CatalogStatus = $"{e.Message} Try again in a minute."; }
         finally { LoadingCatalog = false; Notify(); }
@@ -448,6 +460,7 @@ public sealed partial class Store
         if (stopping) { queue = []; Write("queue.json", queue); }
         DownloadNote = saved > 0 ? $"Saved {saved:N0} {(saved == 1 ? "song" : "songs")}." + (failed.Count > 0 ? $" {failed.Count} didn't work: {string.Join("; ", failed.Take(3))}." : "") : failed.Count > 0 ? $"Couldn't download {string.Join("; ", failed.Take(3))}." : "";
         Job = null; running = false; Notify();
+        if (saved > 0) { Landed?.Invoke(saved); Plex.ScheduleRefresh(); }
     }
 
     static readonly HttpClient Http = new() { Timeout = TimeSpan.FromMinutes(10) };

@@ -57,6 +57,74 @@ public sealed class SettingsWindow : Window
         body.Children.Add(reload);
         if (store.LoadingCatalog && store.CatalogStatus.Length > 0) body.Children.Add(UI.Muted(store.CatalogStatus, 12));
 
+        Section("Playback");
+        var fade = new Slider { Minimum = 0, Maximum = 12, Value = store.Me.Crossfade, Width = 220, IsSnapToTickEnabled = true, TickFrequency = 1 };
+        var fadeLabel = UI.Text(Crossfade(store.Me.Crossfade), 14);
+        fade.ValueChanged += (_, e) => { store.Me.Crossfade = e.NewValue; fadeLabel.Text = Crossfade(e.NewValue); };
+        fade.LostMouseCapture += (_, _) => store.SavePersonal();
+        UI.AutomationName(fade, "Crossfade seconds");
+        body.Children.Add(UI.Row(12, UI.Text("Crossfade", 14, JT.Muted), fade, fadeLabel));
+        Check("Match volume between songs (measures each song's loudness the first time it plays)", store.Me.MatchVolume, v => store.Me.MatchVolume = v);
+
+        Section("New songs");
+        Check("Check the catalog for new songs every day, and say when a wished song can be downloaded", store.Me.DailyCheck, v => store.Me.DailyCheck = v);
+        Check("Keep running in the notification area when the window is closed", store.Me.KeepRunning, v => store.Me.KeepRunning = v);
+
+        Section("Look");
+        var theme = new ComboBox { Width = 340, HorizontalAlignment = HorizontalAlignment.Left };
+        foreach (var t in Themes.All) theme.Items.Add(new ComboBoxItem { Content = t.Name, Tag = t.Id });
+        theme.Items.Add(new ComboBoxItem { Content = "Your own colors", Tag = "custom" });
+        theme.SelectedItem = theme.Items.Cast<ComboBoxItem>().FirstOrDefault(i => (string)i.Tag == store.Me.Theme) ?? theme.Items[0];
+        theme.SelectionChanged += (_, _) => { store.Me.Theme = (string)((ComboBoxItem)theme.SelectedItem).Tag; Restyle(); };
+        UI.AutomationName(theme, "Theme");
+        body.Children.Add(UI.Row(12, UI.Text("Theme", 14, JT.Muted), theme));
+        if (store.Me.Theme == "custom")
+        {
+            var row = UI.Row(10);
+            foreach (var (label, get, set) in new (string, Func<string>, Action<string>)[]
+            {
+                ("Accent", () => store.Me.CustomAccent, v => store.Me.CustomAccent = v), ("Sky 1", () => store.Me.CustomSky1, v => store.Me.CustomSky1 = v), ("Sky 2", () => store.Me.CustomSky2, v => store.Me.CustomSky2 = v),
+            })
+            {
+                var swatch = new Border { Width = 22, Height = 22, CornerRadius = new CornerRadius(11), BorderBrush = JT.Brush(JT.Line2), BorderThickness = new Thickness(1), Background = JT.Brush(Themes.Hex(get()) ?? Colors.Gray) };
+                var pick = UI.Button(label, () =>
+                {
+                    var d = new System.Windows.Forms.ColorDialog { FullOpen = true, Color = Themes.Hex(get()) is { } c ? System.Drawing.Color.FromArgb(c.R, c.G, c.B) : System.Drawing.Color.HotPink };
+                    if (d.ShowDialog() == System.Windows.Forms.DialogResult.OK) { set($"{d.Color.R:x2}{d.Color.G:x2}{d.Color.B:x2}"); Restyle(); }
+                });
+                row.Children.Add(UI.Row(6, swatch, pick));
+            }
+            row.Margin = new Thickness(0, 8, 0, 0); body.Children.Add(row);
+        }
+        Check("Compact (smaller text and spacing, for small screens)", store.Me.Compact, v => { store.Me.Compact = v; MainWindow.Current?.Restyle(); });
+        Check("Play a chime when songs land in your library", store.Me.Chime, v => { store.Me.Chime = v; if (v) Chime.Play(); });
+        Check("Show download progress on the taskbar button", store.Me.TaskbarProgress, v => store.Me.TaskbarProgress = v);
+
+        Section("Updates");
+        Check("Check for a new version every day", store.Me.AutoUpdate, v => store.Me.AutoUpdate = v);
+        var check = UI.Button("Check for updates now", () => _ = Updater.Check(true)); check.HorizontalAlignment = HorizontalAlignment.Left; check.Margin = new Thickness(0, 8, 0, 0);
+        body.Children.Add(check);
+
+        Section("Discord");
+        Check("Show the song you're listening to in your Discord status", store.Me.DiscordOn, v => store.Me.DiscordOn = v);
+        body.Children.Add(UI.Muted("Needs the Discord app open on this PC and an application ID from discord.com/developers (create an application named Juice Tracker, copy its ID).", 12));
+        body.Children.Add(Field("Application ID", store.Me.DiscordAppId, v => { store.Me.DiscordAppId = v; store.SavePersonal(); }));
+
+        Section("Plex");
+        body.Children.Add(UI.Muted("If Plex plays this music folder: it rescans after downloads, Stats can use its play counts, and playlists can be sent to it. The token is stored encrypted for your Windows account.", 12, wrap: true));
+        body.Children.Add(Field("Server address", store.Me.PlexServer ?? "", v => { store.Me.PlexServer = v.Trim().Length > 0 ? v.Trim() : null; store.SavePersonal(); }, "http://192.168.1.10:32400"));
+        var token = new PasswordBox { Width = 300 }; UI.AutomationName(token, "Plex token");
+        var tokenStatus = UI.Muted(Plex.Configured ? "Connected details saved." : "", 12);
+        var saveToken = UI.Button("Save token", () => { try { Plex.SaveToken(token.Password); token.Clear(); tokenStatus.Text = "Saved."; } catch (Exception e) { tokenStatus.Text = e.Message; } });
+        var test = UI.Button("Test", async () =>
+        {
+            tokenStatus.Text = "Connecting…";
+            try { var s = await Plex.MusicSections(); tokenStatus.Text = s.Count == 0 ? "Connected, but Plex has no music library." : $"Connected: {string.Join(", ", s.Select(x => x.Title))}."; }
+            catch (Exception e) { tokenStatus.Text = e.Message; }
+        });
+        var tokenRow = UI.Row(10, UI.Text("Token", 14, JT.Muted), token, saveToken, test); tokenRow.Margin = new Thickness(0, 8, 0, 0);
+        body.Children.Add(tokenRow); body.Children.Add(tokenStatus);
+
         Section("Your data");
         body.Children.Add(UI.Muted("Your wishlist, notes, ratings, matches and settings are saved on this computer, in:", 13));
         var path = UI.Link(Store.DataDir, () => Process.Start(new ProcessStartInfo("explorer.exe", Store.DataDir) { UseShellExecute = true }), 13);
@@ -65,6 +133,25 @@ public sealed class SettingsWindow : Window
 
         Section("About");
         body.Children.Add(UI.Muted($"Juice Tracker for Windows {typeof(SettingsWindow).Assembly.GetName().Version?.ToString(3)}. Song information comes from juicewrldapi.com; your files never leave this computer.", 13));
+    }
+
+    static string Crossfade(double s) => s == 0 ? "Off" : $"{s:0} seconds";
+    void Restyle() { Store.Shared.SavePersonal(); Themes.Apply(); MainWindow.Current?.Restyle(); Background = JT.Brush(Color.FromRgb(20, 10, 44)); }
+
+    void Check(string label, bool value, Action<bool> set)
+    {
+        var c = new CheckBox { Content = new TextBlock { Text = label, TextWrapping = TextWrapping.Wrap }, IsChecked = value, Margin = new Thickness(0, 6, 0, 0) };
+        c.Click += (_, _) => { set(c.IsChecked == true); Store.Shared.SavePersonal(); };
+        body.Children.Add(c);
+    }
+
+    static FrameworkElement Field(string label, string value, Action<string> save, string hint = "")
+    {
+        var box = new TextBox { Text = value, Width = 300, ToolTip = hint.Length > 0 ? hint : null };
+        box.LostFocus += (_, _) => { if (box.Text != value) { value = box.Text; save(box.Text); } };
+        UI.AutomationName(box, label);
+        var row = UI.Row(10, UI.Text(label, 14, JT.Muted), box); row.Margin = new Thickness(0, 8, 0, 0);
+        return row;
     }
 
     void Section(string title)

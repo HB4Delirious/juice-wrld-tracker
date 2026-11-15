@@ -34,6 +34,27 @@ public partial class App : Application
             return;
         }
         _ = Store.Shared.StartAsync();
+        StartExtras();
+    }
+
+    /// The notification-area icon, new-song alerts, the daily catalog check, updates and Discord.
+    static void StartExtras()
+    {
+        Tray.Start();
+        Current.Exit += (_, _) => Tray.Stop();
+        Store.Shared.CatalogChecked += () =>
+        {
+            var store = Store.Shared; var wished = store.WishedReleasedNames; var fresh = store.NewSongNames;
+            if (wished.Count > 0) Tray.Notify("From your wishlist", $"{string.Join(", ", wished.Take(3))}{(wished.Count > 3 ? $" and {wished.Count - 3} more" : "")} can be downloaded now.");
+            else if (fresh.Count > 0) Tray.Notify(fresh.Count == 1 ? "A new song" : $"{fresh.Count:N0} new songs", string.Join(", ", fresh.Take(4)));
+        };
+        // hourly: if the daily check is on and the catalog is over 12 hours old, load it again (and alert)
+        var hourly = new DispatcherTimer { Interval = TimeSpan.FromHours(1) };
+        hourly.Tick += (_, _) => { var s = Store.Shared; if (s.Me.DailyCheck && s.FetchedAt is { } f && (DateTime.UtcNow - f).TotalHours > 12) _ = s.ReloadCatalogAsync(); };
+        hourly.Start();
+        Updater.StartDailyChecks();
+        Discord.Start();
+        Task.Delay(TimeSpan.FromSeconds(20)).ContinueWith(_ => Current.Dispatcher.Invoke(() => _ = Plex.LoadCounts()));
     }
 
     static Exception Innermost(Exception e) { while (e.InnerException is not null) e = e.InnerException; return e; }
@@ -75,6 +96,10 @@ public partial class App : Application
                     window.ShowOverlay(new SongCard(song));
                     window.ShowOverlay(new SongCard(Store.Shared.Songs.First(s => !s.Owned && s.HasFile)));
                     SettingsWindow.Open();
+                    // every theme and compact mode redraw the whole window; celebrations draw over it
+                    foreach (var t in Themes.All.Select(t => t.Id).Append("custom")) { Store.Shared.Me.Theme = t; Themes.Apply(); window.Restyle(); }
+                    Store.Shared.Me.Compact = true; window.Restyle(); Store.Shared.Me.Compact = false; window.Restyle();
+                    Fx.Confetti(); Fx.Shower999(); window.Toast("3 songs landed in your library");
                     Dispatcher.BeginInvoke(() => { File.WriteAllText(report, "ok"); Shutdown(0); }, DispatcherPriority.ApplicationIdle);
                 }
                 catch (Exception ex) { Fail(ex); }
