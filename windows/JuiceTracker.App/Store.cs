@@ -91,6 +91,7 @@ public sealed partial class Store
         public string DiscordAppId { get; set; } = "";
         public string? PlexServer { get; set; }
         public bool KeepRunning { get; set; }
+        public string? LiveServer { get; set; }
     }
     public sealed record Playlist(string Id, string Name, List<string> Songs);
     public Personal Me { get; private set; } = new();

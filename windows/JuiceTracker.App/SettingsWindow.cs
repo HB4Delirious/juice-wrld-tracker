@@ -125,6 +125,15 @@ public sealed class SettingsWindow : Window
         var tokenRow = UI.Row(10, UI.Text("Token", 14, JT.Muted), token, saveToken, test); tokenRow.Margin = new Thickness(0, 8, 0, 0);
         body.Children.Add(tokenRow); body.Children.Add(tokenStatus);
 
+        Section("Live");
+        body.Children.Add(UI.Muted("Stream straight from Juice Tracker to TikTok LIVE: in TikTok LIVE Studio or LIVE Center, set up a LIVE and copy its Server URL and Stream Key here (TikTok gives new ones for each LIVE). The stream is the Player's stream window and this PC's sound. The first time, the app fetches its streaming engine (FFmpeg, about 115 MB). The key is stored encrypted for your Windows account.", 12, wrap: true));
+        body.Children.Add(Field("Server URL", store.Me.LiveServer ?? "", v => { store.Me.LiveServer = v.Trim().Length > 0 ? v.Trim() : null; store.SavePersonal(); }, "rtmp://push-rtmp-….tiktokcdn.com/game/"));
+        var liveKey = new PasswordBox { Width = 300 }; UI.AutomationName(liveKey, "Stream Key");
+        var liveStatus = UI.Muted(LiveStream.HasKey ? "A Stream Key is saved." : "", 12);
+        var saveKey = UI.Button("Save key", () => { try { LiveStream.SaveKey(liveKey.Password); liveKey.Clear(); liveStatus.Text = LiveStream.HasKey ? "Saved. Go live from the Player tab's stream button." : "Removed."; } catch (Exception e) { liveStatus.Text = e.Message; } });
+        var keyRow = UI.Row(10, UI.Text("Stream Key", 14, JT.Muted), liveKey, saveKey); keyRow.Margin = new Thickness(0, 8, 0, 0);
+        body.Children.Add(keyRow); body.Children.Add(liveStatus);
+
         Section("Your data");
         body.Children.Add(UI.Muted("Your wishlist, notes, ratings, matches and settings are saved on this computer, in:", 13));
         var path = UI.Link(Store.DataDir, () => Process.Start(new ProcessStartInfo("explorer.exe", Store.DataDir) { UseShellExecute = true }), 13);

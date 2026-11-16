@@ -19,6 +19,19 @@ jobs:
           fetch-depth: 0  # tags and history, so make-dmg.sh can read the version and build number
       - run: scripts/test-engine.sh  # the engine must give the answers in tests/fixtures
       - run: scripts/make-dmg.sh
+      # going live: the app's RTMP sender streams a test picture and tone into ffmpeg, which must be able to decode it
+      - name: Live stream self-test
+        timeout-minutes: 8
+        run: |
+          brew install ffmpeg >/dev/null 2>&1
+          ffmpeg -hide_banner -loglevel error -listen 1 -i rtmp://127.0.0.1:1935/live/test -c copy -y "$RUNNER_TEMP/live.flv" &
+          receiver=$!
+          sleep 3
+          build/Release/JuiceTracker.app/Contents/MacOS/JuiceTracker --rtmp-selftest rtmp://127.0.0.1:1935/live test
+          wait $receiver
+          ffprobe -v error -show_entries stream=codec_name,width,height -of csv=p=0 "$RUNNER_TEMP/live.flv" | tee "$RUNNER_TEMP/probe.txt"
+          grep -q '^h264,1080,1920' "$RUNNER_TEMP/probe.txt" && grep -q '^aac' "$RUNNER_TEMP/probe.txt"
+          ffmpeg -v error -i "$RUNNER_TEMP/live.flv" -f null - && echo "live stream decodes: h264 1080x1920 + aac"
       - uses: actions/upload-artifact@v4
         with:
           name: JuiceTracker-dmg
@@ -48,6 +61,29 @@ jobs:
           $p = Start-Process dist/windows/JuiceTracker.exe -ArgumentList '--smoke-test' -PassThru -Wait
           Get-Content "$env:TEMP/juicetracker-smoke.txt" -ErrorAction SilentlyContinue
           if ($p.ExitCode -ne 0) { Write-Error "The app failed its smoke test (exit $($p.ExitCode))"; exit 1 }
+      # going live: the app draws the stream picture and sends it through FFmpeg (the pinned build it fetches) into an
+      # RTMP receiver; the recording must decode as H.264 + AAC
+      - name: Live stream self-test
+        shell: pwsh
+        timeout-minutes: 8
+        run: |
+          $dir = "$env:LOCALAPPDATA\JuiceTracker\ffmpeg-9.0.2"; New-Item -ItemType Directory -Force $dir | Out-Null
+          Invoke-WebRequest https://github.com/GyanD/codexffmpeg/releases/download/9.0.2/ffmpeg-9.0.2-essentials_build.zip -OutFile ff.zip
+          if ((Get-FileHash ff.zip -Algorithm SHA256).Hash -ne '60f467265b1e312373dbcd92200c2618a74850f98d3d078e94296bb3fa2047ba') { throw "FFmpeg's fingerprint changed" }
+          Expand-Archive ff.zip -DestinationPath ffx
+          Copy-Item (Get-ChildItem ffx -Recurse -Filter ffmpeg.exe | Select-Object -First 1).FullName "$dir\ffmpeg.exe"
+          $ff = "$dir\ffmpeg.exe"
+          $recv = Start-Process $ff -ArgumentList '-hide_banner','-loglevel','error','-listen','1','-i','rtmp://127.0.0.1:1935/live/test','-c','copy','-y',"$env:RUNNER_TEMP\live.flv" -PassThru
+          Start-Sleep 3
+          $app = Start-Process dist/windows/JuiceTracker.exe -ArgumentList '--rtmp-selftest','rtmp://127.0.0.1:1935/live','test' -PassThru -Wait
+          Get-Content "$env:TEMP\juicetracker-live.txt" -ErrorAction SilentlyContinue
+          if ($app.ExitCode -ne 0) { Write-Error "The live self-test failed (exit $($app.ExitCode))"; exit 1 }
+          $recv | Wait-Process -Timeout 30
+          $info = & $ff -hide_banner -i "$env:RUNNER_TEMP\live.flv" -f null - 2>&1 | Out-String
+          $info -split "`n" | Select-String 'Stream #'
+          if ($info -notmatch 'Video: h264' -or $info -notmatch 'Audio: aac') { Write-Error "The stream didn't decode as H.264 + AAC"; exit 1 }
+          "live stream decodes: h264 + aac"
+          exit 0
       - uses: actions/upload-artifact@v4
         with:
           name: JuiceTracker-windows

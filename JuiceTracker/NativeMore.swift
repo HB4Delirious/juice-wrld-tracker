@@ -591,6 +591,7 @@ import WidgetKit
 /// at the left and a control bar at the bottom. Your songs open from the search button. All drawn in code.
 struct PlayerScreen: View {
     let songs: [Song]
+    @ObservedObject private var live = GoLive.shared
     /// For a stream window: just the picture (no queue, buttons or song list), laid out for the window's shape.
     var stream = false
     @State private var version = 0 // bumps when the player or the song changes; the small parts redraw from it
@@ -641,6 +642,13 @@ struct PlayerScreen: View {
                     }
                     .buttonStyle(.plain).help(browsing ? "Close your songs" : "Your songs").accessibilityLabel(browsing ? "Close your songs" : "Your songs")
                     Menu {
+                        if live.isOn {
+                            Button("Stop the live stream") { live.stop() }
+                        } else {
+                            Button("Go live on TikTok, portrait (9:16)") { live.start(portrait: true) }
+                            Button("Go live on TikTok, landscape (16:9)") { live.start(portrait: false) }
+                        }
+                        Divider()
                         Button("Portrait window (9:16, phones)") { StreamWindows.show(portrait: true) }
                         Button("Landscape window (16:9)") { StreamWindows.show(portrait: false) }
                         Button("Both") { StreamWindows.show(portrait: true); StreamWindows.show(portrait: false) }
@@ -654,6 +662,7 @@ struct PlayerScreen: View {
                 }
                 .frame(width: min(w - 40, 760)).position(x: cx, y: h - 58)
                 }
+                if !stream { LiveBadge().position(x: w - 110, y: 34) }
                 if mine.isEmpty {
                     Text("Songs you have that this Mac can play show up here.").foregroundColor(JT.muted).position(x: cx, y: cy)
                 } else if browsing {
@@ -996,6 +1005,7 @@ final class IconSwirlView: NSView {
     }
     private static var closers: [Bool: Closer] = [:]
     static var open: Bool { !windows.isEmpty }
+    static func window(portrait: Bool) -> NSWindow? { windows[portrait] }
 
     static func show(portrait: Bool) {
         if let w = windows[portrait] { w.makeKeyAndOrderFront(nil); return }
@@ -1016,6 +1026,7 @@ final class IconSwirlView: NSView {
     }
     private static func closed(_ portrait: Bool) {
         windows[portrait] = nil; closers[portrait] = nil
+        if GoLive.shared.isOn, GoLive.shared.portrait == portrait { GoLive.shared.stop() } // its picture is gone
         if windows.isEmpty, let a = activity { ProcessInfo.processInfo.endActivity(a); activity = nil }
         NotificationCenter.default.post(name: changed, object: nil)
     }
@@ -1028,6 +1039,28 @@ private struct StreamRoot: View {
         PlayerScreen(songs: store.songs, stream: true)
             .font(JT.body(15)).foregroundColor(JT.mist).preferredColorScheme(.dark)
             .frame(minWidth: 270, minHeight: 270)
+    }
+}
+
+/// The live stream's state: LIVE with the time on air, connecting, or why it stopped.
+private struct LiveBadge: View {
+    @ObservedObject private var live = GoLive.shared
+    var body: some View {
+        switch live.state {
+        case .off: EmptyView()
+        case .connecting: pill(Text("Connecting…"), color: .orange)
+        case .live(let since):
+            TimelineView(.periodic(from: .now, by: 1)) { ctx in
+                let s = Int(ctx.date.timeIntervalSince(since))
+                pill(Text("● LIVE  \(s / 60):\(String(format: "%02d", s % 60))  \(live.kbps) kbps"), color: .red)
+            }
+        case .failed(let why):
+            pill(Text(why).lineLimit(3), color: .gray).frame(maxWidth: 360).onTapGesture { GoLive.shared.stop() }.help("Click to dismiss")
+        }
+    }
+    private func pill(_ text: some View, color: Color) -> some View {
+        text.font(JT.body(12, .bold)).foregroundColor(.white).padding(.horizontal, 12).padding(.vertical, 6)
+            .background(Capsule().fill(color.opacity(0.85)))
     }
 }
 
