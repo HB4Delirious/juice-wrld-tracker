@@ -47,6 +47,7 @@ public sealed class PlayerPage : Grid, IRefresh
     readonly ComboBox eraPick = new() { MinWidth = 140 };
     readonly StackPanel eraButtons = new() { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 8, 0, 0) };
     readonly DispatcherTimer minute = new() { Interval = TimeSpan.FromSeconds(10) };
+    readonly TextBlock mark = new() { FontFamily = JT.Marker, Foreground = JT.Brush(Color.FromArgb(89, 255, 255, 255)), IsHitTestVisible = false }; // the stream's small credit
     readonly DispatcherTimer shooter = new() { Interval = TimeSpan.FromSeconds(6.5) };
     readonly DispatcherTimer listen = new() { Interval = TimeSpan.FromMilliseconds(80) };
     readonly Canvas swirl = new() { IsHitTestVisible = false };   // icons circling the hole
@@ -60,8 +61,12 @@ public sealed class PlayerPage : Grid, IRefresh
 
     string? file, upNextKey, artFor; List<(double At, string Line)> synced = []; int line = -2, lit = -1, limit = 250; bool updating;
 
-    public PlayerPage()
+    /// For a stream window: just the picture (no queue, buttons or song list), laid out for the window's shape.
+    readonly bool stream;
+
+    public PlayerPage(bool stream = false)
     {
+        this.stream = stream;
         Background = Brushes.Black;
         Children.Add(Space());
         Children.Add(sky);
@@ -135,6 +140,20 @@ public sealed class PlayerPage : Grid, IRefresh
         var searchRing = new Border { Width = 32, Height = 32, CornerRadius = new CornerRadius(16), Background = JT.Brush(Color.FromArgb(26, 255, 255, 255)),
                                       BorderBrush = JT.Brush(Color.FromArgb(51, 255, 255, 255)), BorderThickness = new Thickness(1), Child = search, Tag = "search" };
         stage.Children.Add(searchRing);
+        // the stream button: a clean window of the player to capture in TikTok LIVE Studio or OBS
+        Button? streamButton = null;
+        streamButton = UI.IconButton("\uE93E", "Stream windows", () =>
+        {
+            var m = new ContextMenu { PlacementTarget = streamButton, Placement = PlacementMode.Top };
+            void Item(string label, Action act) { var i = new MenuItem { Header = label }; i.Click += (_, _) => act(); m.Items.Add(i); }
+            Item("Portrait window (9:16, phones)", () => StreamWindow.Show(true));
+            Item("Landscape window (16:9)", () => StreamWindow.Show(false));
+            Item("Both", () => { StreamWindow.Show(true); StreamWindow.Show(false); });
+            m.IsOpen = true;
+        }, 14);
+        streamButton.ToolTip = "Stream: a clean window of the player to capture in TikTok LIVE Studio or OBS";
+        stage.Children.Add(new Border { Width = 32, Height = 32, CornerRadius = new CornerRadius(16), Background = JT.Brush(Color.FromArgb(26, 255, 255, 255)),
+                                        BorderBrush = JT.Brush(Color.FromArgb(51, 255, 255, 255)), BorderThickness = new Thickness(1), Child = streamButton, Tag = "stream" });
         find.TextChanged += (_, _) => { limit = 250; BuildRows(); };
         UI.AutomationName(find, "Search your songs");
         eraPick.SelectionChanged += (_, _) => { if (!updating) { limit = 250; BuildRows(); } };
@@ -149,6 +168,11 @@ public sealed class PlayerPage : Grid, IRefresh
                                   BorderBrush = JT.Brush(Color.FromArgb(46, 255, 255, 255)), BorderThickness = new Thickness(1), Child = panel, Visibility = Visibility.Collapsed };
         stage.Children.Add(songsPanel);
         stage.Children.Add(empty);
+        if (stream)
+        {
+            foreach (var b in stage.Children.OfType<Border>().Where(b => b == queueBox || b == bar || b == songsPanel || b.Tag is "search" or "stream").ToList()) b.Visibility = Visibility.Collapsed;
+            mark.Text = "Juice Tracker"; stage.Children.Add(mark);
+        }
 
         stage.SizeChanged += (_, _) => Place();
         minute.Tick += (_, _) => Clock();
@@ -339,7 +363,10 @@ public sealed class PlayerPage : Grid, IRefresh
     {
         double w = stage.ActualWidth, h = stage.ActualHeight;
         if (w == 0) return;
-        double size = Math.Max(160, Math.Min(Math.Min(w * 0.34, h * 0.4), 360)), cx = w / 2, cy = h * 0.44, span = size * 2.5;
+        bool portrait = stream && h > w;
+        // portrait: the hole high and wide, the lyrics under it, the cover at the bottom
+        double size = portrait ? Math.Min(w * 0.6, h * 0.32) : stream ? Math.Min(w * 0.3, h * 0.46) : Math.Max(160, Math.Min(Math.Min(w * 0.34, h * 0.4), 360));
+        double cx = w / 2, cy = portrait ? h * 0.36 : h * 0.44, span = size * 2.5;
         hole.Width = hole.Height = span;
         backDisc.Children.Clear(); frontDisc.Children.Clear(); sparkSpins.Clear(); holeSize = size;
         wave.Width = wave.Height = size; At(wave, cx - size / 2, cy - size / 2);
@@ -354,10 +381,19 @@ public sealed class PlayerPage : Grid, IRefresh
         double words = Math.Min(w * 0.42, 460);
         karaoke.Width = words; At(karaoke, cx - size * 0.08, cy + size * 0.24 - 30);
         card.Width = size * 0.44; At(card, cx - size * 0.58, cy + size * 0.36 - size * 0.32);
+        karaoke.TextAlignment = portrait ? TextAlignment.Center : TextAlignment.Left;
+        karaoke.FontSize = portrait ? Math.Max(22, w * 0.06) : 30;
+        if (portrait)
+        {
+            karaoke.Width = w * 0.86; At(karaoke, cx - w * 0.43, cy + size * 0.84 - karaoke.FontSize);
+            card.Width = w * 0.26; At(card, cx - w * 0.13, h * 0.85 - w * 0.2);
+        }
+        if (stream) { mark.FontSize = portrait ? 15 : 13; At(mark, portrait ? cx - 55 : w - 130, h - 34); }
         At(queueBox, Math.Max(20, cx - size * 1.3 - 115), cy - 60);
         bar.Width = Math.Min(w - 40, 820); At(bar, cx - bar.Width / 2, h - 82);
         var ring = stage.Children.OfType<Border>().First(b => "search".Equals(b.Tag));
         At(ring, cx + bar.Width / 2 - 34, h - 126);
+        At(stage.Children.OfType<Border>().First(b => "stream".Equals(b.Tag)), cx + bar.Width / 2 - 74, h - 126);
         songsPanel.Width = Math.Min(460, w - 40); songsPanel.Height = Math.Max(240, h - 170); At(songsPanel, w - songsPanel.Width - 20, 20);
         empty.Width = 420; empty.TextAlignment = TextAlignment.Center; At(empty, cx - 210, cy - 10);
         Spin(IsLoaded);
@@ -710,5 +746,32 @@ sealed class LevelMeter
             }
             catch (Exception) { reader?.Dispose(); reader = null; samples = null; return 0; }
         }
+    }
+}
+
+/// Stream windows: the Player tab's picture alone, sized for a phone (9:16) or a screen (16:9), to capture with TikTok
+/// LIVE Studio or OBS (Window Capture). They keep their shape when resized.
+public sealed class StreamWindow : Window
+{
+    static readonly Dictionary<bool, StreamWindow> open = [];
+    readonly bool portrait;
+    public static void Show(bool portrait)
+    {
+        if (open.TryGetValue(portrait, out var w)) { w.Activate(); return; }
+        w = new StreamWindow(portrait); open[portrait] = w;
+        w.Closed += (_, _) => open.Remove(portrait);
+        w.Show();
+    }
+    StreamWindow(bool portrait)
+    {
+        this.portrait = portrait;
+        Title = portrait ? "Juice Tracker Stream (portrait)" : "Juice Tracker Stream (landscape)";
+        Background = Brushes.Black;
+        System.Windows.Documents.TextElement.SetFontFamily(this, JT.Body);
+        SizeToContent = SizeToContent.Manual;
+        // the picture is exactly 9:16 or 16:9; the window frame adds its border around it
+        var content = new PlayerPage(stream: true) { Width = portrait ? 540 : 960, Height = portrait ? 960 : 540 };
+        Content = new Viewbox { Child = content, Stretch = Stretch.Uniform };
+        Width = portrait ? 556 : 976; Height = portrait ? 999 : 579;
     }
 }

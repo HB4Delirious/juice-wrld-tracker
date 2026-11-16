@@ -80,7 +80,7 @@ public partial class App : Application
                 {
                     Store.Shared.FillForSmokeTest(); // the window now shows Collection with songs, eras and notices
                     var song = Store.Shared.Songs.First(s => s.Owned);
-                    UIElement[] screens = [new CollectionPage(), new FixerPage(), new SetupPage(), new SongCard(song), new SongRow(song), new PlayerPanel()];
+                    UIElement[] screens = [new CollectionPage(), new FixerPage(), new SetupPage(), new SongCard(song), new SongRow(song), new PlayerPanel(), new PlayerPage(stream: true) { Width = 540, Height = 960 }, new PlayerPage(stream: true) { Width = 960, Height = 540 }];
                     foreach (var s in screens) { s.Measure(new Size(1000, 800)); s.Arrange(new Rect(0, 0, 1000, 800)); }
                     // screens redraw in place whenever something changes: do that twice, like a download finishing
                     foreach (var s in screens.OfType<IRefresh>()) { s.Refresh(); s.Refresh(); }
