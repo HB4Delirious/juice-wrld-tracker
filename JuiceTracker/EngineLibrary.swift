@@ -155,7 +155,9 @@ import AppKit
     /// Where a library file is on disk.
     func url(of path: String) -> URL? {
         guard let root else { return nil }
-        let url = path.split(separator: "/").dropFirst().reduce(root) { $0.appendingPathComponent(String($1)) }.standardizedFileURL
+        // One call with isDirectory given: appendingPathComponent without it asks the disk (lstat) about every part of
+        // the path, and on a network drive that made opening the player pages and switching pages freeze for seconds.
+        let url = root.appendingPathComponent(path.split(separator: "/").dropFirst().joined(separator: "/"), isDirectory: false).standardizedFileURL
         return url.path.hasPrefix(root.standardizedFileURL.path + "/") ? url : nil
     }
 

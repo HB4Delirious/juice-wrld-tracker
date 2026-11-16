@@ -161,7 +161,7 @@ import AVFoundation
     /// read the tags back.
     func write(_ path: String, _ desired: Tags) async throws {
         guard let url = EngineLibrary.shared.url(of: path) else { throw EngineError("isn't in your music folder") }
-        let backup = backupDir.map { dir in path.split(separator: "/").dropFirst().reduce(dir) { $0.appendingPathComponent(String($1)) } }
+        let backup = backupDir.map { dir in dir.appendingPathComponent(path.split(separator: "/").dropFirst().joined(separator: "/"), isDirectory: false) }
         let ext = Engine.extOf(path)
         let (tags, size) = try await Task.detached { () -> (Tags, Int) in
             let orig = [UInt8](try Data(contentsOf: url))
@@ -176,7 +176,7 @@ import AVFoundation
     /// Adds cover art to a file that has none, with the same safety check, backup and atomic save as a tag write.
     func addArt(_ path: String, jpeg: [UInt8], width: Int, height: Int) async throws {
         guard let url = EngineLibrary.shared.url(of: path) else { throw EngineError("isn't in your music folder") }
-        let backup = backupDir.map { dir in path.split(separator: "/").dropFirst().reduce(dir) { $0.appendingPathComponent(String($1)) } }
+        let backup = backupDir.map { dir in dir.appendingPathComponent(path.split(separator: "/").dropFirst().joined(separator: "/"), isDirectory: false) }
         let ext = Engine.extOf(path)
         let (tags, size) = try await Task.detached { () -> (Tags, Int) in
             let orig = [UInt8](try Data(contentsOf: url))

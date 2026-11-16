@@ -113,7 +113,7 @@ import AppKit
         guard let root = library.root, let url = URL(string: Engine.fileUrl(song)) else { throw EngineError("Choose your music folder first") }
         let rel = "\(Engine.saveFolder(song, library.layout))/\(Engine.saveFileName(song))"
         let inner = rel.split(separator: "/").dropFirst().map(String.init)
-        let dest = inner.reduce(root) { $0.appendingPathComponent($1) }.standardizedFileURL
+        let dest = root.appendingPathComponent(inner.joined(separator: "/"), isDirectory: false).standardizedFileURL
         // never outside the music folder, whatever a song's name says
         guard dest.path.hasPrefix(root.standardizedFileURL.path + "/") else { throw EngineError("can't be saved there") }
         let r = try await Downloader.downloadFile(url, to: dest, root: root.path)
@@ -253,10 +253,9 @@ extension EngineLibrary {
     /// Each playable file you have, with its song: (file, title, era).
     private static func playableFiles() -> [(url: URL, title: String, era: String, when: Int)] {
         let library = EngineLibrary.shared, catalog = EngineState.shared.catalog
-        guard let root = library.root else { return [] }
+        guard library.root != nil else { return [] }
         return library.files.compactMap { f in
-            guard playable.contains(f.ext), let i = library.match.songsFor[f.path]?.first, catalog.indices.contains(i) else { return nil }
-            let url = f.path.split(separator: "/").dropFirst().reduce(root) { $0.appendingPathComponent(String($1)) }
+            guard playable.contains(f.ext), let i = library.match.songsFor[f.path]?.first, catalog.indices.contains(i), let url = library.url(of: f.path) else { return nil }
             return (url, catalog[i].name, Engine.eraName(catalog[i]), Engine.recordMonth(catalog[i].recordDates) ?? Int.max)
         }
     }

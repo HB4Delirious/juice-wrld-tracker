@@ -445,7 +445,7 @@ private struct FillDriveCard: View {
     private func copy(_ list: [(path: String, size: Int)], to target: URL) {
         copying = true
         let library = EngineLibrary.shared
-        let jobs = list.compactMap { f in library.url(of: f.path).map { ($0, target.appendingPathComponent(f.path.split(separator: "/").dropFirst().joined(separator: "/"))) } }
+        let jobs = list.compactMap { f in library.url(of: f.path).map { ($0, target.appendingPathComponent(f.path.split(separator: "/").dropFirst().joined(separator: "/"), isDirectory: false)) } }
         Task {
             var done = 0, skipped = 0, failed = 0
             for (n, (src, dst)) in jobs.enumerated() {
