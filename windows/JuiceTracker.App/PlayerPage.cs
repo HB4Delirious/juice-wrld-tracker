@@ -48,6 +48,11 @@ public sealed class PlayerPage : Grid, IRefresh
     readonly StackPanel eraButtons = new() { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 8, 0, 0) };
     readonly DispatcherTimer minute = new() { Interval = TimeSpan.FromSeconds(10) };
     readonly DispatcherTimer shooter = new() { Interval = TimeSpan.FromSeconds(6.5) };
+    readonly DispatcherTimer listen = new() { Interval = TimeSpan.FromMilliseconds(80) };
+    readonly Canvas swirl = new() { IsHitTestVisible = false };   // icons circling the hole
+    readonly List<AnimationClock> swirlClocks = [];
+    readonly LevelMeter meter = new();
+    double pace = 1; bool measuring;
     readonly Canvas sky = new() { IsHitTestVisible = false, ClipToBounds = true }; // twinkles and shooting stars
     readonly Ellipse wave = new() { StrokeThickness = 3, Opacity = 0, IsHitTestVisible = false, RenderTransformOrigin = new Point(0.5, 0.5) }; // rolls out when a song starts
     readonly List<RotateTransform> sparkSpins = [];
@@ -64,6 +69,7 @@ public sealed class PlayerPage : Grid, IRefresh
         wave.Stroke = Ring((0, 1), (1, 1), (2, 1), (0, 1)); wave.Effect = new BlurEffect { Radius = 2 };
         stage.Children.Add(wave);
         stage.Children.Add(BuildHole());
+        stage.Children.Add(swirl);
         clock.Children.Add(UI.Column(0, date, time)); clock.IsHitTestVisible = false; stage.Children.Add(clock);
         stage.Children.Add(karaoke);
 
@@ -147,9 +153,10 @@ public sealed class PlayerPage : Grid, IRefresh
         stage.SizeChanged += (_, _) => Place();
         minute.Tick += (_, _) => Clock();
         shooter.Tick += (_, _) => Shoot();
+        listen.Tick += (_, _) => Hear();
         sky.SizeChanged += (_, _) => Twinkles();
-        Loaded += (_, _) => { Player.Shared.Changed += Tick; minute.Start(); shooter.Start(); Spin(true); Tick(); };
-        Unloaded += (_, _) => { Player.Shared.Changed -= Tick; minute.Stop(); shooter.Stop(); Spin(false); };
+        Loaded += (_, _) => { Player.Shared.Changed += Tick; minute.Start(); shooter.Start(); listen.Start(); Spin(true); Tick(); };
+        Unloaded += (_, _) => { Player.Shared.Changed -= Tick; minute.Stop(); shooter.Stop(); listen.Stop(); Spin(false); };
         Clock();
         Refresh();
     }
@@ -277,6 +284,7 @@ public sealed class PlayerPage : Grid, IRefresh
             scale.BeginAnimation(ScaleTransform.ScaleXProperty, grow); scale.BeginAnimation(ScaleTransform.ScaleYProperty, grow);
             sky.Children.Add(star);
         }
+        Doodles();
     }
 
     /// Now and then a shooting star crosses the sky, from upper right toward lower left.
@@ -340,6 +348,7 @@ public sealed class PlayerPage : Grid, IRefresh
         frontDisc.Clip = new RectangleGeometry(new Rect(0, span / 2, span, span / 2));
         foreach (var e in hole.Children.OfType<Ellipse>()) { e.Width = e.Height = size * (double)e.Tag; }
         At(hole, cx - span / 2, cy - span / 2);
+        Swirl(size, new Point(cx, cy));
         time.FontSize = size * 0.34;
         clock.Width = 400; At(clock, cx - 200, cy - size * 0.62 - size * 0.34 * 0.75);
         double words = Math.Min(w * 0.42, 460);
@@ -593,5 +602,113 @@ public sealed class PlayerPage : Grid, IRefresh
         var s = UI.Text(sub, 10, JT.Muted); s.TextTrimming = TextTrimming.CharacterEllipsis;
         return UI.Row(8, new Border { Width = 26, Height = 26, CornerRadius = new CornerRadius(5), Background = JT.Brush(Color.FromArgb(30, 255, 255, 255)), Child = UI.Icon("", 11, JT.Muted) },
                       UI.Column(0, t, s));
+    }
+
+    // MARK: Icons swirling around the hole, faster with the beat
+
+    static readonly string[] SwirlArt = ["jt-heart", "jt-era-999", "jt-fly", "jt-sparkles", "jt-sticker1", "jt-sticker2", "jt-sticker3", "jt-sticker4",
+                                         "jt-sticker5", "jt-sticker6", "jt-era-halo", "jt-era-race", "jt-era-demon", "jt-era-globe", "jt-planet", "jt-heart"];
+
+    /// Little icons circling the hole on tilted orbits that pass around it, never across it.
+    void Swirl(double size, Point c)
+    {
+        swirl.Children.Clear(); swirlClocks.Clear();
+        var rng = new Random(999);
+        for (int k = 0; k < SwirlArt.Length; k++)
+        {
+            double side = 20 + rng.NextDouble() * 20, rx = size * (0.85 + rng.NextDouble() * 0.65), ry = size * (0.6 + rng.NextDouble() * 0.22);
+            var holder = new Canvas { IsHitTestVisible = false };
+            var spin = new RotateTransform(0, side / 2, side / 2);
+            var icon = new Image { Source = JT.Image(SwirlArt[k]), Width = side, Height = side, Opacity = 0.7 + rng.NextDouble() * 0.3, RenderTransform = spin,
+                                   Effect = new DropShadowEffect { Color = Colors.White, BlurRadius = 8, ShadowDepth = 0, Opacity = 0.5 } };
+            Canvas.SetLeft(icon, -side / 2); Canvas.SetTop(icon, -side / 2);
+            holder.Children.Add(icon);
+            // a third go the other way round
+            var orbit = new EllipseGeometry(c, rx, ry) { Transform = new TransformGroup { Children = { new ScaleTransform(k % 3 == 0 ? -1 : 1, 1, c.X, c.Y), new RotateTransform((rng.NextDouble() - 0.5) * 23, c.X, c.Y) } } };
+            var move = new MatrixTransform(); holder.RenderTransform = move;
+            double seconds = 26 + rng.NextDouble() * 30;
+            var go = new MatrixAnimationUsingPath { PathGeometry = PathGeometry.CreateFromGeometry(orbit), Duration = TimeSpan.FromSeconds(seconds), RepeatBehavior = RepeatBehavior.Forever,
+                                                    BeginTime = TimeSpan.FromSeconds(-rng.NextDouble() * seconds) }; // spread around the orbit
+            var twirl = new DoubleAnimation(0, k % 2 == 0 ? 360 : -360, TimeSpan.FromSeconds(9 + rng.NextDouble() * 9)) { RepeatBehavior = RepeatBehavior.Forever };
+            var a = go.CreateClock(); var b = twirl.CreateClock();
+            move.ApplyAnimationClock(MatrixTransform.MatrixProperty, a); spin.ApplyAnimationClock(RotateTransform.AngleProperty, b);
+            swirlClocks.Add(a); swirlClocks.Add(b);
+            swirl.Children.Add(holder);
+        }
+        pace = 1;
+    }
+
+    /// Louder means faster: the swirl runs up to four times as fast on a strong beat, easing back between.
+    void Pace(double level)
+    {
+        double target = 1 + level * 3, next = pace + (target - pace) * (target > pace ? 0.5 : 0.12); // quick to jump, slow to settle
+        if (Math.Abs(next - pace) < 0.02) return;
+        pace = next;
+        foreach (var c in swirlClocks) if (c.Controller is { } ctl) ctl.SpeedRatio = pace;
+    }
+
+    /// Measures the music's loudness where it's playing, from the same file, about 12 times a second.
+    void Hear()
+    {
+        if (measuring || !IsLoaded) return;
+        var p = Player.Shared;
+        if (!p.IsPlaying || p.CurrentFile is not { } f) { Pace(0); return; }
+        measuring = true; var at = p.Position;
+        Task.Run(() => meter.Level(f, at)).ContinueWith(t => { measuring = false; Pace(t.Result); }, TaskScheduler.FromCurrentSynchronizationContext());
+    }
+
+    /// Faint doodles drifting slowly across the sky: hearts, butterflies, stickers, 999s, a planet.
+    void Doodles()
+    {
+        foreach (var old in sky.Children.OfType<Image>().Where(i => "doodle".Equals(i.Tag)).ToList()) sky.Children.Remove(old);
+        double w = sky.ActualWidth, h = sky.ActualHeight;
+        if (w == 0) return;
+        var rng = new Random(2019);
+        string[] art = ["jt-heart", "jt-fly", "jt-sparkles", "jt-sticker1", "jt-sticker2", "jt-sticker3", "jt-sticker4", "jt-sticker5",
+                        "jt-sticker6", "jt-era-999", "jt-planet", "jt-era-vinyl", "jt-era-mic", "jt-era-party", "jt-fly", "jt-heart", "jt-sparkles", "jt-era-globe"];
+        foreach (var name in art)
+        {
+            double side = 28 + rng.NextDouble() * 46;
+            var move = new TranslateTransform(); var turn = new RotateTransform();
+            var bit = new Image { Source = JT.Image(name), Width = side, Height = side, Opacity = 0.1 + rng.NextDouble() * 0.16, Tag = "doodle", IsHitTestVisible = false,
+                                  RenderTransform = new TransformGroup { Children = { turn, move } }, RenderTransformOrigin = new Point(0.5, 0.5) };
+            At(bit, rng.NextDouble() * w, rng.NextDouble() * h);
+            var drift = TimeSpan.FromSeconds(30 + rng.NextDouble() * 40);
+            move.BeginAnimation(TranslateTransform.XProperty, new DoubleAnimation(0, (rng.NextDouble() - 0.5) * 240, drift) { AutoReverse = true, RepeatBehavior = RepeatBehavior.Forever, EasingFunction = new SineEase() });
+            move.BeginAnimation(TranslateTransform.YProperty, new DoubleAnimation(0, (rng.NextDouble() - 0.5) * 160, drift) { AutoReverse = true, RepeatBehavior = RepeatBehavior.Forever, EasingFunction = new SineEase() });
+            turn.BeginAnimation(RotateTransform.AngleProperty, new DoubleAnimation(-23, 23, TimeSpan.FromSeconds(14 + rng.NextDouble() * 16)) { AutoReverse = true, RepeatBehavior = RepeatBehavior.Forever, EasingFunction = new SineEase() });
+            sky.Children.Insert(0, bit); // behind the twinkling stars
+        }
+    }
+}
+
+/// The loudness of a file at a point in it (0...1), read with its own reader so the player is untouched.
+sealed class LevelMeter
+{
+    readonly object gate = new();
+    NAudio.Wave.MediaFoundationReader? reader; NAudio.Wave.ISampleProvider? samples; string? file;
+    readonly float[] buffer = new float[2048];
+
+    public double Level(string path, TimeSpan at)
+    {
+        lock (gate)
+        {
+            try
+            {
+                if (path != file)
+                {
+                    reader?.Dispose(); reader = null; file = path;
+                    reader = new NAudio.Wave.MediaFoundationReader(path);
+                    samples = NAudio.Wave.WaveExtensionMethods.ToSampleProvider(reader);
+                }
+                if (reader is null || samples is null || at >= reader.TotalTime) return 0;
+                reader.CurrentTime = at;
+                int n = samples.Read(buffer, 0, buffer.Length);
+                double sum = 0; for (int k = 0; k < n; k++) sum += buffer[k] * buffer[k];
+                double db = 20 * Math.Log10(Math.Max(Math.Sqrt(sum / Math.Max(n, 1)), 1e-6));
+                return Math.Clamp((db + 50) / 50, 0, 1); // the same scale as the Mac app's meter
+            }
+            catch (Exception) { reader?.Dispose(); reader = null; samples = null; return 0; }
+        }
     }
 }
