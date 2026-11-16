@@ -94,6 +94,16 @@ public sealed class Player
         Changed?.Invoke();
     }
     public void ClearUpNext() { UpNext.Clear(); Changed?.Invoke(); }
+    /// The Player tab's Up next list: move one up or down, or take it out.
+    public void MoveUpNext(int k, int by) { int to = k + by; if (k < 0 || k >= UpNext.Count || to < 0 || to >= UpNext.Count) return; (UpNext[k], UpNext[to]) = (UpNext[to], UpNext[k]); Changed?.Invoke(); }
+    public void RemoveUpNext(int k) { if (k >= 0 && k < UpNext.Count) { UpNext.RemoveAt(k); Changed?.Invoke(); } }
+    /// Plays a song now; the mix (shuffle or era radio) carries on after it, turning the music on if it was off.
+    public void PlaySong(string file, string title)
+    {
+        if (!Store.Shared.Me.AmbientOn) { Store.Shared.Me.AmbientOn = true; Store.Shared.SavePersonal(); }
+        PlayNow(file, title);
+        Sync(); // a song is playing, so this only hands over the mix
+    }
 
     public void Stop()
     {

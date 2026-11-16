@@ -39,7 +39,7 @@ The sidebar's **Ambient music** toggle plays your matched songs, shuffled, at ve
 
 ## Windows app
 
-It has every screen the Mac app has: Collection, Hunt, Playlists, Tag fixer, Duplicates, File health, Organize,
+It has every screen the Mac app has: Collection, Player, Hunt, Playlists, Tag fixer, Duplicates, File health, Organize,
 Credits, Stats, Timeline, Badges, Trivia and Export & backup, plus the song card (details, credit links, lyrics shown
 live from the site, versions with A/B compare), downloads (taskbar progress, confetti and an optional chime when
 songs land), the inbox folder, the music player (crossfade, Up next, era radio, sleep timer, volume matching, a mini
@@ -98,6 +98,7 @@ cache, download queue).
 - **Loudness and cover art (File health):** files much quieter or louder than the rest of your library, and files with no cover art. **Add artwork** writes the song's picture from the site into the file (one at a time or all at once), with the same safety check and backup as the tag fixer.
 - **Faster first scan:** a network drive is read 16 files at a time.
 - **Hunt:** one song you don't have, picked each day, with its story and where it might turn up, plus "you rated these highly, so try…" suggestions (same song's other versions, the same producer, the same era).
+- **Player tab:** the song playing with its cover (or the era's art), era, seek bar and controls, the lyrics line by line, Up next you can reorder, and all your playable songs by era: play one now or next (double-click plays), play an era in recording order, or shuffle it.
 - **Playlists:** make your own, drag to reorder, play them in order, and export M3U files (also one-click M3Us for an era, top rated, your wishlist and never played).
 - **Player:** a seek bar in the sidebar, mini player and menu bar; a sleep timer (15, 30 or 60 minutes, or the end of the song, fading out); volume matching evens out quiet and loud files without changing them. The menu bar also shows your count.
 - **Versions and A/B:** each song card lists the song's other versions with what you have, and **Compare A/B** plays two versions in step and switches between them instantly (Tab), pausing the background music meanwhile.

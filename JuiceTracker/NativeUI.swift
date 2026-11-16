@@ -478,14 +478,14 @@ struct ScreenTitle: View {
 // MARK: - Window
 
 enum NativePage: String, CaseIterable, Identifiable {
-    case collection, hunt, playlists, fixer, dups, health, organize, people, stats, timeline, badges, trivia, export
+    case collection, player, hunt, playlists, fixer, dups, health, organize, people, stats, timeline, badges, trivia, export
     var id: String { rawValue }
     var title: String {
-        ["collection": "Collection", "hunt": "Hunt", "playlists": "Playlists", "organize": "Organize", "fixer": "Tag fixer", "dups": "Duplicates", "health": "File health", "people": "Credits",
+        ["collection": "Collection", "player": "Player", "hunt": "Hunt", "playlists": "Playlists", "organize": "Organize", "fixer": "Tag fixer", "dups": "Duplicates", "health": "File health", "people": "Credits",
          "stats": "Stats", "timeline": "Timeline", "badges": "Badges", "trivia": "Trivia", "export": "Export & backup"][rawValue] ?? rawValue
     }
     var icon: String {
-        ["collection": "smallcircle.filled.circle", "hunt": "scope", "playlists": "music.note.list", "organize": "folder.badge.gearshape", "fixer": "tag", "dups": "square.on.square", "health": "waveform.path.ecg", "people": "person.2",
+        ["collection": "smallcircle.filled.circle", "player": "play.circle", "hunt": "scope", "playlists": "music.note.list", "organize": "folder.badge.gearshape", "fixer": "tag", "dups": "square.on.square", "health": "waveform.path.ecg", "people": "person.2",
          "stats": "chart.bar", "timeline": "point.3.connected.trianglepath.dotted", "badges": "rosette", "trivia": "questionmark.circle", "export": "archivebox"][rawValue] ?? "circle"
     }
 }
@@ -508,6 +508,7 @@ struct NativeRoot: View {
                         case .timeline: TimelineScreen(songs: store.songs)
                         case .stats: StatsScreen(state: s, songs: store.songs)
                         case .people: CreditsScreen(songs: store.songs)
+                        case .player: PlayerScreen(songs: store.songs)
                         case .hunt: HuntScreen()
                         case .playlists: PlaylistsScreen()
                         case .organize: OrganizeScreen()

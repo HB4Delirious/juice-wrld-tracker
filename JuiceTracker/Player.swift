@@ -127,6 +127,8 @@ final class AmbientPlayer: NSObject, AVAudioPlayerDelegate {
     private(set) var currentPath: String?
     var currentTime: TimeInterval { player?.currentTime ?? 0 }
     private var hasOwnCover = false
+    /// The playing song's cover (its own, else the era's art from the site), for the Player tab.
+    private(set) var coverImage: NSImage?
 
     /// Loudness right now, 0...1, for the visualizer (0 when nothing plays).
     func level() -> Float {
@@ -139,6 +141,7 @@ final class AmbientPlayer: NSObject, AVAudioPlayerDelegate {
     /// Artwork for songs whose file has none (the era's art from juicewrldapi.com).
     func setFallbackArtwork(_ image: NSImage, for path: String) {
         guard path == currentPath, !hasOwnCover else { return }
+        coverImage = image
         artwork = MPMediaItemArtwork(boundsSize: image.size) { _ in image }
         publish()
     }
@@ -189,6 +192,9 @@ final class AmbientPlayer: NSObject, AVAudioPlayerDelegate {
         if player == nil && !isPaused { next() }
     }
     func clearUpNext() { upNext = []; publish() }
+    /// The Player tab's Up next list: drag to reorder, or take one out.
+    func moveUpNext(from: IndexSet, to: Int) { upNext.move(fromOffsets: from, toOffset: to); publish() }
+    func removeUpNext(at k: Int) { guard upNext.indices.contains(k) else { return }; upNext.remove(at: k); publish() }
 
     private func crossfadeIfDue() {
         let fade = Self.crossfade
@@ -212,6 +218,7 @@ final class AmbientPlayer: NSObject, AVAudioPlayerDelegate {
         player = nil
         title = nil
         currentPath = nil
+        coverImage = nil
         publish()
     }
 
@@ -338,6 +345,7 @@ final class AmbientPlayer: NSObject, AVAudioPlayerDelegate {
                 self.title = item.title
                 self.currentPath = item.url.path
                 self.hasOwnCover = cover != nil
+                self.coverImage = cover
                 Self.markHeard(item.url.path)
                 Self.logPlay(item.url.path)
                 let image = cover ?? NSApp.applicationIconImage ?? NSImage()
