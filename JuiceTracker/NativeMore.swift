@@ -152,20 +152,56 @@ struct SongExtras {
     @Published var level: Float = 0
 }
 
-/// Five bars that move with the music (the sidebar player and the mini player).
+/// Five bars that move with the music (the sidebar player and the mini player). Core Animation, not SwiftUI: as a
+/// SwiftUI view it redrew 15 times a second, and each redraw re-laid out the whole window.
 struct Visualizer: View {
-    @ObservedObject private var now = LevelMeter.shared
     var height: CGFloat = 16
-    private let weights: [CGFloat] = [0.55, 0.9, 1, 0.75, 0.6]
-    var body: some View {
-        HStack(alignment: .bottom, spacing: 2) {
-            ForEach(0..<5, id: \.self) { n in
-                Capsule().fill(JT.lavender)
-                    .frame(width: 3, height: max(3, height * min(1, CGFloat(now.level) * weights[n] * 1.25 + (now.level > 0 ? 0.08 * CGFloat((n * 7 + Int(now.level * 40)) % 3) : 0))))
-            }
+    var body: some View { VisualizerBars(height: height).frame(width: 23, height: height) }
+}
+
+private struct VisualizerBars: NSViewRepresentable {
+    let height: CGFloat
+    func makeNSView(context: Context) -> VisualizerView { VisualizerView(height: height) }
+    func updateNSView(_ view: VisualizerView, context: Context) {}
+}
+
+final class VisualizerView: NSView {
+    private let height: CGFloat
+    private var bars: [CALayer] = []
+    private var meter: AnyCancellable?
+    private static let weights: [CGFloat] = [0.55, 0.9, 1, 0.75, 0.6]
+
+    init(height: CGFloat) {
+        self.height = height
+        super.init(frame: NSRect(x: 0, y: 0, width: 23, height: height))
+        wantsLayer = true
+        bars = (0..<5).map { n in
+            let b = CALayer()
+            b.anchorPoint = CGPoint(x: 0.5, y: 0) // grows up from the bottom
+            b.bounds = CGRect(x: 0, y: 0, width: 3, height: height)
+            b.position = CGPoint(x: 1.5 + CGFloat(n) * 5, y: 0)
+            b.cornerRadius = 1.5
+            b.setAffineTransform(CGAffineTransform(scaleX: 1, y: 3 / height))
+            layer?.addSublayer(b)
+            return b
         }
-        .frame(height: height, alignment: .bottom)
-        .animation(.easeOut(duration: 0.12), value: now.level)
+        recolor()
+        NotificationCenter.default.addObserver(self, selector: #selector(recolor), name: EraTheme.changed, object: nil)
+        meter = LevelMeter.shared.$level.sink { [weak self] level in self?.show(CGFloat(level)) }
+    }
+    required init?(coder: NSCoder) { fatalError("init(coder:) is not used") }
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
+
+    @objc private func recolor() { for b in bars { b.backgroundColor = NSColor(JT.lavender).cgColor } }
+
+    private func show(_ level: CGFloat) {
+        CATransaction.begin(); CATransaction.setAnimationDuration(0.12)
+        for (n, b) in bars.enumerated() {
+            let wobble = level > 0 ? 0.08 * CGFloat((n * 7 + Int(level * 40)) % 3) : 0
+            let h = max(3, height * min(1, level * Self.weights[n] * 1.25 + wobble))
+            b.setAffineTransform(CGAffineTransform(scaleX: 1, y: h / height))
+        }
+        CATransaction.commit()
     }
 }
 
@@ -579,6 +615,7 @@ struct PlayerScreen: View {
                     .frame(width: hole, height: hole).padding(4).drawingGroup().scaleEffect(wave.scale).opacity(wave.alpha).blur(radius: 1.5)
                     .position(x: cx, y: cy).allowsHitTesting(false)
                 BlackHole(palette: palette, size: hole).frame(width: hole * 2.6, height: hole * 2.6).position(x: cx, y: cy)
+                IconSwirl(size: hole).frame(width: hole * 3.4, height: hole * 3.4).position(x: cx, y: cy)
                 PlayerClock(size: hole * 0.34, glow: palette.a).position(x: cx, y: cy - hole * 0.62)
                 let words = min(w * 0.42, 460) // starts just right of the cover card
                 KaraokeLine(glow: palette.a).frame(width: words).position(x: cx - hole * 0.08 + words / 2, y: cy + hole * 0.24)
@@ -786,6 +823,30 @@ final class SpaceMotionView: NSView {
             star.add(beat, forKey: "twinkle")
             root.addSublayer(star)
         }
+        // faint doodles drifting slowly across the sky: hearts, butterflies, stickers, 999s, a planet
+        let doodles = ["jt-heart", "jt-fly", "jt-sparkles", "jt-sticker1", "jt-sticker2", "jt-sticker3", "jt-sticker4", "jt-sticker5",
+                       "jt-sticker6", "jt-era-999", "jt-planet", "jt-era-vinyl", "jt-era-mic", "jt-era-party", "jt-fly", "jt-heart", "jt-sparkles", "jt-era-globe"]
+        for (k, name) in doodles.enumerated() {
+            guard let image = NSImage(named: name) else { continue }
+            let side = 28 + next() * 46
+            let bit = CALayer()
+            bit.bounds = CGRect(x: 0, y: 0, width: side, height: side)
+            bit.contents = image; bit.contentsGravity = .resizeAspect
+            bit.position = CGPoint(x: next() * bounds.width, y: next() * bounds.height)
+            bit.opacity = Float(0.1 + next() * 0.16)
+            let drift = CABasicAnimation(keyPath: "position")
+            drift.fromValue = NSValue(point: bit.position)
+            drift.toValue = NSValue(point: CGPoint(x: bit.position.x + (next() - 0.5) * 240, y: bit.position.y + (next() - 0.5) * 160))
+            drift.duration = 30 + Double(next()) * 40; drift.autoreverses = true; drift.repeatCount = .infinity
+            drift.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+            let turn = CABasicAnimation(keyPath: "transform.rotation.z")
+            turn.fromValue = -0.4; turn.toValue = 0.4
+            turn.duration = 14 + Double(next()) * 16; turn.autoreverses = true; turn.repeatCount = .infinity
+            turn.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+            turn.beginTime = CACurrentMediaTime() - Double(k) * 3
+            bit.add(drift, forKey: "drift"); bit.add(turn, forKey: "turn")
+            root.insertSublayer(bit, at: 0) // behind the twinkling stars
+        }
     }
 
     /// A streak across the sky, from upper right toward lower left.
@@ -814,6 +875,82 @@ final class SpaceMotionView: NSView {
         streak.add(flight, forKey: "flight")
         root.addSublayer(streak)
         CATransaction.commit()
+    }
+}
+
+/// Little icons (hearts, 999s, butterflies, stickers) circling the hole on tilted orbits that pass around it, never
+/// across it. They speed up with the music: the louder the beat, the faster they swirl.
+private struct IconSwirl: NSViewRepresentable {
+    let size: CGFloat
+    func makeNSView(context: Context) -> IconSwirlView { IconSwirlView() }
+    func updateNSView(_ view: IconSwirlView, context: Context) { view.show(size: size) }
+}
+
+final class IconSwirlView: NSView {
+    private var size: CGFloat = 0
+    private let swarm = CALayer()      // holds the icons; its speed follows the music
+    private var pace: CGFloat = 1
+    private var pauser: PausesInBackground?
+    private var meter: AnyCancellable?
+    private static let art = ["jt-heart", "jt-era-999", "jt-fly", "jt-sparkles", "jt-sticker1", "jt-sticker2", "jt-sticker3", "jt-sticker4",
+                              "jt-sticker5", "jt-sticker6", "jt-era-halo", "jt-era-race", "jt-era-demon", "jt-era-globe", "jt-planet", "jt-heart"]
+
+    override init(frame: NSRect) {
+        super.init(frame: frame)
+        wantsLayer = true
+        layer?.addSublayer(swarm)
+        if let layer { pauser = PausesInBackground(layer) }
+        meter = LevelMeter.shared.$level.sink { [weak self] level in self?.beat(CGFloat(level)) }
+    }
+    required init?(coder: NSCoder) { fatalError("init(coder:) is not used") }
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
+    override func layout() { super.layout(); if size > 0, swarm.sublayers?.isEmpty ?? true { build() } }
+
+    func show(size: CGFloat) { guard size != self.size else { return }; self.size = size; build() }
+
+    /// Louder means faster: the swarm's clock runs up to four times as fast on a strong beat, easing back between.
+    private func beat(_ level: CGFloat) {
+        let target = 1 + level * 3
+        let next = pace + (target - pace) * (target > pace ? 0.5 : 0.12) // quick to jump, slow to settle
+        guard abs(next - pace) > 0.01, let parent = swarm.superlayer else { return }
+        pace = next
+        // change speed without a jump: carry on from where the swarm's clock is now
+        let now = parent.convertTime(CACurrentMediaTime(), from: nil)
+        let local = swarm.convertTime(CACurrentMediaTime(), from: nil)
+        swarm.beginTime = now; swarm.timeOffset = local; swarm.speed = Float(pace)
+    }
+
+    private func build() {
+        guard bounds.width > 0, size > 0 else { return }
+        swarm.frame = bounds
+        swarm.sublayers?.forEach { $0.removeFromSuperlayer() }
+        let c = CGPoint(x: bounds.midX, y: bounds.midY)
+        var seed: UInt64 = 999
+        func next() -> CGFloat { seed = seed &* 6364136223846793005 &+ 1442695040888963407; return CGFloat(Double(seed >> 11) / Double(UInt64(1) << 53)) }
+        for (k, name) in Self.art.enumerated() {
+            guard let image = NSImage(named: name) else { continue }
+            let side = 20 + next() * 20
+            let icon = CALayer()
+            icon.bounds = CGRect(x: 0, y: 0, width: side, height: side)
+            icon.contents = image; icon.contentsGravity = .resizeAspect
+            icon.opacity = Float(0.7 + next() * 0.3)
+            icon.shadowColor = NSColor.white.cgColor; icon.shadowRadius = 5; icon.shadowOpacity = 0.5; icon.shadowOffset = .zero
+            // an orbit at least 0.6 of the hole's size away from the middle, so it passes around the hole
+            let rx = size * (0.85 + next() * 0.65), ry = size * (0.6 + next() * 0.22)
+            let orbit = CGMutablePath()
+            orbit.addEllipse(in: CGRect(x: -rx, y: -ry, width: rx * 2, height: ry * 2),
+                             // mirrored, a third of them go the other way round
+                             transform: CGAffineTransform(translationX: c.x, y: c.y).rotated(by: (next() - 0.5) * 0.4).scaledBy(x: k % 3 == 0 ? -1 : 1, y: 1))
+            let go = CAKeyframeAnimation(keyPath: "position")
+            go.path = orbit
+            go.duration = 26 + Double(next()) * 30; go.repeatCount = .infinity; go.calculationMode = .paced
+            go.timeOffset = Double(next()) * go.duration // spread around the orbit
+            let twirl = CABasicAnimation(keyPath: "transform.rotation.z")
+            twirl.fromValue = 0; twirl.toValue = (k % 2 == 0 ? 1 : -1) * 2 * Double.pi
+            twirl.duration = 9 + Double(next()) * 9; twirl.repeatCount = .infinity
+            icon.add(go, forKey: "orbit"); icon.add(twirl, forKey: "twirl")
+            swarm.addSublayer(icon)
+        }
     }
 }
 
