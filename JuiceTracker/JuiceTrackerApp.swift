@@ -22,6 +22,8 @@ struct JuiceTrackerApp: App {
                         .keyboardShortcut("1", modifiers: .command)
                     Button("Mini Player") { MiniPlayer.show() }
                         .keyboardShortcut("3", modifiers: .command)
+                    Button("Stream Window (Portrait)") { StreamWindows.show(portrait: true) }
+                    Button("Stream Window (Landscape)") { StreamWindows.show(portrait: false) }
                 }
                 CommandGroup(replacing: .help) {
                     Button("Open juicewrldapi.com") {

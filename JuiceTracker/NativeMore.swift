@@ -85,7 +85,7 @@ struct SongExtras {
         NotificationCenter.default.addObserver(forName: AmbientPlayer.changed, object: nil, queue: .main) { [weak self] _ in
             Task { @MainActor in await self?.refresh() }
         }
-        for name in [NSApplication.didBecomeActiveNotification, NSApplication.didResignActiveNotification] {
+        for name in [NSApplication.didBecomeActiveNotification, NSApplication.didResignActiveNotification, StreamWindows.changed] {
             NotificationCenter.default.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in Task { @MainActor in self?.tickWhenNeeded() } }
         }
     }
@@ -115,7 +115,7 @@ struct SongExtras {
 
     /// Ticks (lyrics line, loudness) only while music plays and the app is in front: nothing to see otherwise.
     private func tickWhenNeeded() {
-        let needed = AmbientPlayer.shared.isPlaying && NSApp.isActive
+        let needed = AmbientPlayer.shared.isPlaying && (NSApp.isActive || StreamWindows.open) // a stream shows the lyrics and the beat
         if needed, timer == nil {
             timer = Timer.scheduledTimer(withTimeInterval: 1.0 / 15, repeats: true) { [weak self] _ in Task { @MainActor in self?.tick() } }
         } else if !needed {
@@ -591,6 +591,8 @@ import WidgetKit
 /// at the left and a control bar at the bottom. Your songs open from the search button. All drawn in code.
 struct PlayerScreen: View {
     let songs: [Song]
+    /// For a stream window: just the picture (no queue, buttons or song list), laid out for the window's shape.
+    var stream = false
     @State private var version = 0 // bumps when the player or the song changes; the small parts redraw from it
     @State private var browsing = false
     @State private var query = ""
@@ -607,8 +609,10 @@ struct PlayerScreen: View {
         let eras = mine.reduce(into: [String]()) { if !$0.contains($1.e) { $0.append($1.e) } }
         GeometryReader { g in
             let w = g.size.width, h = g.size.height
-            let hole = max(160, min(w * 0.34, h * 0.4, 360))
-            let cx = w / 2, cy = h * 0.44
+            let portrait = stream && h > w
+            // portrait: the hole high and wide, the lyrics under it, the cover at the bottom
+            let hole = portrait ? min(w * 0.6, h * 0.32) : stream ? min(w * 0.3, h * 0.46) : max(160, min(w * 0.34, h * 0.4, 360))
+            let cx = w / 2, cy = portrait ? h * 0.36 : h * 0.44
             ZStack {
                 SpaceMotion()
                 Circle().stroke(AngularGradient(colors: [palette.a, palette.b, palette.c, palette.a], center: .center), lineWidth: 3)
@@ -617,9 +621,18 @@ struct PlayerScreen: View {
                 BlackHole(palette: palette, size: hole).frame(width: hole * 2.6, height: hole * 2.6).position(x: cx, y: cy)
                 IconSwirl(size: hole).frame(width: hole * 3.4, height: hole * 3.4).position(x: cx, y: cy)
                 PlayerClock(size: hole * 0.34, glow: palette.a).position(x: cx, y: cy - hole * 0.62)
-                let words = min(w * 0.42, 460) // starts just right of the cover card
-                KaraokeLine(glow: palette.a).frame(width: words).position(x: cx - hole * 0.08 + words / 2, y: cy + hole * 0.24)
-                CoverCard(version: version).frame(width: hole * 0.44).position(x: cx - hole * 0.36, y: cy + hole * 0.36)
+                if portrait {
+                    KaraokeLine(glow: palette.a, centered: true, size: max(22, w * 0.06)).frame(width: w * 0.86).position(x: cx, y: cy + hole * 0.84)
+                    CoverCard(version: version).frame(width: w * 0.26).position(x: cx, y: h * 0.85)
+                } else {
+                    let words = min(w * 0.42, 460) // starts just right of the cover card
+                    KaraokeLine(glow: palette.a).frame(width: words).position(x: cx - hole * 0.08 + words / 2, y: cy + hole * 0.24)
+                    CoverCard(version: version).frame(width: hole * 0.44).position(x: cx - hole * 0.36, y: cy + hole * 0.36)
+                }
+                if stream {
+                    Text("Juice Tracker").font(JT.marker(portrait ? 15 : 13)).foregroundColor(.white.opacity(0.35))
+                        .position(x: portrait ? cx : w - 70, y: h - 22)
+                } else {
                 QueuePanel(version: version).frame(width: 230).position(x: max(135, cx - hole * 1.3), y: cy)
                 VStack(alignment: .trailing, spacing: 10) {
                     Button { browsing.toggle() } label: {
@@ -627,9 +640,20 @@ struct PlayerScreen: View {
                             .background(Circle().fill(Color.white.opacity(0.1))).overlay(Circle().stroke(Color.white.opacity(0.2)))
                     }
                     .buttonStyle(.plain).help(browsing ? "Close your songs" : "Your songs").accessibilityLabel(browsing ? "Close your songs" : "Your songs")
+                    Menu {
+                        Button("Portrait window (9:16, phones)") { StreamWindows.show(portrait: true) }
+                        Button("Landscape window (16:9)") { StreamWindows.show(portrait: false) }
+                        Button("Both") { StreamWindows.show(portrait: true); StreamWindows.show(portrait: false) }
+                    } label: {
+                        Image(systemName: "dot.radiowaves.left.and.right").frame(width: 30, height: 30)
+                            .background(Circle().fill(Color.white.opacity(0.1))).overlay(Circle().stroke(Color.white.opacity(0.2)))
+                    }
+                    .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
+                    .help("Stream: a clean window of the player to capture in TikTok LIVE Studio or OBS").accessibilityLabel("Stream windows")
                     ControlBar(eras: eras, version: version, palette: palette)
                 }
                 .frame(width: min(w - 40, 760)).position(x: cx, y: h - 58)
+                }
                 if mine.isEmpty {
                     Text("Songs you have that this Mac can play show up here.").foregroundColor(JT.muted).position(x: cx, y: cy)
                 } else if browsing {
@@ -746,12 +770,16 @@ private final class PausesInBackground {
         tokens = [
             nc.addObserver(forName: NSApplication.didResignActiveNotification, object: nil, queue: .main) { [weak self] _ in self?.pause() },
             nc.addObserver(forName: NSApplication.didBecomeActiveNotification, object: nil, queue: .main) { [weak self] _ in self?.resume() },
+            // a stream window open: keep moving even in the background; closed: pause again if the app isn't in front
+            nc.addObserver(forName: StreamWindows.changed, object: nil, queue: .main) { [weak self] _ in
+                MainActor.assumeIsolated { if StreamWindows.open || NSApp.isActive { self?.resume() } else { self?.pause() } }
+            },
         ]
         if !NSApp.isActive { pause() }
     }
     deinit { tokens.forEach(NotificationCenter.default.removeObserver) }
     private func pause() {
-        guard let l = layer, l.speed != 0 else { return }
+        guard MainActor.assumeIsolated({ !StreamWindows.open }), let l = layer, l.speed != 0 else { return }
         l.timeOffset = l.convertTime(CACurrentMediaTime(), from: nil)
         l.speed = 0
     }
@@ -954,6 +982,55 @@ final class IconSwirlView: NSView {
     }
 }
 
+/// Stream windows: the Player tab's picture alone, sized for a phone (9:16) or a screen (16:9), to capture with TikTok
+/// LIVE Studio or OBS. While one is open the motion and lyrics keep going with the app in the background (streaming
+/// software is in front), and App Nap is held off.
+@MainActor enum StreamWindows {
+    static let changed = Notification.Name("StreamWindowsChanged")
+    private static var windows: [Bool: NSWindow] = [:]
+    private static var activity: NSObjectProtocol?
+    private final class Closer: NSObject, NSWindowDelegate {
+        let portrait: Bool
+        init(_ portrait: Bool) { self.portrait = portrait }
+        func windowWillClose(_ notification: Notification) { Task { @MainActor in StreamWindows.closed(portrait) } }
+    }
+    private static var closers: [Bool: Closer] = [:]
+    static var open: Bool { !windows.isEmpty }
+
+    static func show(portrait: Bool) {
+        if let w = windows[portrait] { w.makeKeyAndOrderFront(nil); return }
+        let size = portrait ? NSSize(width: 540, height: 960) : NSSize(width: 960, height: 540)
+        let w = NSWindow(contentRect: NSRect(origin: .zero, size: size), styleMask: [.titled, .closable, .resizable, .miniaturizable], backing: .buffered, defer: false)
+        w.title = portrait ? "Juice Tracker Stream (portrait)" : "Juice Tracker Stream (landscape)"
+        w.contentAspectRatio = size // stays 9:16 or 16:9 when resized
+        w.isReleasedWhenClosed = false
+        w.backgroundColor = .black
+        w.contentView = NSHostingView(rootView: StreamRoot())
+        if !w.setFrameUsingName(w.title) { w.center() }
+        w.setFrameAutosaveName(w.title)
+        let closer = Closer(portrait); closers[portrait] = closer; w.delegate = closer
+        windows[portrait] = w
+        w.makeKeyAndOrderFront(nil)
+        if activity == nil { activity = ProcessInfo.processInfo.beginActivity(options: [.userInitiated, .idleDisplaySleepDisabled], reason: "Streaming the player") }
+        NotificationCenter.default.post(name: changed, object: nil)
+    }
+    private static func closed(_ portrait: Bool) {
+        windows[portrait] = nil; closers[portrait] = nil
+        if windows.isEmpty, let a = activity { ProcessInfo.processInfo.endActivity(a); activity = nil }
+        NotificationCenter.default.post(name: changed, object: nil)
+    }
+}
+
+/// A stream window's content: the player's picture, following the library.
+private struct StreamRoot: View {
+    @ObservedObject private var store = NativeStore.shared
+    var body: some View {
+        PlayerScreen(songs: store.songs, stream: true)
+            .font(JT.body(15)).foregroundColor(JT.mist).preferredColorScheme(.dark)
+            .frame(minWidth: 270, minHeight: 270)
+    }
+}
+
 /// The ringed black hole: a glowing disc in the song's colors, slowly turning (its inner sparks faster), passing
 /// behind the hole at the top and in front of it at the bottom; the side turning toward you is brighter; the ring
 /// hugging the hole swells with the music.
@@ -1151,6 +1228,8 @@ private struct PlayerClock: View {
 /// The line being sung, its words lighting up as the song gets to them. Shown live from the site, never saved.
 private struct KaraokeLine: View {
     let glow: Color
+    var centered = false
+    var size: CGFloat = 30
     @ObservedObject private var now = NowPlaying.shared
     var body: some View {
         let p = AmbientPlayer.shared
@@ -1168,10 +1247,11 @@ private struct KaraokeLine: View {
                 Text("Press play").foregroundColor(.white.opacity(0.5))
             }
         }
-        .font(JT.body(30, .heavy))
+        .font(JT.body(size, .heavy))
         .lineLimit(3)
+        .multilineTextAlignment(centered ? .center : .leading)
         .shadow(color: .black.opacity(0.7), radius: 8)
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .frame(maxWidth: .infinity, alignment: centered ? .center : .leading)
         .animation(.easeOut(duration: 0.3), value: now.lineIndex)
         .allowsHitTesting(false)
     }
