@@ -524,3 +524,226 @@ import WidgetKit
         WidgetCenter.shared.reloadAllTimelines()
     }
 }
+
+// MARK: - Player tab
+
+/// The Player tab: what's playing (cover, era, seek, controls, the lyrics line by line), Up next (reorder, remove),
+/// and your playable songs by era to play now, next, or a whole era in order or shuffled.
+struct PlayerScreen: View {
+    let songs: [Song]
+    @State private var query = ""
+    @State private var era = ""
+    @State private var version = 0 // bumps when the player changes, to redraw Up next and the buttons
+    private let changed = NotificationCenter.default.publisher(for: AmbientPlayer.changed)
+
+    var body: some View {
+        let library = EngineLibrary.shared
+        let mine = songs.filter { $0.o && library.playableURL($0.i) != nil }
+        let eras = mine.reduce(into: [String]()) { if !$0.contains($1.e) { $0.append($1.e) } }
+        VStack(alignment: .leading, spacing: 16) {
+            ScreenTitle(text: "Player")
+            if mine.isEmpty {
+                Text("Songs you have that this Mac can play show up here.").foregroundColor(JT.muted)
+            } else {
+                HStack(alignment: .top, spacing: 24) {
+                    VStack(alignment: .leading, spacing: 14) {
+                        NowCard(eras: eras, version: version)
+                        PlayerLyrics()
+                    }
+                    .frame(width: JT.compact ? 300 : 360)
+                    VStack(alignment: .leading, spacing: 14) {
+                        UpNextList(version: version)
+                        SongPicker(songs: mine, eras: eras, query: $query, era: $era)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .topLeading)
+                }
+            }
+        }
+        .padding(.horizontal, JT.compact ? 18 : 34).padding(.top, JT.compact ? 20 : 40).padding(.bottom, 30)
+        .frame(maxWidth: 1180, maxHeight: .infinity, alignment: .topLeading)
+        .onReceive(changed) { _ in version += 1 }
+    }
+}
+
+/// The cover, song, era and the controls.
+private struct NowCard: View {
+    let eras: [String]
+    let version: Int
+    @ObservedObject private var now = NowPlaying.shared
+    @State private var volume = EngineAmbient.volume
+
+    var body: some View {
+        let p = AmbientPlayer.shared
+        VStack(alignment: .leading, spacing: 12) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 18).fill(JT.raise)
+                if let art = p.coverImage { Image(nsImage: art).resizable().scaledToFill() }
+                else { Image("jt-logo").resizable().scaledToFit().padding(60).opacity(0.8) }
+            }
+            .frame(maxWidth: .infinity).aspectRatio(1, contentMode: .fit)
+            .clipShape(RoundedRectangle(cornerRadius: 18))
+            .doodled(18)
+            .shadow(color: JT.lavender.opacity(p.isPlaying ? 0.35 : 0), radius: 24)
+            HStack(alignment: .top) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(p.title ?? "Nothing playing").font(JT.marker(24)).lineLimit(2)
+                    Text(now.song.map { $0.e } ?? (p.title == nil ? "Press play for a shuffle of your songs" : "")).foregroundColor(JT.muted).lineLimit(1)
+                }
+                Spacer()
+                if p.isPlaying { Visualizer(height: 22).frame(width: 26) }
+            }
+            if p.title != nil { SeekBar() }
+            HStack(spacing: 14) {
+                Button {
+                    if p.title == nil { EngineAmbient.setOn(true); p.resume() } else { p.togglePause() }
+                } label: { Image(systemName: p.isPlaying ? "pause.circle.fill" : "play.circle.fill").font(.system(size: 40)).foregroundColor(JT.lavender) }
+                .buttonStyle(.plain).help(p.isPlaying ? "Pause" : "Play").accessibilityLabel(p.isPlaying ? "Pause" : "Play")
+                Button { p.skip() } label: { Image(systemName: "forward.fill").font(.system(size: 20)) }
+                    .buttonStyle(.plain).help("Next song").accessibilityLabel("Next song")
+                Image(systemName: "speaker.wave.1").foregroundColor(JT.muted)
+                Slider(value: $volume, in: 0...100) { editing in if !editing { p.volume = Float(volume / 100); EngineAmbient.volume = volume } }
+                    .controlSize(.small).accessibilityLabel("Volume")
+                SleepMenu()
+                Button { LyricsWindow.show() } label: { Image(systemName: "quote.bubble") }.buttonStyle(.borderless).help("Big lyrics window").accessibilityLabel("Lyrics window")
+                Button { MiniPlayer.show() } label: { Image(systemName: "pip.enter") }.buttonStyle(.borderless).help("Mini player (⌘3)").accessibilityLabel("Mini player")
+            }
+            HStack {
+                Menu(eras.contains(EngineAmbient.era) ? "Shuffle: \(EngineAmbient.era)" : "Shuffle: all eras") {
+                    Button("All eras") { EngineAmbient.setEra("") }
+                    Divider()
+                    ForEach(eras, id: \.self) { e in Button(e) { EngineAmbient.setEra(e) } }
+                }
+                .controlSize(.small).fixedSize()
+                Toggle("In recording order", isOn: Binding(get: { EngineAmbient.inOrder }, set: { EngineAmbient.setInOrder($0) }))
+                    .controlSize(.small).help("Era radio: play the picked era in the order it was recorded")
+            }
+        }
+        .padding(16).doodled(16)
+        .onAppear { volume = Double(p.volume * 100) }
+    }
+}
+
+/// The lyrics of the song playing, following the music when the site has timed lyrics. Shown live, never saved.
+private struct PlayerLyrics: View {
+    @ObservedObject private var now = NowPlaying.shared
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Lyrics").font(JT.body(15, .semibold))
+            if let x = now.extras, !x.synced.isEmpty {
+                let n = now.lineIndex ?? -1
+                VStack(alignment: .leading, spacing: 8) {
+                    ForEach(max(0, n - 1)...min(x.synced.count - 1, max(n, 0) + 4), id: \.self) { k in
+                        Text(x.synced[k].line.isEmpty ? "♪" : x.synced[k].line)
+                            .font(k == n ? JT.body(17, .semibold) : JT.body(14))
+                            .foregroundColor(k == n ? JT.mist : JT.muted.opacity(k < n ? 0.4 : 0.75))
+                    }
+                }
+                .animation(.easeOut(duration: 0.25), value: n)
+            } else if let x = now.extras, !x.lyrics.isEmpty {
+                ScrollView { Text(x.lyrics).font(JT.body(14)).foregroundColor(JT.muted).frame(maxWidth: .infinity, alignment: .leading) }.frame(maxHeight: 220)
+            } else {
+                Text(now.song == nil ? "Lyrics show here while a song plays." : "The site has no lyrics for this song.").font(JT.body(13)).foregroundColor(JT.muted)
+            }
+        }
+        .padding(16).frame(maxWidth: .infinity, alignment: .leading).doodled(16, seed: 2)
+    }
+}
+
+/// Songs you picked to play next, in order.
+private struct UpNextList: View {
+    let version: Int
+    var body: some View {
+        let p = AmbientPlayer.shared, list = p.upNext
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                Text("Up next").font(JT.body(15, .semibold))
+                Spacer()
+                if !list.isEmpty { Button("Clear") { p.clearUpNext() }.buttonStyle(.borderless) }
+            }
+            if list.isEmpty {
+                Text("Nothing picked. After this song comes \(EngineAmbient.era.isEmpty ? "the shuffle" : EngineAmbient.inOrder ? "the next \(EngineAmbient.era) song" : "a shuffle of \(EngineAmbient.era)"). Use + on a song to play it next.")
+                    .font(JT.body(13)).foregroundColor(JT.muted)
+            }
+            ForEach(Array(list.enumerated()), id: \.offset) { k, item in
+                HStack(spacing: 8) {
+                    Text("\(k + 1)").foregroundColor(JT.muted).monospacedDigit().frame(width: 20, alignment: .trailing)
+                    Text(item.title).lineLimit(1)
+                    Spacer()
+                    Button { p.moveUpNext(from: [k], to: k - 1) } label: { Image(systemName: "chevron.up") }.buttonStyle(.borderless).disabled(k == 0).accessibilityLabel("Move \(item.title) up")
+                    Button { p.moveUpNext(from: [k], to: k + 2) } label: { Image(systemName: "chevron.down") }.buttonStyle(.borderless).disabled(k == list.count - 1).accessibilityLabel("Move \(item.title) down")
+                    Button { p.removeUpNext(at: k) } label: { Image(systemName: "xmark") }.buttonStyle(.borderless).accessibilityLabel("Remove \(item.title)")
+                }
+                .padding(.vertical, 3)
+            }
+        }
+        .padding(16).doodled(16, seed: 3)
+    }
+}
+
+/// Plays a song now; the mix (shuffle or era radio) carries on after it.
+@MainActor private func playNow(_ s: Song) {
+    guard let url = EngineLibrary.shared.playableURL(s.i) else { return }
+    if !EngineAmbient.on { EngineAmbient.setOn(true) } // hands the player the mix to carry on with
+    AmbientPlayer.shared.playNow(url, title: s.n)
+}
+
+/// Your playable songs, by era, with search.
+private struct SongPicker: View {
+    let songs: [Song]
+    let eras: [String]
+    @Binding var query: String
+    @Binding var era: String
+    @ObservedObject private var playing = PlayingRow.shared
+
+    var body: some View {
+        let q = query.trimmingCharacters(in: .whitespaces).lowercased()
+        let shown = songs.filter { (era.isEmpty || $0.e == era) && (q.isEmpty || $0.n.lowercased().contains(q)) }
+        let catalog = EngineState.shared.catalog
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 10) {
+                Text("Your songs").font(JT.body(15, .semibold))
+                Text("\(shown.count)").foregroundColor(JT.muted)
+                Spacer()
+                TextField("Search", text: $query).textFieldStyle(.roundedBorder).frame(width: 180)
+                Picker("", selection: $era) {
+                    Text("All eras").tag("")
+                    ForEach(eras, id: \.self) { Text($0).tag($0) }
+                }
+                .labelsHidden().fixedSize()
+            }
+            if !era.isEmpty {
+                HStack(spacing: 10) {
+                    Button { playInOrder(shown.sorted { (Engine.recordMonth(catalog[$0.i].recordDates) ?? Int.max, $0.n) < (Engine.recordMonth(catalog[$1.i].recordDates) ?? Int.max, $1.n) }.map(\.i)) } label: {
+                        Label("Play \(era) in order", systemImage: "play.fill")
+                    }
+                    Button { EngineAmbient.setEra(era) } label: { Label("Shuffle \(era)", systemImage: "shuffle") }
+                }
+                .controlSize(.small)
+            }
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: 0) {
+                    ForEach(shown) { s in
+                        HStack(spacing: 10) {
+                            if playing.index == s.i { Visualizer(height: 14).frame(width: 20) } else { Image(systemName: "music.note").foregroundColor(JT.muted).frame(width: 20) }
+                            VStack(alignment: .leading, spacing: 1) {
+                                Text(s.n).lineLimit(1).foregroundColor(playing.index == s.i ? JT.lavender : JT.mist)
+                                if era.isEmpty { Text(s.e).font(JT.body(12)).foregroundColor(JT.muted).lineLimit(1) }
+                            }
+                            Spacer()
+                            Button { playNow(s) } label: { Image(systemName: "play.fill") }
+                                .buttonStyle(.borderless).help("Play now").accessibilityLabel("Play \(s.n)")
+                            Button { if let url = EngineLibrary.shared.playableURL(s.i) { AmbientPlayer.shared.queueNext(url, title: s.n) } } label: { Image(systemName: "text.badge.plus") }
+                                .buttonStyle(.borderless).help("Play next").accessibilityLabel("Play \(s.n) next")
+                        }
+                        .padding(.vertical, 6).padding(.horizontal, 8)
+                        .contentShape(Rectangle())
+                        .onTapGesture(count: 2) { playNow(s) }
+                        Divider().opacity(0.3)
+                    }
+                }
+            }
+            .frame(minHeight: 300)
+        }
+        .padding(16).doodled(16, seed: 4)
+    }
+}
