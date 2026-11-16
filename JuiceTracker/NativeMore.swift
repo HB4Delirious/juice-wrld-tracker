@@ -986,7 +986,7 @@ final class IconSwirlView: NSView {
 /// LIVE Studio or OBS. While one is open the motion and lyrics keep going with the app in the background (streaming
 /// software is in front), and App Nap is held off.
 @MainActor enum StreamWindows {
-    static let changed = Notification.Name("StreamWindowsChanged")
+    nonisolated static let changed = Notification.Name("StreamWindowsChanged")
     private static var windows: [Bool: NSWindow] = [:]
     private static var activity: NSObjectProtocol?
     private final class Closer: NSObject, NSWindowDelegate {
