@@ -116,8 +116,7 @@ final class RTMPPublisher: @unchecked Sendable {
     func connect() async throws {
         try await open()
         // handshake: C0+C1, read S0+S1+S2, answer with C2 (= S1)
-        var c1 = Data(count: 1536)
-        c1.withUnsafeMutableBytes { p in for k in 8..<1536 { p[k] = UInt8.random(in: 0...255) } }
+        let c1 = Data([UInt8](repeating: 0, count: 8) + (8..<1536).map { _ in UInt8.random(in: 0...255) }) // time, zero, random
         try await write(Data([3]) + c1)
         let s = try await read(1 + 1536 + 1536)
         guard s.first == 3 else { throw LiveError("The server didn't answer like an RTMP server.") }
@@ -370,7 +369,7 @@ final class LiveVideoEncoder: @unchecked Sendable {
         }
         guard sentConfig, let block = CMSampleBufferGetDataBuffer(sample) else { return }
         var bytes = Data(count: CMBlockBufferGetDataLength(block))
-        bytes.withUnsafeMutableBytes { p in _ = CMBlockBufferCopyDataBytes(block, atOffset: 0, dataLength: p.count, destination: p.baseAddress!) }
+        bytes.withUnsafeMutableBytes { (p: UnsafeMutableRawBufferPointer) in _ = CMBlockBufferCopyDataBytes(block, atOffset: 0, dataLength: p.count, destination: p.baseAddress!) }
         onFrame?(Data([key ? 0x17 : 0x27, 1, 0, 0, 0]) + bytes, pts) // NAL units, already length-prefixed (AVCC)
     }
 
