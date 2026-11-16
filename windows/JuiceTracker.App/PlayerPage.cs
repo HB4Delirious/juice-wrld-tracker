@@ -47,6 +47,8 @@ public sealed class PlayerPage : Grid, IRefresh
     readonly ComboBox eraPick = new() { MinWidth = 140 };
     readonly StackPanel eraButtons = new() { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 8, 0, 0) };
     readonly DispatcherTimer minute = new() { Interval = TimeSpan.FromSeconds(10) };
+    readonly TextBlock liveBadge = new() { FontSize = 12, FontWeight = FontWeights.Bold, Foreground = Brushes.White, Padding = new Thickness(12, 6, 12, 6), TextWrapping = TextWrapping.Wrap, MaxWidth = 360 };
+    readonly Border liveBox = new() { CornerRadius = new CornerRadius(14), Visibility = Visibility.Collapsed };
     readonly TextBlock mark = new() { FontFamily = JT.Marker, Foreground = JT.Brush(Color.FromArgb(89, 255, 255, 255)), IsHitTestVisible = false }; // the stream's small credit
     readonly DispatcherTimer shooter = new() { Interval = TimeSpan.FromSeconds(6.5) };
     readonly DispatcherTimer listen = new() { Interval = TimeSpan.FromMilliseconds(80) };
@@ -146,6 +148,9 @@ public sealed class PlayerPage : Grid, IRefresh
         {
             var m = new ContextMenu { PlacementTarget = streamButton, Placement = PlacementMode.Top };
             void Item(string label, Action act) { var i = new MenuItem { Header = label }; i.Click += (_, _) => act(); m.Items.Add(i); }
+            if (LiveStream.Shared.IsOn) Item("Stop the live stream", LiveStream.Shared.Stop);
+            else { Item("Go live on TikTok, portrait (9:16)", () => LiveStream.Shared.Start(true)); Item("Go live on TikTok, landscape (16:9)", () => LiveStream.Shared.Start(false)); }
+            m.Items.Add(new Separator());
             Item("Portrait window (9:16, phones)", () => StreamWindow.Show(true));
             Item("Landscape window (16:9)", () => StreamWindow.Show(false));
             Item("Both", () => { StreamWindow.Show(true); StreamWindow.Show(false); });
@@ -168,6 +173,16 @@ public sealed class PlayerPage : Grid, IRefresh
                                   BorderBrush = JT.Brush(Color.FromArgb(46, 255, 255, 255)), BorderThickness = new Thickness(1), Child = panel, Visibility = Visibility.Collapsed };
         stage.Children.Add(songsPanel);
         stage.Children.Add(empty);
+        if (!stream)
+        {
+            liveBox.Child = liveBadge; stage.Children.Add(liveBox);
+            liveBox.MouseLeftButtonUp += (_, _) => { if (LiveStream.Shared.State == LiveStream.Phase.Failed) LiveStream.Shared.Stop(); };
+            var second = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
+            second.Tick += (_, _) => ShowLive();
+            LiveStream.Shared.Changed += ShowLive;
+            Loaded += (_, _) => { second.Start(); ShowLive(); };
+            Unloaded += (_, _) => { second.Stop(); LiveStream.Shared.Changed -= ShowLive; };
+        }
         if (stream)
         {
             foreach (var b in stage.Children.OfType<Border>().Where(b => b == queueBox || b == bar || b == songsPanel || b.Tag is "search" or "stream").ToList()) b.Visibility = Visibility.Collapsed;
@@ -399,6 +414,22 @@ public sealed class PlayerPage : Grid, IRefresh
         Spin(IsLoaded);
     }
     static void At(UIElement e, double x, double y) { Canvas.SetLeft(e, x); Canvas.SetTop(e, y); }
+
+    /// LIVE with the time on air, connecting, or why it stopped (click to dismiss).
+    void ShowLive()
+    {
+        var live = LiveStream.Shared;
+        if (live.State == LiveStream.Phase.Off) { liveBox.Visibility = Visibility.Collapsed; return; }
+        liveBox.Visibility = Visibility.Visible;
+        var on = DateTime.Now - live.Since;
+        (liveBadge.Text, liveBox.Background) = live.State switch
+        {
+            LiveStream.Phase.Live => ($"● LIVE  {(int)on.TotalMinutes}:{on.Seconds:00}", JT.Brush(Color.FromArgb(217, 220, 38, 38))),
+            LiveStream.Phase.Failed => (live.Note, JT.Brush(Color.FromArgb(217, 90, 90, 90))),
+            _ => (live.Note, JT.Brush(Color.FromArgb(217, 230, 140, 30))),
+        };
+        if (stage.ActualWidth > 0) At(liveBox, stage.ActualWidth - Math.Min(380, liveBox.ActualWidth + 20) - 20, 18);
+    }
 
     void Clock()
     {
@@ -755,11 +786,14 @@ public sealed class StreamWindow : Window
 {
     static readonly Dictionary<bool, StreamWindow> open = [];
     readonly bool portrait;
+    PlayerPage? page;
+    /// The picture a live stream draws from.
+    public static PlayerPage? PictureOf(bool portrait) => open.TryGetValue(portrait, out var w) ? w.page : null;
     public static void Show(bool portrait)
     {
         if (open.TryGetValue(portrait, out var w)) { w.Activate(); return; }
         w = new StreamWindow(portrait); open[portrait] = w;
-        w.Closed += (_, _) => open.Remove(portrait);
+        w.Closed += (_, _) => { open.Remove(portrait); if (LiveStream.Shared.IsOn && LiveStream.Shared.Portrait == portrait) LiveStream.Shared.Stop(); }; // its picture is gone
         w.Show();
     }
     StreamWindow(bool portrait)
@@ -770,7 +804,7 @@ public sealed class StreamWindow : Window
         System.Windows.Documents.TextElement.SetFontFamily(this, JT.Body);
         SizeToContent = SizeToContent.Manual;
         // the picture is exactly 9:16 or 16:9; the window frame adds its border around it
-        var content = new PlayerPage(stream: true) { Width = portrait ? 540 : 960, Height = portrait ? 960 : 540 };
+        var content = page = new PlayerPage(stream: true) { Width = portrait ? 540 : 960, Height = portrait ? 960 : 540 };
         Content = new Viewbox { Child = content, Stretch = Stretch.Uniform };
         Width = portrait ? 556 : 976; Height = portrait ? 999 : 579;
     }

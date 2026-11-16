@@ -458,6 +458,9 @@ struct SettingsView: View {
     @State private var plexToken = "" // read when the window opens, never at app launch (see Keychain.write)
     @State private var plexStatus = ""
     @State private var openAtLogin = false
+    @AppStorage(GoLive.serverKey) private var liveServer = ""
+    @State private var liveKey = ""
+    @State private var liveStatus = ""
 
     var body: some View {
         Form {
@@ -532,9 +535,23 @@ struct SettingsView: View {
                 Text("When set up, Plex rescans after downloads and tag edits, and Export & backup can make Plex playlists. The token is kept in your Keychain.")
                     .font(.caption).foregroundColor(.secondary).fixedSize(horizontal: false, vertical: true)
             } header: { Text("Plex").bold() }
+
+            Section {
+                TextField("Server URL", text: $liveServer, prompt: Text("rtmp://push-rtmp-….tiktokcdn.com/game/"))
+                SecureField("Stream Key", text: $liveKey, prompt: Text("stream-…"))
+                HStack {
+                    Button("Save") {
+                        Keychain.write(GoLive.keychainAccount, liveKey.trimmingCharacters(in: .whitespacesAndNewlines))
+                        liveStatus = GoLive.hasKey ? "Saved. Go live from the Player tab's broadcast button." : "Saved without a key."
+                    }
+                    if !liveStatus.isEmpty { Text(liveStatus).font(.caption) }
+                }
+                Text("Stream straight from Juice Tracker to TikTok LIVE: in TikTok, set up a LIVE on a computer (LIVE Center / LIVE Producer) and copy its Server URL and Stream Key here; TikTok gives new ones for each LIVE. The stream is the Player's stream window and the app's own sound, nothing else on your screen; macOS asks once for Screen Recording permission. Works with any RTMP service. The key is kept in your Keychain.")
+                    .font(.caption).foregroundColor(.secondary).fixedSize(horizontal: false, vertical: true)
+            } header: { Text("Live").bold() }
         }
         .settingsLayout()
-        .onAppear { plexToken = Keychain.read("plex-token") ?? "" }
+        .onAppear { plexToken = Keychain.read("plex-token") ?? ""; liveKey = GoLive.hasKey ? (Keychain.read(GoLive.keychainAccount) ?? "") : "" }
     }
 }
 

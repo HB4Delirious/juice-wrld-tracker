@@ -9,6 +9,7 @@
 /* Begin PBXBuildFile section */
 		7566C83FDE2D874A8C527794 /* Player.swift in Sources */ = {isa = PBXBuildFile; fileRef = E6A30A4561E530805D149EE4 /* Player.swift */; };
 		5E6A1C7F2B3D4E5F60718293 /* Services.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6F7B2D803C4E5F60718293A4 /* Services.swift */; };
+		A1B2C3D4E5F6071829304A5B /* GoLive.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2C3D4E5F6071829304A5B6C /* GoLive.swift */; };
 		7A8B9C0D1E2F304152637485 /* MenuBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8B9C0D1E2F30415263748596 /* MenuBar.swift */; };
 		9C0D1E2F3041526374859607 /* NativeUI.swift in Sources */ = {isa = PBXBuildFile; fileRef = AD1E2F304152637485960718 /* NativeUI.swift */; };
 		BE2F30415263748596071829 /* NativeScreens.swift in Sources */ = {isa = PBXBuildFile; fileRef = CF304152637485960718293A /* NativeScreens.swift */; };
@@ -38,6 +39,7 @@
 		CBB29ABC89E055B4458F1CD6 /* JuiceTracker.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = JuiceTracker.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		E6A30A4561E530805D149EE4 /* Player.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Player.swift; sourceTree = "<group>"; };
 		6F7B2D803C4E5F60718293A4 /* Services.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Services.swift; sourceTree = "<group>"; };
+		B2C3D4E5F6071829304A5B6C /* GoLive.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GoLive.swift; sourceTree = "<group>"; };
 		8B9C0D1E2F30415263748596 /* MenuBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuBar.swift; sourceTree = "<group>"; };
 		AD1E2F304152637485960718 /* NativeUI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeUI.swift; sourceTree = "<group>"; };
 		CF304152637485960718293A /* NativeScreens.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeScreens.swift; sourceTree = "<group>"; };
@@ -78,6 +80,7 @@
 				B11B15543E9C61D2DE5F191E /* JuiceTrackerApp.swift */,
 				E6A30A4561E530805D149EE4 /* Player.swift */,
 				6F7B2D803C4E5F60718293A4 /* Services.swift */,
+				B2C3D4E5F6071829304A5B6C /* GoLive.swift */,
 				8B9C0D1E2F30415263748596 /* MenuBar.swift */,
 				AD1E2F304152637485960718 /* NativeUI.swift */,
 				CF304152637485960718293A /* NativeScreens.swift */,
@@ -249,6 +252,7 @@
 				C8E648084E7309C1B01150E8 /* JuiceTrackerApp.swift in Sources */,
 				7566C83FDE2D874A8C527794 /* Player.swift in Sources */,
 				5E6A1C7F2B3D4E5F60718293 /* Services.swift in Sources */,
+				A1B2C3D4E5F6071829304A5B /* GoLive.swift in Sources */,
 				7A8B9C0D1E2F304152637485 /* MenuBar.swift in Sources */,
 				9C0D1E2F3041526374859607 /* NativeUI.swift in Sources */,
 				BE2F30415263748596071829 /* NativeScreens.swift in Sources */,

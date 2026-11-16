@@ -13,6 +13,13 @@ public partial class App : Application
     {
         base.OnStartup(e);
         if (e.Args.Contains("--smoke-test")) { SmokeTest(); return; }
+        // CI: --rtmp-selftest <server> <key> streams six seconds and quits
+        if (Array.IndexOf(e.Args, "--rtmp-selftest") is var k and >= 0 && e.Args.Length > k + 2)
+        {
+            ShutdownMode = ShutdownMode.OnExplicitShutdown;
+            Dispatcher.BeginInvoke(async () => Shutdown(await LiveStream.SelfTest(e.Args[k + 1], e.Args[k + 2])));
+            return;
+        }
         // A bug in one screen shouldn't close the app (and lose a download in progress): say what happened instead.
         DispatcherUnhandledException += (_, args) =>
         {

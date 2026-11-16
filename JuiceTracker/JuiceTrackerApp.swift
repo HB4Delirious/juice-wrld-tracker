@@ -7,6 +7,12 @@ import UserNotifications
 struct JuiceTrackerApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
 
+    init() {
+        // CI: `JuiceTracker --rtmp-selftest <server> <key>` sends a test stream and quits
+        let args = CommandLine.arguments
+        if let k = args.firstIndex(of: "--rtmp-selftest"), args.count > k + 2 { GoLiveSelfTest.run(server: args[k + 1], key: args[k + 2]) }
+    }
+
     // The main window is a plain AppKit window owned by AppDelegate (SwiftUI's window restoration could
     // relaunch the app with no window). SwiftUI provides the Settings window and the menus.
     var body: some Scene {
