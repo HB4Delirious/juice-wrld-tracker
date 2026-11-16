@@ -99,6 +99,9 @@ public partial class App : Application
                     // every theme and compact mode redraw the whole window; celebrations draw over it
                     foreach (var t in Themes.All.Select(t => t.Id).Append("custom")) { Store.Shared.Me.Theme = t; Themes.Apply(); window.Restyle(); }
                     Store.Shared.Me.Compact = true; window.Restyle(); Store.Shared.Me.Compact = false; window.Restyle();
+                    // the Player tab's colors come from the art: a red picture must give red
+                    var red = System.Windows.Media.Imaging.BitmapSource.Create(4, 4, 96, 96, System.Windows.Media.PixelFormats.Bgra32, null, Enumerable.Repeat(new byte[] { 20, 20, 200, 255 }, 16).SelectMany(x => x).ToArray(), 16);
+                    if (PlayerPage.Hues(red) is not [var hue, ..] || hue.R < 200 || hue.G > 100) throw new Exception("The Player tab's colors from the art came out wrong.");
                     Fx.Confetti(); Fx.Shower999(); window.Toast("3 songs landed in your library");
                     Dispatcher.BeginInvoke(() => { File.WriteAllText(report, "ok"); Shutdown(0); }, DispatcherPriority.ApplicationIdle);
                 }

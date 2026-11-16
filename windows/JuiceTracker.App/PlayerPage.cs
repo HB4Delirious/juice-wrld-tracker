@@ -1,127 +1,366 @@
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Media.Animation;
+using System.Windows.Media.Effects;
 using System.Windows.Media.Imaging;
+using System.Windows.Shapes;
+using System.Windows.Threading;
 
 namespace JuiceTracker.App;
 
-/// The Player tab: what's playing (cover, era, seek, controls, the lyrics line by line), Up next (reorder, remove),
-/// and your playable songs by era to play now, next, or a whole era in order or shuffled. The page is built when the
-/// library changes; the player's 4-times-a-second updates only touch the parts that move.
-public sealed class PlayerPage : ToolPage
+/// The Player tab, made to sit and watch: a ringed black hole in deep space whose glow takes its colors from the
+/// song's art, the time above it, the lyrics lighting up word by word, the cover on a tilted card, the queue floating
+/// at the left and a control bar at the bottom. Your songs open from the search button. All drawn in code. The layout
+/// is built once; the player's 4-times-a-second updates only touch the parts that move.
+public sealed class PlayerPage : Grid, IRefresh
 {
-    readonly Image cover = new() { Stretch = Stretch.UniformToFill };
-    readonly TextBlock title = UI.Marker("Nothing playing", 24), era = UI.Muted("", 14), time = UI.Muted("0:00", 11, false), length = UI.Muted("0:00", 11, false);
-    readonly Slider seek = new() { VerticalAlignment = VerticalAlignment.Center }, volume = new() { Minimum = 0, Maximum = 100, Width = 110, VerticalAlignment = VerticalAlignment.Center };
-    readonly StackPanel lyrics = new(), upNext = new(), rows = new();
-    readonly TextBox search = new() { Width = 180 };
-    readonly ComboBox eraPick = new() { MinWidth = 160 }, shuffle = new() { MinWidth = 180 };
-    readonly CheckBox inOrder = new() { Content = "In recording order", Margin = new Thickness(10, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center };
-    readonly Button play;
-    string? file, upNextKey; List<(double At, string Line)> synced = []; string plain = ""; int line = -2; bool dragging, updating; int limit = 250;
+    // the song's colors: every brush that glows holds stops tied to one of the three, animated when the song changes
+    static readonly Color[] Fallback = [Color.FromRgb(255, 106, 213), Color.FromRgb(80, 130, 255), Color.FromRgb(140, 40, 190)];
+    readonly List<(GradientStop Stop, int Slot, double Alpha)> tinted = [];
+    Color[] palette = Fallback;
+
+    readonly Canvas stage = new() { ClipToBounds = true };
+    readonly Grid hole = new(), clock = new(), backDisc = new(), frontDisc = new();
+    readonly RotateTransform spinBack = new(), spinFront = new();
+    readonly TextBlock date = new() { FontSize = 13, FontWeight = FontWeights.SemiBold, Foreground = JT.Brush(Color.FromArgb(217, 255, 246, 251)), HorizontalAlignment = HorizontalAlignment.Center };
+    readonly TextBlock time = new() { FontFamily = new FontFamily("Bahnschrift Condensed, Bahnschrift, Segoe UI"), FontStretch = FontStretches.Condensed, FontWeight = FontWeights.Bold, HorizontalAlignment = HorizontalAlignment.Center,
+                                      Foreground = new LinearGradientBrush(Color.FromArgb(235, 255, 255, 255), Color.FromArgb(30, 255, 255, 255), 90) };
+    readonly TextBlock karaoke = new() { FontSize = 30, FontWeight = FontWeights.Black, TextWrapping = TextWrapping.Wrap, Foreground = Brushes.White, IsHitTestVisible = false,
+                                         Effect = new DropShadowEffect { Color = Colors.Black, BlurRadius = 16, ShadowDepth = 0, Opacity = 0.7 } };
+    readonly Image cover = new() { Stretch = Stretch.UniformToFill }, barThumb = new() { Stretch = Stretch.UniformToFill }, queueThumb = new() { Stretch = Stretch.UniformToFill };
+    readonly TextBlock cardTitle = UI.Text("Nothing playing", 14, weight: FontWeights.SemiBold), cardEra = UI.Text("Juice WRLD", 11.5, Color.FromArgb(180, 255, 246, 251));
+    readonly TextBlock barTitle = UI.Text("Nothing playing", 12, weight: FontWeights.SemiBold), barEra = UI.Text("Juice WRLD", 10, JT.Muted), queueSub = UI.Text("", 11, JT.Muted);
+    readonly Border card, queueBox, bar, songsPanel;
+    readonly StackPanel queue = new();
+    readonly Rectangle progress = new() { Height = 3, RadiusX = 1.5, RadiusY = 1.5, Fill = JT.Brush(Color.FromArgb(217, 255, 255, 255)), HorizontalAlignment = HorizontalAlignment.Left };
+    readonly Grid progressTrack = new() { Height = 10, Background = Brushes.Transparent, Cursor = Cursors.Hand };
+    readonly Button play, heart, repeat, search;
+    readonly Slider volume = new() { Minimum = 0, Maximum = 100, Width = 70, VerticalAlignment = VerticalAlignment.Center };
+    readonly TextBlock empty = UI.Muted("Songs you have that this PC can play show up here.", 15);
+    // the songs panel
+    readonly StackPanel rows = new();
+    readonly TextBox find = new() { Width = 170 };
+    readonly ComboBox eraPick = new() { MinWidth = 140 };
+    readonly StackPanel eraButtons = new() { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 8, 0, 0) };
+    readonly DispatcherTimer minute = new() { Interval = TimeSpan.FromSeconds(10) };
+
+    string? file, upNextKey, artFor; List<(double At, string Line)> synced = []; int line = -2, lit = -1, limit = 250; bool updating;
 
     public PlayerPage()
     {
-        play = UI.IconButton("", "Play", Toggle, 30, JT.Lavender);
-        seek.PreviewMouseDown += (_, _) => dragging = true;
-        seek.PreviewMouseUp += (_, _) => { dragging = false; Player.Shared.Seek(TimeSpan.FromSeconds(seek.Value)); };
-        UI.AutomationName(seek, "Position in the song");
+        Background = Brushes.Black;
+        Children.Add(Space());
+        Children.Add(stage);
+        stage.Children.Add(BuildHole());
+        clock.Children.Add(UI.Column(0, date, time)); clock.IsHitTestVisible = false; stage.Children.Add(clock);
+        stage.Children.Add(karaoke);
+
+        // the cover on a glassy card, turned toward the hole; click opens the song card
+        var art = new Border { CornerRadius = new CornerRadius(10), ClipToBounds = true, Child = cover, Background = JT.Brush(Color.FromArgb(30, 255, 255, 255)) };
+        art.SizeChanged += (_, e) => { art.Height = e.NewSize.Width; art.Clip = new RectangleGeometry(new Rect(0, 0, e.NewSize.Width, e.NewSize.Width), 10, 10); };
+        cardTitle.HorizontalAlignment = HorizontalAlignment.Center; cardEra.HorizontalAlignment = HorizontalAlignment.Center; cardTitle.TextTrimming = TextTrimming.CharacterEllipsis;
+        cardTitle.Margin = new Thickness(0, 6, 0, 0);
+        card = new Border
+        {
+            Padding = new Thickness(10), CornerRadius = new CornerRadius(14), BorderBrush = JT.Brush(Color.FromArgb(77, 255, 255, 255)), BorderThickness = new Thickness(1),
+            Background = new LinearGradientBrush(Color.FromArgb(61, 255, 255, 255), Color.FromArgb(20, 255, 255, 255), 45), Child = UI.Column(0, art, cardTitle, cardEra),
+            RenderTransform = new SkewTransform(0, -7), Cursor = Cursors.Hand, ToolTip = "Open the song card",
+            Effect = new DropShadowEffect { Color = Colors.Black, BlurRadius = 30, ShadowDepth = 10, Direction = 270, Opacity = 0.6 },
+        };
+        card.MouseLeftButtonUp += (_, _) => { if (Player.Shared.CurrentFile is { } f && Store.Shared.SongForFile(f) is var i and >= 0) MainWindow.Current?.OpenSong(Store.Shared.Songs[i]); };
+        stage.Children.Add(card);
+
+        // the queue, on a panel turned toward the middle
+        queueBox = new Border { Padding = new Thickness(12), Width = 230, Child = queue, RenderTransform = new SkewTransform(0, 7) };
+        stage.Children.Add(queueBox);
+
+        // the control bar
+        play = UI.IconButton("", "Play", Toggle, 20);
+        heart = UI.IconButton("", "Rate 5 hearts", Love, 15);
+        repeat = UI.IconButton("", "Era radio", () => Player.Shared.SetInOrder(!Store.Shared.Me.InOrder), 15);
+        repeat.ToolTip = "Era radio: play the era in the order it was recorded";
+        Button? shuffle = null, sleep = null;
+        shuffle = UI.IconButton("", "Which era to shuffle", () => { var m = EraMenu(); m.PlacementTarget = shuffle; m.Placement = PlacementMode.Top; m.IsOpen = true; }, 15);
+        sleep = UI.IconButton("", "Sleep timer", () => { var m = Listen.SleepMenu(); m.PlacementTarget = sleep; m.Placement = PlacementMode.Top; m.IsOpen = true; }, 15);
+        var restart = UI.IconButton("", "Start this song again", () => Player.Shared.Seek(TimeSpan.Zero), 15);
+        restart.ToolTip = "Start this song again";
+        progressTrack.Children.Add(new Rectangle { Height = 3, RadiusX = 1.5, RadiusY = 1.5, Fill = JT.Brush(Color.FromArgb(38, 255, 255, 255)) });
+        progressTrack.Children.Add(progress);
+        progressTrack.MouseLeftButtonDown += (_, e) => { var p = Player.Shared; if (p.Duration.TotalSeconds > 0) p.Seek(p.Duration * Math.Clamp(e.GetPosition(progressTrack).X / progressTrack.ActualWidth, 0, 1)); };
+        UI.AutomationName(progressTrack, "Position in the song");
         volume.ValueChanged += (_, e) => { if (!updating) Player.Shared.Volume = e.NewValue; };
         volume.PreviewMouseUp += (_, _) => Store.Shared.SavePersonal();
         UI.AutomationName(volume, "Volume");
-        search.TextChanged += (_, _) => { limit = 250; BuildRows(); };
-        UI.AutomationName(search, "Search your songs");
-        eraPick.SelectionChanged += (_, _) => { if (!updating) { limit = 250; Refresh(); } };
+        barTitle.TextTrimming = TextTrimming.CharacterEllipsis; barEra.TextTrimming = TextTrimming.CharacterEllipsis;
+        var left = UI.Row(14, shuffle, restart, play, UI.IconButton("", "Next song", Player.Shared.Skip, 15), repeat);
+        var right = UI.Row(12, heart, sleep, UI.IconButton("", "Big lyrics window", LyricsWindow.Open, 15), UI.IconButton("", "Mini player", MiniPlayer.Open, 15),
+                           UI.Icon("", 14, JT.Muted), volume);
+        var middle = new DockPanel { Margin = new Thickness(16, 0, 16, 0) };
+        var thumb = Thumb(barThumb, 30); DockPanel.SetDock(thumb, Dock.Left); middle.Children.Add(thumb);
+        var words = UI.Column(2, barTitle, barEra, progressTrack); words.Margin = new Thickness(8, 0, 0, 0); words.VerticalAlignment = VerticalAlignment.Center; middle.Children.Add(words);
+        var row = new DockPanel(); DockPanel.SetDock(left, Dock.Left); DockPanel.SetDock(right, Dock.Right);
+        row.Children.Add(left); row.Children.Add(right); row.Children.Add(middle);
+        bar = new Border { CornerRadius = new CornerRadius(30), Padding = new Thickness(18, 9, 18, 9), Background = JT.Brush(Color.FromArgb(230, 28, 28, 28)),
+                           BorderBrush = JT.Brush(Color.FromArgb(46, 255, 255, 255)), BorderThickness = new Thickness(1), Child = row };
+        stage.Children.Add(bar);
+
+        // the round search button opens your songs on the right
+        search = UI.IconButton("", "Your songs", ToggleSongs, 14);
+        var searchRing = new Border { Width = 32, Height = 32, CornerRadius = new CornerRadius(16), Background = JT.Brush(Color.FromArgb(26, 255, 255, 255)),
+                                      BorderBrush = JT.Brush(Color.FromArgb(51, 255, 255, 255)), BorderThickness = new Thickness(1), Child = search, Tag = "search" };
+        stage.Children.Add(searchRing);
+        find.TextChanged += (_, _) => { limit = 250; BuildRows(); };
+        UI.AutomationName(find, "Search your songs");
+        eraPick.SelectionChanged += (_, _) => { if (!updating) { limit = 250; BuildRows(); } };
         UI.AutomationName(eraPick, "Show songs from");
-        shuffle.SelectionChanged += (_, _) => { if (!updating && shuffle.SelectedItem is string e) Player.Shared.SetEra(e == "Shuffle: all eras" ? "" : e["Shuffle: ".Length..]); };
-        UI.AutomationName(shuffle, "Which era the music shuffles from");
-        inOrder.Click += (_, _) => Player.Shared.SetInOrder(inOrder.IsChecked == true);
-        Loaded += (_, _) => { Player.Shared.Changed += Tick; Tick(); };
-        Unloaded += (_, _) => Player.Shared.Changed -= Tick;
+        var head = new DockPanel();
+        var filters = UI.Row(8, find, eraPick); DockPanel.SetDock(filters, Dock.Right); head.Children.Add(filters);
+        head.Children.Add(UI.Text("Your songs", 15, weight: FontWeights.SemiBold));
+        var list = new ScrollViewer { Content = rows, VerticalScrollBarVisibility = ScrollBarVisibility.Auto, Margin = new Thickness(0, 10, 0, 0) };
+        var panel = new DockPanel(); DockPanel.SetDock(head, Dock.Top); DockPanel.SetDock(eraButtons, Dock.Top);
+        panel.Children.Add(head); panel.Children.Add(eraButtons); panel.Children.Add(list);
+        songsPanel = new Border { Width = 460, CornerRadius = new CornerRadius(18), Padding = new Thickness(16), Background = JT.Brush(Color.FromArgb(224, 0, 0, 0)),
+                                  BorderBrush = JT.Brush(Color.FromArgb(46, 255, 255, 255)), BorderThickness = new Thickness(1), Child = panel, Visibility = Visibility.Collapsed };
+        stage.Children.Add(songsPanel);
+        stage.Children.Add(empty);
+
+        stage.SizeChanged += (_, _) => Place();
+        minute.Tick += (_, _) => Clock();
+        Loaded += (_, _) => { Player.Shared.Changed += Tick; minute.Start(); Spin(true); Tick(); };
+        Unloaded += (_, _) => { Player.Shared.Changed -= Tick; minute.Stop(); Spin(false); };
+        Clock();
         Refresh();
     }
 
+    // MARK: Drawing
+
+    /// Black, faint glows in the song's colors, and stars (the same ones every time).
+    UIElement Space()
+    {
+        var grid = new Grid { IsHitTestVisible = false };
+        foreach (var (slot, x, y) in new[] { (1, 0.82, 0.12), (0, 0.12, 0.88) })
+        {
+            var g = new RadialGradientBrush { Center = new Point(x, y), GradientOrigin = new Point(x, y), RadiusX = 0.55, RadiusY = 0.7 };
+            g.GradientStops.Add(Tint(slot, 0.16, 0)); g.GradientStops.Add(new GradientStop(Colors.Transparent, 1));
+            grid.Children.Add(new Rectangle { Fill = g });
+        }
+        var stars = new DrawingGroup(); var rng = new Random(999);
+        stars.Children.Add(new GeometryDrawing(Brushes.Transparent, null, new RectangleGeometry(new Rect(0, 0, 1000, 1000))));
+        for (int n = 0; n < 320; n++)
+        {
+            double r = 0.4 + rng.NextDouble() * 1.2;
+            var b = new SolidColorBrush(Color.FromArgb((byte)(64 + rng.Next(150)), 255, 255, 255)); b.Freeze();
+            stars.Children.Add(new GeometryDrawing(b, null, new EllipseGeometry(new Point(rng.NextDouble() * 1000, rng.NextDouble() * 1000), r, r)));
+        }
+        stars.Freeze();
+        grid.Children.Add(new Image { Source = new DrawingImage(stars), Stretch = Stretch.Fill });
+        return grid;
+    }
+
+    /// A stop whose color follows one of the song's three colors.
+    GradientStop Tint(int slot, double alpha, double offset)
+    {
+        var c = palette[slot]; var s = new GradientStop(Color.FromArgb((byte)(alpha * 255), c.R, c.G, c.B), offset);
+        tinted.Add((s, slot, alpha));
+        return s;
+    }
+    Brush Ring(params (int Slot, double Alpha)[] stops)
+    {
+        var b = new LinearGradientBrush { StartPoint = new Point(0, 0), EndPoint = new Point(1, 1) };
+        for (int k = 0; k < stops.Length; k++)
+            b.GradientStops.Add(stops[k].Slot < 0 ? new GradientStop(Color.FromArgb((byte)(stops[k].Alpha * 255), 255, 255, 255), (double)k / (stops.Length - 1)) : Tint(stops[k].Slot, stops[k].Alpha, (double)k / (stops.Length - 1)));
+        return b;
+    }
+
+    /// The ringed black hole: a glowing disc in the song's colors, slowly turning, passing behind the hole at the top
+    /// and in front of it at the bottom.
+    UIElement BuildHole()
+    {
+        hole.IsHitTestVisible = false;
+        hole.Children.Add(backDisc);
+        var glow = new Ellipse { StrokeThickness = 18, Stroke = Ring((0, 1), (1, 1), (2, 1), (0, 1)), Opacity = 0.75, Effect = new BlurEffect { Radius = 22 }, Tag = 1.1 };
+        hole.Children.Add(glow);
+        var ball = new Ellipse { Fill = Brushes.Black, Stroke = JT.Brush(Color.FromArgb(242, 255, 255, 255)), StrokeThickness = 3, Tag = 1.0,
+                                 Effect = new DropShadowEffect { Color = Colors.White, BlurRadius = 22, ShadowDepth = 0, Opacity = 0.75 } };
+        hole.Children.Add(ball);
+        hole.Children.Add(frontDisc);
+        return hole;
+    }
+    Grid Disc(RotateTransform spin, double size)
+    {
+        var turning = new Grid { RenderTransform = spin, RenderTransformOrigin = new Point(0.5, 0.5) };
+        void Add(double scale, double thickness, Brush stroke, double blur, double opacity = 1, DoubleCollection? dash = null)
+        {
+            var e = new Ellipse { Width = size * scale, Height = size * scale, StrokeThickness = thickness, Stroke = stroke, Opacity = opacity, StrokeDashArray = dash,
+                                  Effect = blur > 0 ? new BlurEffect { Radius = blur } : null };
+            turning.Children.Add(e);
+        }
+        Add(1.95, size * 0.2, Ring((0, 1), (1, 0.35), (2, 1), (0, 0.3), (1, 1), (0, 1)), size * 0.14, 0.9);
+        Add(1.55, size * 0.04, Ring((-1, 0.8), (0, 0.2), (-1, 0.55), (1, 0.2), (-1, 0.8)), size * 0.04);
+        Add(2.35, 1.5, Ring((2, 0.6), (2, 0.6)), 0, 1, [1, 8]);
+        var flat = new Grid { RenderTransformOrigin = new Point(0.5, 0.5), Width = size * 2.5, Height = size * 2.5,
+                              RenderTransform = new TransformGroup { Children = { new ScaleTransform(1, 0.24), new RotateTransform(-8) } } };
+        flat.Children.Add(turning);
+        return flat;
+    }
+    void Spin(bool on)
+    {
+        foreach (var s in new[] { spinBack, spinFront })
+            s.BeginAnimation(RotateTransform.AngleProperty, on ? new DoubleAnimation(0, 360, TimeSpan.FromSeconds(90)) { RepeatBehavior = RepeatBehavior.Forever } : null);
+    }
+
+    static Border Thumb(Image img, double side) => new()
+    {
+        Width = side, Height = side, CornerRadius = new CornerRadius(side * 0.18), ClipToBounds = true, Background = JT.Brush(Color.FromArgb(30, 255, 255, 255)),
+        Clip = new RectangleGeometry(new Rect(0, 0, side, side), side * 0.18, side * 0.18), Child = img,
+    };
+
+    /// Puts everything in place for this size (the hole scales with the page).
+    void Place()
+    {
+        double w = stage.ActualWidth, h = stage.ActualHeight;
+        if (w == 0) return;
+        double size = Math.Max(160, Math.Min(Math.Min(w * 0.34, h * 0.4), 360)), cx = w / 2, cy = h * 0.44, span = size * 2.5;
+        hole.Width = hole.Height = span;
+        backDisc.Children.Clear(); frontDisc.Children.Clear();
+        backDisc.Children.Add(Disc(spinBack, size)); frontDisc.Children.Add(Disc(spinFront, size));
+        backDisc.Clip = new RectangleGeometry(new Rect(0, 0, span, span / 2));
+        frontDisc.Clip = new RectangleGeometry(new Rect(0, span / 2, span, span / 2));
+        foreach (var e in hole.Children.OfType<Ellipse>()) { e.Width = e.Height = size * (double)e.Tag; }
+        At(hole, cx - span / 2, cy - span / 2);
+        time.FontSize = size * 0.34;
+        clock.Width = 400; At(clock, cx - 200, cy - size * 0.62 - size * 0.34 * 0.75);
+        double words = Math.Min(w * 0.42, 460);
+        karaoke.Width = words; At(karaoke, cx - size * 0.08, cy + size * 0.24 - 30);
+        card.Width = size * 0.44; At(card, cx - size * 0.58, cy + size * 0.36 - size * 0.32);
+        At(queueBox, Math.Max(20, cx - size * 1.3 - 115), cy - 60);
+        bar.Width = Math.Min(w - 40, 820); At(bar, cx - bar.Width / 2, h - 82);
+        var ring = stage.Children.OfType<Border>().First(b => "search".Equals(b.Tag));
+        At(ring, cx + bar.Width / 2 - 34, h - 126);
+        songsPanel.Width = Math.Min(460, w - 40); songsPanel.Height = Math.Max(240, h - 170); At(songsPanel, w - songsPanel.Width - 20, 20);
+        empty.Width = 420; empty.TextAlignment = TextAlignment.Center; At(empty, cx - 210, cy - 10);
+        Spin(IsLoaded);
+    }
+    static void At(UIElement e, double x, double y) { Canvas.SetLeft(e, x); Canvas.SetTop(e, y); }
+
+    void Clock()
+    {
+        var now = DateTime.Now;
+        date.Text = now.ToString("ddd, MMM d");
+        var pattern = System.Globalization.CultureInfo.CurrentCulture.DateTimeFormat.ShortTimePattern.Replace("tt", "").Replace("t", "").Trim();
+        time.Text = now.ToString(pattern);
+    }
+
+    // MARK: Colors from the art
+
+    /// Three glowing colors from the art: pixels binned by hue, each weighted by how colorful and bright it is,
+    /// brightened so they glow on black.
+    public static Color[] Hues(BitmapSource src)
+    {
+        const int n = 24;
+        var small = new TransformedBitmap(new FormatConvertedBitmap(src, PixelFormats.Bgra32, null, 0), new ScaleTransform((double)n / src.PixelWidth, (double)n / src.PixelHeight));
+        int w = small.PixelWidth, h = small.PixelHeight; var px = new byte[w * h * 4];
+        small.CopyPixels(px, w * 4, 0);
+        var bins = new (double W, double R, double G, double B)[12];
+        for (int k = 0; k < px.Length; k += 4)
+        {
+            double b = px[k] / 255.0, g = px[k + 1] / 255.0, r = px[k + 2] / 255.0;
+            double mx = Math.Max(r, Math.Max(g, b)), mn = Math.Min(r, Math.Min(g, b)), s = mx == 0 ? 0 : (mx - mn) / mx;
+            if (mx <= 0.15 || s <= 0.25) continue; // greys and near-black say nothing about the color
+            double d = mx - mn, hue = mx == r ? (g - b) / d : mx == g ? 2 + (b - r) / d : 4 + (r - g) / d;
+            hue = (hue / 6) % 1; if (hue < 0) hue += 1;
+            int bin = Math.Min(11, (int)(hue * 12)); double wt = s * mx;
+            bins[bin] = (bins[bin].W + wt, bins[bin].R + r * wt, bins[bin].G + g * wt, bins[bin].B + b * wt);
+        }
+        return bins.Where(x => x.W > 0.5).OrderByDescending(x => x.W).Take(3).Select(x => Glowing(x.R / x.W, x.G / x.W, x.B / x.W)).ToArray();
+    }
+    static Color Glowing(double r, double g, double b)
+    {
+        double mx = Math.Max(r, Math.Max(g, b)), mn = Math.Min(r, Math.Min(g, b)), d = mx - mn;
+        double hue = d == 0 ? 0 : mx == r ? ((g - b) / d + 6) % 6 : mx == g ? (b - r) / d + 2 : (r - g) / d + 4;
+        double s = Math.Max(mx == 0 ? 0 : d / mx, 0.55), v = Math.Max(mx, 0.9), c = v * s, x = c * (1 - Math.Abs(hue % 2 - 1)), m = v - c;
+        var (r1, g1, b1) = (int)hue switch { 0 => (c, x, 0.0), 1 => (x, c, 0.0), 2 => (0.0, c, x), 3 => (0.0, x, c), 4 => (x, 0.0, c), _ => (c, 0.0, x) };
+        return Color.FromRgb((byte)((r1 + m) * 255), (byte)((g1 + m) * 255), (byte)((b1 + m) * 255));
+    }
+    void UsePalette(Color[] found)
+    {
+        palette = [found.Length > 0 ? found[0] : Fallback[0], found.Length > 1 ? found[1] : found.Length > 0 ? found[0] : Fallback[1], found.Length > 2 ? found[2] : Fallback[2]];
+        foreach (var (stop, slot, alpha) in tinted)
+        {
+            var c = palette[slot];
+            stop.BeginAnimation(GradientStop.ColorProperty, new ColorAnimation(Color.FromArgb((byte)(alpha * 255), c.R, c.G, c.B), TimeSpan.FromSeconds(1.2)));
+        }
+    }
+    void ShowArt(BitmapSource? art, string forFile)
+    {
+        foreach (var img in new[] { cover, barThumb, queueThumb }) { img.Source = art ?? JT.Image("jt-logo"); img.Stretch = art is null ? Stretch.Uniform : Stretch.UniformToFill; }
+        if (art is null) { UsePalette([]); return; }
+        void Use() { if (artFor == forFile) try { UsePalette(Hues(art)); } catch (Exception) { UsePalette([]); } }
+        if (art is BitmapImage { IsDownloading: true } web) { web.DownloadCompleted += (_, _) => Use(); web.DownloadFailed += (_, _) => UsePalette([]); }
+        else Use();
+    }
+
+    // MARK: Updates
+
     static List<Song> Mine() => Store.Shared.Songs.Where(s => s.Owned && Listen.FileFor(s.I) is not null).ToList();
 
-    public override void Refresh()
+    /// The library changed: the era lists, the songs panel and the empty note.
+    public void Refresh()
     {
         var mine = Mine();
-        Start("Player", "Play your own songs: pick one to play now or next, play a whole era in the order it was recorded, or shuffle.");
-        if (mine.Count == 0) { Add(UI.Muted("Songs you have that this PC can play show up here.", 15)); return; }
-        var eras = mine.Select(s => s.Era).Distinct().ToList();
-
+        empty.Visibility = mine.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
         updating = true;
+        var eras = mine.Select(s => s.Era).Distinct().ToList();
         var picked = eraPick.SelectedItem as string ?? "All eras";
         eraPick.Items.Clear(); eraPick.Items.Add("All eras"); foreach (var e in eras) eraPick.Items.Add(e);
         eraPick.SelectedItem = eras.Contains(picked) ? picked : "All eras";
-        shuffle.Items.Clear(); shuffle.Items.Add("Shuffle: all eras"); foreach (var e in eras) shuffle.Items.Add($"Shuffle: {e}");
         updating = false;
-
-        // left: the cover, the song and its controls, then the lyrics
-        var art = new Border { CornerRadius = new CornerRadius(18), ClipToBounds = true, Background = JT.Brush(JT.Raise), Height = 330, Child = cover };
-        art.Clip = new RectangleGeometry(new Rect(0, 0, 360, 330), 18, 18);
-        var seekRow = new DockPanel { Margin = new Thickness(0, 8, 0, 0) };
-        DockPanel.SetDock(time, Dock.Left); DockPanel.SetDock(length, Dock.Right);
-        time.Margin = new Thickness(0, 0, 6, 0); length.Margin = new Thickness(6, 0, 0, 0);
-        Detach(time, length, seek); seekRow.Children.Add(time); seekRow.Children.Add(length); seekRow.Children.Add(seek);
-        Button? sleep = null;
-        sleep = UI.IconButton("", "Sleep timer", () => { var m = Listen.SleepMenu(); m.PlacementTarget = sleep; m.IsOpen = true; }, 15);
-        Detach(play, volume, shuffle, inOrder, title, era, cover, lyrics, upNext, rows, search, eraPick);
-        var controls = UI.Row(14, play, UI.IconButton("", "Next song", Player.Shared.Skip, 20), UI.Icon("", 14, JT.Muted), volume, sleep,
-                              UI.IconButton("", "Big lyrics window", LyricsWindow.Open, 15), UI.IconButton("", "Mini player", MiniPlayer.Open, 15));
-        controls.Margin = new Thickness(0, 10, 0, 0);
-        var mix = UI.Row(0, shuffle, inOrder); mix.Margin = new Thickness(0, 12, 0, 0);
-        title.TextWrapping = TextWrapping.Wrap; title.Margin = new Thickness(0, 12, 0, 0);
-        var now = UI.Panel(UI.Column(0, art, title, era, seekRow, controls, mix), 1, 16);
-        var words = UI.Panel(UI.Column(8, UI.Text("Lyrics", 15, weight: FontWeights.SemiBold), lyrics), 2, 16); words.Margin = new Thickness(0, 14, 0, 0);
-        var left = UI.Column(0, now, words); left.Width = 392;
-
-        // right: Up next, then your songs
-        var next = UI.Panel(upNext, 3, 16);
-        var head = new DockPanel();
-        var filters = UI.Row(10, UI.Icon("", 13, JT.Muted), search, eraPick); DockPanel.SetDock(filters, Dock.Right); head.Children.Add(filters);
-        head.Children.Add(UI.Text("Your songs", 15, weight: FontWeights.SemiBold));
-        var songsBox = UI.Column(10, head);
-        if (eraPick.SelectedItem is string e2 && e2 != "All eras")
-        {
-            var inEra = mine.Where(s => s.Era == e2).OrderBy(s => Engine.RecordMonth(s.S.RecordDates) ?? int.MaxValue).ThenBy(s => s.Name).Select(s => s.I).ToList();
-            songsBox.Children.Add(UI.Row(10, UI.Button($"Play {e2} in order", () => Listen.PlayInOrder(inEra), ""), UI.Button($"Shuffle {e2}", () => Player.Shared.SetEra(e2), "")));
-        }
-        songsBox.Children.Add(rows);
-        var songs = UI.Panel(songsBox, 4, 16); songs.Margin = new Thickness(0, 14, 0, 0);
-        var right = UI.Column(0, next, songs); right.Margin = new Thickness(24, 0, 0, 0); right.MinWidth = 420;
-
-        var grid = new Grid();
-        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        Grid.SetColumn(right, 1); grid.Children.Add(left); grid.Children.Add(right);
-        Body.MaxWidth = 1180; Body.HorizontalAlignment = HorizontalAlignment.Stretch;
-        Add(grid);
-        file = "\0"; upNextKey = null; line = -2; // draw the moving parts afresh
-        BuildRows();
-        Tick();
+        if (songsPanel.Visibility == Visibility.Visible) BuildRows();
+        upNextKey = null; Tick();
     }
 
-    /// The page is rebuilt in place; these keep their state (search text, slider positions) and move to the new layout.
-    static void Detach(params FrameworkElement[] items) { foreach (var e in items) if (e.Parent is Panel p) p.Children.Remove(e); else if (e.Parent is Decorator d) d.Child = null; }
+    void ToggleSongs()
+    {
+        bool open = songsPanel.Visibility != Visibility.Visible;
+        songsPanel.Visibility = open ? Visibility.Visible : Visibility.Collapsed;
+        ((TextBlock)search.Content).Text = open ? "" : "";
+        UI.AutomationName(search, open ? "Close your songs" : "Your songs");
+        if (open) { BuildRows(); UI.FadeIn(songsPanel); find.Focus(); }
+    }
+
+    ContextMenu EraMenu()
+    {
+        var m = new ContextMenu(); var current = Store.Shared.Me.AmbientEra;
+        void Item(string label, string era) { var i = new MenuItem { Header = label, IsCheckable = true, IsChecked = current == era }; i.Click += (_, _) => Player.Shared.SetEra(era); m.Items.Add(i); }
+        Item("All eras", ""); m.Items.Add(new Separator());
+        foreach (var e in Player.Shared.Eras) Item(e, e);
+        return m;
+    }
 
     void BuildRows()
     {
-        var p = Player.Shared; var q = search.Text.Trim().ToLowerInvariant(); var picked = eraPick.SelectedItem as string ?? "All eras";
+        var p = Player.Shared; var q = find.Text.Trim().ToLowerInvariant(); var picked = eraPick.SelectedItem as string ?? "All eras";
         var shown = Mine().Where(s => (picked == "All eras" || s.Era == picked) && (q.Length == 0 || s.Name.ToLowerInvariant().Contains(q))).ToList();
+        eraButtons.Children.Clear();
+        if (picked != "All eras")
+        {
+            var inEra = shown.OrderBy(s => Engine.RecordMonth(s.S.RecordDates) ?? int.MaxValue).ThenBy(s => s.Name).Select(s => s.I).ToList();
+            eraButtons.Children.Add(UI.Row(10, UI.Button($"Play {picked} in order", () => Listen.PlayInOrder(inEra), ""), UI.Button($"Shuffle {picked}", () => p.SetEra(picked), "")));
+        }
         rows.Children.Clear();
         foreach (var s in shown.Take(limit))
         {
             var f = Listen.FileFor(s.I)!; bool on = string.Equals(f, p.CurrentFile, StringComparison.OrdinalIgnoreCase);
-            var row = new DockPanel { Margin = new Thickness(0, 0, 0, 2), Background = Brushes.Transparent, Tag = f };
-            var tools = UI.Row(4, UI.IconButton("", $"Play {s.Name}", () => Player.Shared.PlaySong(f, s.Name), 12), UI.IconButton("", $"Play {s.Name} next", () => Listen.PlayNext(s), 12));
+            var row = new DockPanel { Background = Brushes.Transparent, ToolTip = "Double-click to play" };
+            var tools = UI.Row(4, UI.IconButton("", $"Play {s.Name}", () => p.PlaySong(f, s.Name), 12), UI.IconButton("", $"Play {s.Name} next", () => Listen.PlayNext(s), 12));
             DockPanel.SetDock(tools, Dock.Right); row.Children.Add(tools);
-            var name = UI.Text(s.Name, 14, on ? JT.Lavender : JT.Mist);
-            var text = picked == "All eras" ? UI.Column(1, name, UI.Text(s.Era, 12, JT.Muted)) : UI.Column(0, name);
+            var text = UI.Column(1, UI.Text(s.Name, 14, on ? JT.Lavender : JT.Mist));
+            if (picked == "All eras") text.Children.Add(UI.Text(s.Era, 12, JT.Muted));
             row.Children.Add(UI.Row(10, UI.Icon(on ? "" : "", 13, on ? JT.Lavender : JT.Muted), text));
-            row.MouseLeftButtonDown += (_, e) => { if (e.ClickCount == 2) Player.Shared.PlaySong(f, s.Name); };
-            row.ToolTip = "Double-click to play";
+            row.MouseLeftButtonDown += (_, e) => { if (e.ClickCount == 2) p.PlaySong(f, s.Name); };
             rows.Children.Add(new Border { Padding = new Thickness(8, 6, 8, 6), BorderBrush = JT.Brush(JT.Line), BorderThickness = new Thickness(0, 0, 0, 1), Child = row });
         }
         if (shown.Count == 0) rows.Children.Add(UI.Muted("No songs match.", 13));
@@ -134,101 +373,110 @@ public sealed class PlayerPage : ToolPage
         if (p.CurrentFile is null && !Store.Shared.Me.AmbientOn) p.SetOn(true); else p.TogglePause();
     }
 
+    string? SongId => Player.Shared.CurrentFile is { } f && Store.Shared.SongForFile(f) is var i and >= 0 ? Store.Shared.Catalog[i].Id : null;
+    void Love() { if (SongId is { } id) Store.Shared.SetRating(id, Store.Shared.Me.Ratings.ContainsKey(id) ? 0 : 5); }
+
     /// The parts that move with the music.
     async void Tick()
     {
         var p = Player.Shared; var store = Store.Shared;
         updating = true;
-        title.Text = p.Title ?? "Nothing playing";
         ((TextBlock)play.Content).Text = p.IsPlaying ? "" : "";
         UI.AutomationName(play, p.IsPlaying ? "Pause" : "Play");
         var dur = p.Duration.TotalSeconds;
-        seek.Maximum = Math.Max(dur, 1); seek.IsEnabled = dur > 0;
-        if (!dragging) seek.Value = Math.Min(p.Position.TotalSeconds, seek.Maximum);
-        time.Text = Engine.FmtTime(p.Position.TotalSeconds); length.Text = Engine.FmtTime(dur);
+        progress.Width = dur > 0 && progressTrack.ActualWidth > 0 ? progressTrack.ActualWidth * Math.Min(1, p.Position.TotalSeconds / dur) : 0;
         if (!volume.IsMouseCaptureWithin) volume.Value = p.Volume;
-        var mixEra = store.Me.AmbientEra.Length > 0 && shuffle.Items.Contains($"Shuffle: {store.Me.AmbientEra}") ? $"Shuffle: {store.Me.AmbientEra}" : "Shuffle: all eras";
-        if (shuffle.SelectedItem as string != mixEra) shuffle.SelectedItem = mixEra;
-        inOrder.IsChecked = store.Me.InOrder;
+        ((TextBlock)repeat.Content).Foreground = JT.Brush(store.Me.InOrder ? JT.Lavender : JT.Mist);
+        var loved = SongId is { } id && store.Me.Ratings.ContainsKey(id);
+        ((TextBlock)heart.Content).Text = loved ? "" : ""; ((TextBlock)heart.Content).Foreground = JT.Brush(loved ? JT.Missing : JT.Mist);
+        UI.AutomationName(heart, loved ? "Clear the rating" : "Rate 5 hearts"); heart.IsEnabled = SongId is not null;
         updating = false;
 
-        var key = string.Join("\n", p.UpNext.Select(x => x.Title));
-        if (key != upNextKey) { upNextKey = key; DrawUpNext(); }
+        var key = $"{p.Title}\n{store.Me.AmbientEra}\n" + string.Join("\n", p.UpNext.Select(x => x.Title));
+        if (key != upNextKey) { upNextKey = key; DrawQueue(); }
 
         if (p.CurrentFile != file)
         {
-            file = p.CurrentFile; synced = []; plain = ""; line = -2;
-            cover.Source = JT.Image("jt-logo"); cover.Stretch = Stretch.None;
-            era.Text = file is null ? "Press play for a shuffle of your songs" : "";
-            foreach (var b in rows.Children.OfType<Border>()) if (b.Child is DockPanel r && r.Tag is string f) Mark(r, string.Equals(f, file, StringComparison.OrdinalIgnoreCase));
+            file = p.CurrentFile; synced = []; line = -2; lit = -1; artFor = file;
             var i = file is null ? -1 : store.SongForFile(file);
+            var era = i >= 0 ? Engine.EraName(store.Catalog[i]) : "Juice WRLD";
+            cardTitle.Text = barTitle.Text = p.Title ?? "Nothing playing"; cardEra.Text = barEra.Text = era;
+            ShowArt(null, file ?? "");
             var playing = file;
-            if (i >= 0)
+            // lyrics and the era's art come live from the site, never saved
+            if (i >= 0 && await store.DetailsAsync(store.Catalog[i]) is { } json && playing == file)
             {
-                era.Text = Engine.EraName(store.Catalog[i]);
-                // lyrics and era art come live from the site, never saved
-                if (await store.DetailsAsync(store.Catalog[i]) is { } json && playing == file)
-                {
-                    synced = Listen.ParseSynced(json["synced_lyrics"]?.GetValue<string>() ?? "");
-                    plain = (json["lyrics"]?.GetValue<string>() ?? "").Trim();
-                    if (json["image_url"]?.GetValue<string>() is { Length: > 0 } img && Uri.TryCreate(new Uri("https://juicewrldapi.com"), img, out var url))
-                        try { cover.Source = new BitmapImage(url); cover.Stretch = Stretch.UniformToFill; } catch (Exception) { }
-                }
+                synced = Listen.ParseSynced(json["synced_lyrics"]?.GetValue<string>() ?? "");
+                if (json["image_url"]?.GetValue<string>() is { Length: > 0 } img && Uri.TryCreate(new Uri("https://juicewrldapi.com"), img, out var url))
+                    try { ShowArt(new BitmapImage(url), playing ?? ""); } catch (Exception) { }
             }
             line = -2;
         }
-        DrawLyrics(p.Position.TotalSeconds);
+        Karaoke(p.Position.TotalSeconds);
     }
 
-    static void Mark(DockPanel row, bool on)
-    {
-        if (row.Children.OfType<StackPanel>().LastOrDefault() is not { } label || label.Children.Count < 2) return;
-        if (label.Children[0] is TextBlock icon) { icon.Text = on ? "" : ""; icon.Foreground = JT.Brush(on ? JT.Lavender : JT.Muted); }
-        if (label.Children[1] is StackPanel text && text.Children[0] is TextBlock name) name.Foreground = JT.Brush(on ? JT.Lavender : JT.Mist);
-    }
-
-    void DrawLyrics(double at)
+    /// The line being sung, its words lighting up as the song gets to them. Shown live from the site, never saved.
+    void Karaoke(double at)
     {
         int n = synced.FindLastIndex(x => x.At <= at + 0.15);
-        if (n == line) return;
-        line = n; lyrics.Children.Clear();
-        if (synced.Count > 0)
-            for (int k = Math.Max(0, n - 1); k <= Math.Min(synced.Count - 1, Math.Max(n, 0) + 4); k++)
-                lyrics.Children.Add(new TextBlock
-                {
-                    Text = synced[k].Line.Length == 0 ? "♪" : synced[k].Line, TextWrapping = TextWrapping.Wrap, FontSize = k == n ? 17 : 14,
-                    FontWeight = k == n ? FontWeights.SemiBold : FontWeights.Normal,
-                    Foreground = JT.Brush(k == n ? JT.Mist : Color.FromArgb((byte)(k < n ? 102 : 190), JT.Muted.R, JT.Muted.G, JT.Muted.B)),
-                });
-        else if (plain.Length > 0) lyrics.Children.Add(new ScrollViewer { MaxHeight = 220, VerticalScrollBarVisibility = ScrollBarVisibility.Auto, Content = UI.Text(plain, 14, JT.Muted, wrap: true) });
-        else lyrics.Children.Add(UI.Muted(file is null ? "Lyrics show here while a song plays." : "The site has no lyrics for this song.", 13));
-    }
-
-    void DrawUpNext()
-    {
-        var p = Player.Shared; var store = Store.Shared;
-        upNext.Children.Clear();
-        var head = new DockPanel();
-        if (p.UpNext.Count > 0) { var clear = UI.Link("Clear", p.ClearUpNext, 13); DockPanel.SetDock(clear, Dock.Right); head.Children.Add(clear); }
-        head.Children.Add(UI.Text("Up next", 15, weight: FontWeights.SemiBold));
-        upNext.Children.Add(head);
-        if (p.UpNext.Count == 0)
+        if (n < 0)
         {
-            var after = store.Me.AmbientEra.Length == 0 ? "the shuffle" : store.Me.InOrder ? $"the next {store.Me.AmbientEra} song" : $"a shuffle of {store.Me.AmbientEra}";
-            upNext.Children.Add(UI.Muted($"Nothing picked. After this song comes {after}. Use + on a song to play it next.", 13).Also(t => t.Margin = new Thickness(0, 6, 0, 0)));
+            if (line == n && lit == -1) return;
+            line = n; lit = -1; karaoke.Inlines.Clear();
+            if (Player.Shared.CurrentFile is null) karaoke.Inlines.Add(new System.Windows.Documents.Run("Press play") { Foreground = JT.Brush(Color.FromArgb(128, 255, 255, 255)) });
             return;
         }
-        for (int k = 0; k < p.UpNext.Count; k++)
+        double start = synced[n].At, end = n + 1 < synced.Count ? synced[n + 1].At : start + 4;
+        var words = synced[n].Line.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        int on = (int)Math.Ceiling(words.Length * Math.Clamp((at - start) / Math.Max(0.5, (end - start) * 0.85), 0, 1));
+        if (n == line && on == lit) return;
+        if (n != line) karaoke.BeginAnimation(OpacityProperty, new DoubleAnimation(0, 1, TimeSpan.FromSeconds(0.3)));
+        line = n; lit = on; karaoke.Inlines.Clear();
+        if (words.Length == 0) { karaoke.Inlines.Add(new System.Windows.Documents.Run("♪")); return; }
+        for (int k = 0; k < words.Length; k++)
+            karaoke.Inlines.Add(new System.Windows.Documents.Run((k == 0 ? "" : " ") + words[k]) { Foreground = k < on ? Brushes.White : JT.Brush(Color.FromArgb(71, 255, 255, 255)) });
+    }
+
+    /// The song playing, then Up next. Click plays one now; right-click to move it or take it out.
+    void DrawQueue()
+    {
+        var p = Player.Shared; var store = Store.Shared;
+        queue.Children.Clear();
+        queueSub.Text = p.UpNext.Count > 0 ? $"{p.UpNext.Count} up next" : store.Me.AmbientEra.Length == 0 ? "Shuffle after this" : $"{store.Me.AmbientEra} after this";
+        if (queueThumb.Parent is Border old) old.Child = null; // the thumb and its note move into the rebuilt head
+        if (queueSub.Parent is Panel holder) holder.Children.Remove(queueSub);
+        var head = UI.Row(8, Thumb(queueThumb, 30), UI.Column(0, UI.Text("Queue", 14, weight: FontWeights.Bold), queueSub));
+        head.Margin = new Thickness(0, 0, 0, 8); queue.Children.Add(head);
+        if (p.Title is { } t)
+            queue.Children.Add(new Border
+            {
+                Padding = new Thickness(6), CornerRadius = new CornerRadius(9), Background = JT.Brush(Color.FromArgb(36, 255, 255, 255)),
+                BorderBrush = JT.Brush(Color.FromArgb(153, 255, 255, 255)), BorderThickness = new Thickness(1.5), Margin = new Thickness(0, 0, 0, 4),
+                Child = Row(t, cardEra.Text),
+            });
+        for (int k = 0; k < Math.Min(8, p.UpNext.Count); k++)
         {
             int n = k; var item = p.UpNext[k];
-            var row = new DockPanel { Margin = new Thickness(0, 6, 0, 0) };
-            var up = UI.IconButton("", $"Move {item.Title} up", () => p.MoveUpNext(n, -1), 11); up.IsEnabled = n > 0;
-            var down = UI.IconButton("", $"Move {item.Title} down", () => p.MoveUpNext(n, 1), 11); down.IsEnabled = n < p.UpNext.Count - 1;
-            var tools = UI.Row(4, up, down, UI.IconButton("", $"Remove {item.Title}", () => p.RemoveUpNext(n), 11));
-            DockPanel.SetDock(tools, Dock.Right); row.Children.Add(tools);
-            var num = UI.Text($"{n + 1}", 13, JT.Muted); num.Width = 22; num.TextAlignment = TextAlignment.Right;
-            row.Children.Add(UI.Row(10, num, UI.Text(item.Title, 14)));
-            upNext.Children.Add(row);
+            var row = new Border { Padding = new Thickness(6, 3, 6, 3), Background = Brushes.Transparent, Cursor = Cursors.Hand, Child = Row(item.Title, "Up next"), ToolTip = "Click to play now" };
+            row.MouseLeftButtonUp += (_, _) => { p.RemoveUpNext(n); p.PlaySong(item.File, item.Title); };
+            var menu = new ContextMenu();
+            void Add(string label, Action act, bool enabled = true) { var i = new MenuItem { Header = label, IsEnabled = enabled }; i.Click += (_, _) => act(); menu.Items.Add(i); }
+            Add("Play now", () => { p.RemoveUpNext(n); p.PlaySong(item.File, item.Title); });
+            Add("Move up", () => p.MoveUpNext(n, -1), n > 0);
+            Add("Move down", () => p.MoveUpNext(n, 1), n < p.UpNext.Count - 1);
+            menu.Items.Add(new Separator());
+            Add("Remove from queue", () => p.RemoveUpNext(n));
+            row.ContextMenu = menu;
+            queue.Children.Add(row);
         }
+        if (p.UpNext.Count > 8) queue.Children.Add(UI.Text($"+{p.UpNext.Count - 8} more", 11, JT.Muted).Also(x => x.Margin = new Thickness(6, 2, 0, 0)));
+        if (p.UpNext.Count > 0) queue.Children.Add(UI.Link("Clear", p.ClearUpNext, 11).Also(x => { x.HorizontalAlignment = HorizontalAlignment.Left; x.Margin = new Thickness(6, 4, 0, 0); }));
+    }
+    static FrameworkElement Row(string title, string sub)
+    {
+        var t = UI.Text(title, 12, weight: FontWeights.SemiBold); t.TextTrimming = TextTrimming.CharacterEllipsis;
+        var s = UI.Text(sub, 10, JT.Muted); s.TextTrimming = TextTrimming.CharacterEllipsis;
+        return UI.Row(8, new Border { Width = 26, Height = 26, CornerRadius = new CornerRadius(5), Background = JT.Brush(Color.FromArgb(30, 255, 255, 255)), Child = UI.Icon("", 11, JT.Muted) },
+                      UI.Column(0, t, s));
     }
 }

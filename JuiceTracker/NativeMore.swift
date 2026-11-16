@@ -527,156 +527,375 @@ import WidgetKit
 
 // MARK: - Player tab
 
-/// The Player tab: what's playing (cover, era, seek, controls, the lyrics line by line), Up next (reorder, remove),
-/// and your playable songs by era to play now, next, or a whole era in order or shuffled.
+/// The Player tab, made to sit and watch: a ringed black hole in deep space whose glow takes its colors from the
+/// cover art, the time above it, the lyrics lighting up word by word, the cover on a tilted card, the queue floating
+/// at the left and a control bar at the bottom. Your songs open from the search button. All drawn in code.
 struct PlayerScreen: View {
     let songs: [Song]
+    @State private var version = 0 // bumps when the player or the song changes; the small parts redraw from it
+    @State private var browsing = false
     @State private var query = ""
     @State private var era = ""
-    @State private var version = 0 // bumps when the player changes, to redraw Up next and the buttons
+    @State private var palette = CoverPalette.fallback
+    @State private var paletteFor: ObjectIdentifier?
     private let changed = NotificationCenter.default.publisher(for: AmbientPlayer.changed)
 
     var body: some View {
         let library = EngineLibrary.shared
         let mine = songs.filter { $0.o && library.playableURL($0.i) != nil }
         let eras = mine.reduce(into: [String]()) { if !$0.contains($1.e) { $0.append($1.e) } }
-        VStack(alignment: .leading, spacing: 16) {
-            ScreenTitle(text: "Player")
-            if mine.isEmpty {
-                Text("Songs you have that this Mac can play show up here.").foregroundColor(JT.muted)
-            } else {
-                HStack(alignment: .top, spacing: 24) {
-                    VStack(alignment: .leading, spacing: 14) {
-                        NowCard(eras: eras, version: version)
-                        PlayerLyrics()
+        GeometryReader { g in
+            let w = g.size.width, h = g.size.height
+            let hole = max(160, min(w * 0.34, h * 0.4, 360))
+            let cx = w / 2, cy = h * 0.44
+            ZStack {
+                BlackHole(palette: palette, size: hole).position(x: cx, y: cy)
+                PlayerClock(size: hole * 0.34).position(x: cx, y: cy - hole * 0.62)
+                let words = min(w * 0.42, 460) // starts just right of the cover card
+                KaraokeLine().frame(width: words).position(x: cx - hole * 0.08 + words / 2, y: cy + hole * 0.24)
+                CoverCard(version: version).frame(width: hole * 0.44).position(x: cx - hole * 0.36, y: cy + hole * 0.36)
+                QueuePanel(version: version).frame(width: 230).position(x: max(135, cx - hole * 1.3), y: cy)
+                VStack(alignment: .trailing, spacing: 10) {
+                    Button { browsing.toggle() } label: {
+                        Image(systemName: browsing ? "xmark" : "magnifyingglass").frame(width: 30, height: 30)
+                            .background(Circle().fill(Color.white.opacity(0.1))).overlay(Circle().stroke(Color.white.opacity(0.2)))
                     }
-                    .frame(width: JT.compact ? 300 : 360)
-                    VStack(alignment: .leading, spacing: 14) {
-                        UpNextList(version: version)
-                        SongPicker(songs: mine, eras: eras, query: $query, era: $era)
-                    }
-                    .frame(maxWidth: .infinity, alignment: .topLeading)
+                    .buttonStyle(.plain).help(browsing ? "Close your songs" : "Your songs").accessibilityLabel(browsing ? "Close your songs" : "Your songs")
+                    ControlBar(eras: eras, version: version)
+                }
+                .frame(width: min(w - 40, 760)).position(x: cx, y: h - 58)
+                if mine.isEmpty {
+                    Text("Songs you have that this Mac can play show up here.").foregroundColor(JT.muted).position(x: cx, y: cy)
+                } else if browsing {
+                    SongPicker(songs: mine, eras: eras, query: $query, era: $era)
+                        .background(RoundedRectangle(cornerRadius: 18).fill(Color.black.opacity(0.88)))
+                        .frame(width: min(460, w - 40), height: max(240, h - 170))
+                        .position(x: w - min(460, w - 40) / 2 - 20, y: (h - 170) / 2 + 20)
+                        .transition(.move(edge: .trailing).combined(with: .opacity))
                 }
             }
+            .animation(.easeOut(duration: 0.25), value: browsing)
         }
-        .padding(.horizontal, JT.compact ? 18 : 34).padding(.top, JT.compact ? 20 : 40).padding(.bottom, 30)
-        .frame(maxWidth: 1180, maxHeight: .infinity, alignment: .topLeading)
-        .onReceive(changed) { _ in version += 1 }
+        .background(SpaceField(palette: palette).ignoresSafeArea())
+        .onReceive(changed) { _ in version += 1; updatePalette() }
+        .onReceive(NowPlaying.shared.$song) { _ in version += 1 }
+        .onAppear { updatePalette() }
+    }
+
+    private func updatePalette() {
+        let img = AmbientPlayer.shared.coverImage
+        let id = img.map(ObjectIdentifier.init)
+        guard id != paletteFor else { return }
+        paletteFor = id
+        let next = img.map(CoverPalette.init(image:)) ?? .fallback
+        withAnimation(.easeInOut(duration: 1.2)) { palette = next }
     }
 }
 
-/// The cover, song, era and the controls.
-private struct NowCard: View {
-    let eras: [String]
-    let version: Int
-    @ObservedObject private var now = NowPlaying.shared
-    @State private var volume = EngineAmbient.volume
+/// Three glowing colors from the cover art: the most colorful hues, brightened so they glow on black.
+struct CoverPalette: Equatable {
+    var a: Color, b: Color, c: Color
+    static let fallback = CoverPalette(a: JT.lavender, b: Color(red: 0.31, green: 0.51, blue: 1), c: Color(red: 0.55, green: 0.16, blue: 0.75))
+    init(a: Color, b: Color, c: Color) { self.a = a; self.b = b; self.c = c }
+    init(image: NSImage) {
+        let colors = Self.hues(image)
+        let f = Self.fallback
+        self.init(a: colors.count > 0 ? colors[0] : f.a, b: colors.count > 1 ? colors[1] : colors.first ?? f.b, c: colors.count > 2 ? colors[2] : f.c)
+    }
+    /// Up to three colors: pixels binned by hue, each weighted by how colorful and bright it is.
+    static func hues(_ image: NSImage) -> [Color] {
+        let n = 24
+        var rect = NSRect(x: 0, y: 0, width: n, height: n)
+        guard let cg = image.cgImage(forProposedRect: &rect, context: nil, hints: nil) else { return [] }
+        var px = [UInt8](repeating: 0, count: n * n * 4)
+        let drawn = px.withUnsafeMutableBytes { buf -> Bool in
+            guard let ctx = CGContext(data: buf.baseAddress, width: n, height: n, bitsPerComponent: 8, bytesPerRow: n * 4, space: CGColorSpaceCreateDeviceRGB(),
+                                      bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return false }
+            ctx.draw(cg, in: CGRect(x: 0, y: 0, width: n, height: n))
+            return true
+        }
+        guard drawn else { return [] }
+        var bins = [(w: Double, r: Double, g: Double, b: Double)](repeating: (0, 0, 0, 0), count: 12)
+        for k in stride(from: 0, to: px.count, by: 4) {
+            let r = Double(px[k]) / 255, g = Double(px[k + 1]) / 255, b = Double(px[k + 2]) / 255
+            let mx = max(r, g, b), mn = min(r, g, b), s = mx == 0 ? 0 : (mx - mn) / mx
+            guard mx > 0.15, s > 0.25 else { continue } // greys and near-black say nothing about the color
+            let d = mx - mn
+            var hue = mx == r ? (g - b) / d : mx == g ? 2 + (b - r) / d : 4 + (r - g) / d
+            hue = (hue / 6).truncatingRemainder(dividingBy: 1); if hue < 0 { hue += 1 }
+            let bin = min(11, Int(hue * 12)), wt = s * mx
+            bins[bin].w += wt; bins[bin].r += r * wt; bins[bin].g += g * wt; bins[bin].b += b * wt
+        }
+        return bins.filter { $0.w > 0.5 }.sorted { $0.w > $1.w }.prefix(3).map { bin in
+            let c = NSColor(red: bin.r / bin.w, green: bin.g / bin.w, blue: bin.b / bin.w, alpha: 1)
+            return Color(nsColor: NSColor(hue: c.hueComponent, saturation: max(c.saturationComponent, 0.55), brightness: max(c.brightnessComponent, 0.9), alpha: 1))
+        }
+    }
+}
 
+/// Deep space: black, faint glows in the song's colors, and stars (the same ones every time).
+private struct SpaceField: View {
+    let palette: CoverPalette
+    var body: some View {
+        ZStack {
+            Color.black
+            RadialGradient(colors: [palette.b.opacity(0.16), .clear], center: UnitPoint(x: 0.82, y: 0.12), startRadius: 0, endRadius: 520)
+            RadialGradient(colors: [palette.a.opacity(0.12), .clear], center: UnitPoint(x: 0.12, y: 0.88), startRadius: 0, endRadius: 520)
+            Canvas { ctx, size in
+                var seed: UInt64 = 999
+                func next() -> Double { seed = seed &* 6364136223846793005 &+ 1442695040888963407; return Double(seed >> 11) / Double(UInt64(1) << 53) }
+                for _ in 0..<320 {
+                    let x = next() * size.width, y = next() * size.height, r = 0.4 + next() * 1.2
+                    ctx.fill(Path(ellipseIn: CGRect(x: x, y: y, width: r, height: r)), with: .color(.white.opacity(0.25 + next() * 0.6)))
+                }
+            }
+        }
+    }
+}
+
+/// The ringed black hole: a glowing disc in the song's colors, slowly turning, passing behind the hole at the top
+/// and in front of it at the bottom.
+private struct BlackHole: View {
+    let palette: CoverPalette
+    let size: CGFloat
+    @State private var spin = 0.0
+
+    var body: some View {
+        let span = size * 2.5
+        ZStack {
+            disc(span).mask(VStack(spacing: 0) { Rectangle(); Color.clear })
+            Circle().stroke(AngularGradient(colors: [palette.a, palette.b, palette.c, palette.a], center: .center), lineWidth: size * 0.05)
+                .blur(radius: size * 0.06).opacity(0.75).frame(width: size * 1.1, height: size * 1.1)
+            Circle().fill(Color.black).frame(width: size, height: size)
+                .overlay(Circle().stroke(Color.white.opacity(0.95), lineWidth: 3))
+                .shadow(color: .white.opacity(0.7), radius: 8)
+                .shadow(color: palette.b.opacity(0.6), radius: 30)
+            disc(span).mask(VStack(spacing: 0) { Color.clear; Rectangle() })
+        }
+        .frame(width: span, height: span)
+        .allowsHitTesting(false)
+        .onAppear { withAnimation(.linear(duration: 90).repeatForever(autoreverses: false)) { spin = 360 } }
+    }
+
+    private func disc(_ span: CGFloat) -> some View {
+        ZStack {
+            Circle().stroke(AngularGradient(colors: [palette.a, palette.b.opacity(0.35), palette.c, palette.a.opacity(0.3), palette.b, palette.a], center: .center), lineWidth: size * 0.2)
+                .blur(radius: size * 0.07).opacity(0.9).frame(width: size * 1.95, height: size * 1.95)
+            Circle().stroke(AngularGradient(colors: [.white.opacity(0.8), palette.a.opacity(0.2), .white.opacity(0.55), palette.b.opacity(0.2), .white.opacity(0.8)], center: .center), lineWidth: size * 0.04)
+                .blur(radius: size * 0.02).frame(width: size * 1.55, height: size * 1.55)
+            Circle().stroke(palette.c.opacity(0.6), style: StrokeStyle(lineWidth: 1.5, dash: [1.5, 12])).frame(width: size * 2.35, height: size * 2.35)
+        }
+        .frame(width: span, height: span)
+        .rotationEffect(.degrees(spin))
+        .scaleEffect(x: 1, y: 0.24)
+        .rotationEffect(.degrees(-8))
+    }
+}
+
+/// The date, then the time big and condensed, fading toward the hole.
+private struct PlayerClock: View {
+    let size: CGFloat
+    private static let time: DateFormatter = {
+        let f = DateFormatter()
+        f.setLocalizedDateFormatFromTemplate("jmm")
+        f.dateFormat = f.dateFormat.replacingOccurrences(of: "a", with: "").trimmingCharacters(in: .whitespaces)
+        return f
+    }()
+    var body: some View {
+        TimelineView(.everyMinute) { ctx in
+            VStack(spacing: 0) {
+                Text(ctx.date.formatted(.dateTime.weekday(.abbreviated).month(.abbreviated).day())).font(JT.body(13, .semibold)).foregroundColor(JT.mist.opacity(0.85))
+                Text(Self.time.string(from: ctx.date))
+                    .font(.custom("HelveticaNeue-CondensedBold", size: size))
+                    .foregroundStyle(LinearGradient(colors: [.white.opacity(0.92), .white.opacity(0.12)], startPoint: .top, endPoint: .bottom))
+            }
+        }
+        .allowsHitTesting(false)
+    }
+}
+
+/// The line being sung, its words lighting up as the song gets to them. Shown live from the site, never saved.
+private struct KaraokeLine: View {
+    @ObservedObject private var now = NowPlaying.shared
     var body: some View {
         let p = AmbientPlayer.shared
-        VStack(alignment: .leading, spacing: 12) {
-            ZStack {
-                RoundedRectangle(cornerRadius: 18).fill(JT.raise)
-                if let art = p.coverImage { Image(nsImage: art).resizable().scaledToFill() }
-                else { Image("jt-logo").resizable().scaledToFit().padding(60).opacity(0.8) }
-            }
-            .frame(maxWidth: .infinity).aspectRatio(1, contentMode: .fit)
-            .clipShape(RoundedRectangle(cornerRadius: 18))
-            .doodled(18)
-            .shadow(color: JT.lavender.opacity(p.isPlaying ? 0.35 : 0), radius: 24)
-            HStack(alignment: .top) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(p.title ?? "Nothing playing").font(JT.marker(24)).lineLimit(2)
-                    Text(now.song.map { $0.e } ?? (p.title == nil ? "Press play for a shuffle of your songs" : "")).foregroundColor(JT.muted).lineLimit(1)
-                }
-                Spacer()
-                if p.isPlaying { Visualizer(height: 22).frame(width: 26) }
-            }
-            if p.title != nil { SeekBar() }
-            HStack(spacing: 14) {
-                Button {
-                    if p.title == nil { EngineAmbient.setOn(true); p.resume() } else { p.togglePause() }
-                } label: { Image(systemName: p.isPlaying ? "pause.circle.fill" : "play.circle.fill").font(.system(size: 40)).foregroundColor(JT.lavender) }
-                .buttonStyle(.plain).help(p.isPlaying ? "Pause" : "Play").accessibilityLabel(p.isPlaying ? "Pause" : "Play")
-                Button { p.skip() } label: { Image(systemName: "forward.fill").font(.system(size: 20)) }
-                    .buttonStyle(.plain).help("Next song").accessibilityLabel("Next song")
-                Image(systemName: "speaker.wave.1").foregroundColor(JT.muted)
-                Slider(value: $volume, in: 0...100) { editing in if !editing { p.volume = Float(volume / 100); EngineAmbient.volume = volume } }
-                    .controlSize(.small).accessibilityLabel("Volume")
-                SleepMenu()
-                Button { LyricsWindow.show() } label: { Image(systemName: "quote.bubble") }.buttonStyle(.borderless).help("Big lyrics window").accessibilityLabel("Lyrics window")
-                Button { MiniPlayer.show() } label: { Image(systemName: "pip.enter") }.buttonStyle(.borderless).help("Mini player (⌘3)").accessibilityLabel("Mini player")
-            }
-            HStack {
-                Menu(eras.contains(EngineAmbient.era) ? "Shuffle: \(EngineAmbient.era)" : "Shuffle: all eras") {
-                    Button("All eras") { EngineAmbient.setEra("") }
-                    Divider()
-                    ForEach(eras, id: \.self) { e in Button(e) { EngineAmbient.setEra(e) } }
-                }
-                .controlSize(.small).fixedSize()
-                Toggle("In recording order", isOn: Binding(get: { EngineAmbient.inOrder }, set: { EngineAmbient.setInOrder($0) }))
-                    .controlSize(.small).help("Era radio: play the picked era in the order it was recorded")
+        Group {
+            if let x = now.extras, !x.synced.isEmpty, let n = now.lineIndex, x.synced.indices.contains(n) {
+                let start = x.synced[n].at, end = n + 1 < x.synced.count ? x.synced[n + 1].at : start + 4
+                let words = x.synced[n].line.split(separator: " ").map(String.init)
+                let progress = min(1, max(0, (p.currentTime - start) / max(0.5, (end - start) * 0.85)))
+                let lit = Int((Double(words.count) * progress).rounded(.up))
+                (words.isEmpty ? Text("♪") : words.enumerated().reduce(Text("")) { line, w in
+                    line + Text((w.offset == 0 ? "" : " ") + w.element).foregroundColor(w.offset < lit ? .white : .white.opacity(0.28))
+                })
+                .id(n).transition(.opacity)
+            } else if p.title == nil {
+                Text("Press play").foregroundColor(.white.opacity(0.5))
             }
         }
-        .padding(16).doodled(16)
-        .onAppear { volume = Double(p.volume * 100) }
+        .font(JT.body(30, .heavy))
+        .lineLimit(3)
+        .shadow(color: .black.opacity(0.7), radius: 8)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .animation(.easeOut(duration: 0.3), value: now.lineIndex)
+        .allowsHitTesting(false)
     }
 }
 
-/// The lyrics of the song playing, following the music when the site has timed lyrics. Shown live, never saved.
-private struct PlayerLyrics: View {
-    @ObservedObject private var now = NowPlaying.shared
+/// A small cover thumbnail, or a note on a tile when there's no art.
+private func thumb(_ image: NSImage?, _ side: CGFloat) -> some View {
+    ZStack {
+        RoundedRectangle(cornerRadius: side * 0.18).fill(Color.white.opacity(0.12))
+        if let image { Image(nsImage: image).resizable().scaledToFill() } else { Image(systemName: "music.note").foregroundColor(JT.muted) }
+    }
+    .frame(width: side, height: side).clipShape(RoundedRectangle(cornerRadius: side * 0.18))
+}
+
+/// The cover on a glassy card, tilted toward the hole. Click opens the song's card.
+private struct CoverCard: View {
+    let version: Int
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Lyrics").font(JT.body(15, .semibold))
-            if let x = now.extras, !x.synced.isEmpty {
-                let n = now.lineIndex ?? -1
-                VStack(alignment: .leading, spacing: 8) {
-                    ForEach(max(0, n - 1)...min(x.synced.count - 1, max(n, 0) + 4), id: \.self) { k in
-                        Text(x.synced[k].line.isEmpty ? "♪" : x.synced[k].line)
-                            .font(k == n ? JT.body(17, .semibold) : JT.body(14))
-                            .foregroundColor(k == n ? JT.mist : JT.muted.opacity(k < n ? 0.4 : 0.75))
-                    }
-                }
-                .animation(.easeOut(duration: 0.25), value: n)
-            } else if let x = now.extras, !x.lyrics.isEmpty {
-                ScrollView { Text(x.lyrics).font(JT.body(14)).foregroundColor(JT.muted).frame(maxWidth: .infinity, alignment: .leading) }.frame(maxHeight: 220)
-            } else {
-                Text(now.song == nil ? "Lyrics show here while a song plays." : "The site has no lyrics for this song.").font(JT.body(13)).foregroundColor(JT.muted)
-            }
+        let p = AmbientPlayer.shared
+        VStack(spacing: 5) {
+            Color.clear.aspectRatio(1, contentMode: .fit)
+                .overlay(Group {
+                    if let img = p.coverImage { Image(nsImage: img).resizable().scaledToFill() } else { Image("jt-logo").resizable().scaledToFit().padding(24).opacity(0.85) }
+                })
+                .clipShape(RoundedRectangle(cornerRadius: 10))
+            Text(p.title ?? "Nothing playing").font(JT.body(14, .semibold)).lineLimit(1)
+            Text(NowPlaying.shared.song?.e ?? "Juice WRLD").font(JT.body(11.5)).foregroundColor(JT.mist.opacity(0.7)).lineLimit(1)
         }
-        .padding(16).frame(maxWidth: .infinity, alignment: .leading).doodled(16, seed: 2)
+        .padding(10)
+        .background(RoundedRectangle(cornerRadius: 14).fill(LinearGradient(colors: [Color.white.opacity(0.24), Color.white.opacity(0.08)], startPoint: .topLeading, endPoint: .bottomTrailing)))
+        .overlay(RoundedRectangle(cornerRadius: 14).stroke(Color.white.opacity(0.3)))
+        .rotation3DEffect(.degrees(16), axis: (x: 0.15, y: 1, z: 0), perspective: 0.6)
+        .shadow(color: .black.opacity(0.6), radius: 18, y: 10)
+        .onTapGesture { if let s = NowPlaying.shared.song { NativeStore.shared.openSong = s } }
+        .help("Open the song card")
     }
 }
 
-/// Songs you picked to play next, in order.
-private struct UpNextList: View {
+/// The song playing, then Up next, on a panel turned toward the middle. Click plays one now; right-click to move it
+/// or take it out.
+private struct QueuePanel: View {
     let version: Int
     var body: some View {
         let p = AmbientPlayer.shared, list = p.upNext
         VStack(alignment: .leading, spacing: 6) {
-            HStack {
-                Text("Up next").font(JT.body(15, .semibold))
-                Spacer()
-                if !list.isEmpty { Button("Clear") { p.clearUpNext() }.buttonStyle(.borderless) }
-            }
-            if list.isEmpty {
-                Text("Nothing picked. After this song comes \(EngineAmbient.era.isEmpty ? "the shuffle" : EngineAmbient.inOrder ? "the next \(EngineAmbient.era) song" : "a shuffle of \(EngineAmbient.era)"). Use + on a song to play it next.")
-                    .font(JT.body(13)).foregroundColor(JT.muted)
-            }
-            ForEach(Array(list.enumerated()), id: \.offset) { k, item in
-                HStack(spacing: 8) {
-                    Text("\(k + 1)").foregroundColor(JT.muted).monospacedDigit().frame(width: 20, alignment: .trailing)
-                    Text(item.title).lineLimit(1)
-                    Spacer()
-                    Button { p.moveUpNext(from: [k], to: k - 1) } label: { Image(systemName: "chevron.up") }.buttonStyle(.borderless).disabled(k == 0).accessibilityLabel("Move \(item.title) up")
-                    Button { p.moveUpNext(from: [k], to: k + 2) } label: { Image(systemName: "chevron.down") }.buttonStyle(.borderless).disabled(k == list.count - 1).accessibilityLabel("Move \(item.title) down")
-                    Button { p.removeUpNext(at: k) } label: { Image(systemName: "xmark") }.buttonStyle(.borderless).accessibilityLabel("Remove \(item.title)")
+            HStack(spacing: 8) {
+                thumb(p.coverImage, 30)
+                VStack(alignment: .leading, spacing: 0) {
+                    Text("Queue").font(JT.body(14, .bold))
+                    Text(list.isEmpty ? (EngineAmbient.era.isEmpty ? "Shuffle after this" : "\(EngineAmbient.era) after this") : "\(list.count) up next").font(JT.body(11)).foregroundColor(JT.muted)
                 }
-                .padding(.vertical, 3)
+            }
+            .padding(.bottom, 4)
+            if let t = p.title {
+                row(p.coverImage, t, NowPlaying.shared.song?.e ?? "Playing")
+                    .padding(6).background(RoundedRectangle(cornerRadius: 9).fill(Color.white.opacity(0.14)))
+                    .overlay(RoundedRectangle(cornerRadius: 9).stroke(Color.white.opacity(0.6), lineWidth: 1.5))
+            }
+            ForEach(Array(list.prefix(8).enumerated()), id: \.offset) { k, item in
+                row(nil, item.title, "Up next").padding(.horizontal, 6).padding(.vertical, 3)
+                    .contentShape(Rectangle())
+                    .onTapGesture { p.removeUpNext(at: k); p.playNow(item.url, title: item.title) }
+                    .contextMenu {
+                        Button("Play now") { p.removeUpNext(at: k); p.playNow(item.url, title: item.title) }
+                        if k > 0 { Button("Move up") { p.moveUpNext(from: [k], to: k - 1) } }
+                        if k < list.count - 1 { Button("Move down") { p.moveUpNext(from: [k], to: k + 2) } }
+                        Divider()
+                        Button("Remove from queue") { p.removeUpNext(at: k) }
+                    }
+            }
+            if list.count > 8 { Text("+\(list.count - 8) more").font(JT.body(11)).foregroundColor(JT.muted).padding(.leading, 6) }
+            if !list.isEmpty { Button("Clear") { p.clearUpNext() }.buttonStyle(.borderless).font(JT.body(11)).padding(.leading, 6) }
+        }
+        .padding(12)
+        .rotation3DEffect(.degrees(24), axis: (x: 0, y: 1, z: 0), perspective: 0.5)
+    }
+
+    private func row(_ image: NSImage?, _ title: String, _ sub: String) -> some View {
+        HStack(spacing: 8) {
+            thumb(image, 26)
+            VStack(alignment: .leading, spacing: 0) {
+                Text(title).font(JT.body(12, .semibold)).lineLimit(1)
+                Text(sub).font(JT.body(10)).foregroundColor(JT.muted).lineLimit(1)
             }
         }
-        .padding(16).doodled(16, seed: 3)
+    }
+}
+
+/// The pill at the bottom: shuffle, restart, play/pause, next, era radio, the song with its progress, heart, sleep,
+/// lyrics, mini player and volume.
+private struct ControlBar: View {
+    let eras: [String]
+    let version: Int
+    @ObservedObject private var store = NativeStore.shared // the heart follows ratings
+    @State private var volume = EngineAmbient.volume
+
+    var body: some View {
+        let p = AmbientPlayer.shared
+        let id = NowPlaying.shared.song.flatMap { s in EngineState.shared.catalog.indices.contains(s.i) ? EngineState.shared.catalog[s.i].id : nil }
+        let loved = id.map { (EngineState.shared.ratings[$0] ?? 0) > 0 } ?? false
+        HStack(spacing: 14) {
+            Menu {
+                Button("All eras") { EngineAmbient.setEra("") }
+                Divider()
+                ForEach(eras, id: \.self) { e in Button(e) { EngineAmbient.setEra(e) } }
+            } label: { Image(systemName: "shuffle") }
+            .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
+            .help(EngineAmbient.era.isEmpty ? "Shuffling all eras" : "Shuffling \(EngineAmbient.era)").accessibilityLabel("Which era to shuffle")
+            Button { p.seek(to: 0) } label: { Image(systemName: "backward.fill") }.help("Start this song again").accessibilityLabel("Start this song again")
+            Button { if p.title == nil { EngineAmbient.setOn(true); p.resume() } else { p.togglePause() } } label: {
+                Image(systemName: p.isPlaying ? "pause.fill" : "play.fill").font(.system(size: 20)).frame(width: 24)
+            }
+            .help(p.isPlaying ? "Pause" : "Play").accessibilityLabel(p.isPlaying ? "Pause" : "Play")
+            Button { p.skip() } label: { Image(systemName: "forward.fill") }.help("Next song").accessibilityLabel("Next song")
+            Button { EngineAmbient.setInOrder(!EngineAmbient.inOrder) } label: { Image(systemName: "repeat").foregroundColor(EngineAmbient.inOrder ? JT.lavender : JT.mist) }
+                .help("Era radio: play the era in the order it was recorded").accessibilityLabel("Era radio")
+            HStack(spacing: 8) {
+                thumb(p.coverImage, 30)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(p.title ?? "Nothing playing").font(JT.body(12, .semibold)).lineLimit(1)
+                    Text(NowPlaying.shared.song?.e ?? "Juice WRLD").font(JT.body(10)).foregroundColor(JT.muted).lineLimit(1)
+                    ProgressLine()
+                }
+            }
+            .frame(maxWidth: .infinity)
+            Button { if let id { EngineState.shared.setRating(id, loved ? 0 : 5) } } label: { Image(systemName: loved ? "heart.fill" : "heart").foregroundColor(loved ? JT.missing : JT.mist) }
+                .disabled(id == nil).help(loved ? "Clear the rating" : "Rate 5 hearts").accessibilityLabel(loved ? "Clear the rating" : "Rate 5 hearts")
+            SleepMenu()
+            Button { LyricsWindow.show() } label: { Image(systemName: "quote.bubble") }.help("Big lyrics window").accessibilityLabel("Lyrics window")
+            Button { MiniPlayer.show() } label: { Image(systemName: "pip.enter") }.help("Mini player (⌘3)").accessibilityLabel("Mini player")
+            Image(systemName: "speaker.wave.2").foregroundColor(JT.muted)
+            Slider(value: $volume, in: 0...100) { editing in if !editing { p.volume = Float(volume / 100); EngineAmbient.volume = volume } }
+                .controlSize(.mini).frame(width: 70).accessibilityLabel("Volume")
+        }
+        .buttonStyle(.borderless)
+        .padding(.horizontal, 18).padding(.vertical, 9)
+        .background(Capsule().fill(Color(white: 0.11).opacity(0.9)))
+        .overlay(Capsule().stroke(Color.white.opacity(0.18)))
+        .onAppear { volume = Double(p.volume * 100) }
+    }
+}
+
+/// A thin progress line; click or drag on it to move in the song.
+private struct ProgressLine: View {
+    var body: some View {
+        TimelineView(.periodic(from: .now, by: 0.5)) { _ in
+            let p = AmbientPlayer.shared, f = p.duration > 0 ? min(1, p.currentTime / p.duration) : 0
+            GeometryReader { g in
+                ZStack(alignment: .leading) {
+                    Capsule().fill(Color.white.opacity(0.15)).frame(height: 3)
+                    Capsule().fill(Color.white.opacity(0.85)).frame(width: g.size.width * f, height: 3)
+                }
+                .frame(maxHeight: .infinity)
+                .contentShape(Rectangle())
+                .gesture(DragGesture(minimumDistance: 0).onEnded { v in if p.duration > 0 { p.seek(to: max(0, min(1, v.location.x / g.size.width)) * p.duration) } })
+            }
+            .frame(height: 10)
+            .accessibilityLabel("Position in the song")
+        }
     }
 }
 
