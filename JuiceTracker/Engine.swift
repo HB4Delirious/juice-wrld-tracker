@@ -700,9 +700,20 @@ extension Engine {
     /// "recording_session" → "Recording session".
     static func capital(_ c: String) -> String { (c.prefix(1).uppercased() + c.dropFirst()).replacingOccurrences(of: "_", with: " ") }
 
+    /// Compiled patterns, kept: the same few are used for every song (recording dates, years), and compiling one each
+    /// time was a good part of opening the tag fixer. NSCache is safe to use from any thread.
+    private static let compiled = NSCache<NSString, NSRegularExpression>()
+    static func regex(_ pattern: String, _ options: NSRegularExpression.Options) -> NSRegularExpression? {
+        let key = "\(options.rawValue)|\(pattern)" as NSString
+        if let re = compiled.object(forKey: key) { return re }
+        guard let re = try? NSRegularExpression(pattern: pattern, options: options) else { return nil }
+        compiled.setObject(re, forKey: key)
+        return re
+    }
+
     /// Every match of a regular expression, as its capture groups (missing groups are nil).
     static func groups(_ pattern: String, _ text: String, options: NSRegularExpression.Options = []) -> [[String?]] {
-        guard let re = try? NSRegularExpression(pattern: pattern, options: options) else { return [] }
+        guard let re = regex(pattern, options) else { return [] }
         let ns = text as NSString
         return re.matches(in: text, range: NSRange(location: 0, length: ns.length)).map { m in
             (0..<m.numberOfRanges).map { m.range(at: $0).location == NSNotFound ? nil : ns.substring(with: m.range(at: $0)) }
@@ -710,7 +721,7 @@ extension Engine {
     }
     /// Splits a text at every match of a pattern (like JavaScript's split with a regular expression).
     static func split(_ text: String, by pattern: String, options: NSRegularExpression.Options = []) -> [String] {
-        guard let re = try? NSRegularExpression(pattern: pattern, options: options) else { return [text] }
+        guard let re = regex(pattern, options) else { return [text] }
         let ns = text as NSString
         var out: [String] = [], from = 0
         for m in re.matches(in: text, range: NSRange(location: 0, length: ns.length)) {
