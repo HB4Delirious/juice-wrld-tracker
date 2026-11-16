@@ -2,6 +2,7 @@ import AppIntents
 import AppKit
 import CoreSpotlight
 import SwiftUI
+import Combine
 
 // More native features: lyrics (synced while playing), era artwork, instrumentals, the mini player, the visualizer,
 // listening stats (Plex and the app's own play history), Spotlight and Shortcuts.
@@ -17,6 +18,14 @@ struct SongExtras {
 
     /// The index of the synced line being sung at `time`, or nil before the first.
     func line(at time: Double) -> Int? { synced.lastIndex { $0.at <= time + 0.15 } }
+    /// How many words of line n have been sung at `time` (the line's time spread over its words), and whether the
+    /// last of them is still being sung.
+    func lit(line n: Int, at time: Double) -> (words: Int, singing: Bool) {
+        let start = synced[n].at, end = n + 1 < synced.count ? synced[n + 1].at : start + 4
+        let count = synced[n].line.split(separator: " ").count
+        let progress = min(1, max(0, (time - start) / max(0.5, (end - start) * 0.85)))
+        return (Int((Double(count) * progress).rounded(.up)), progress < 1)
+    }
 }
 
 @MainActor final class Extras: ObservableObject {
@@ -66,7 +75,9 @@ struct SongExtras {
     @Published var song: Song?
     @Published var extras: SongExtras?
     @Published var lineIndex: Int?
-    @Published var level: Float = 0
+    /// Words of the current line sung so far (the Player tab lights them up); changes a few times a line, not every tick.
+    @Published var litWords = 0
+    @Published var singing = false
     private var timer: Timer?
     private var path: String?
 
@@ -108,18 +119,22 @@ struct SongExtras {
         if needed, timer == nil {
             timer = Timer.scheduledTimer(withTimeInterval: 1.0 / 15, repeats: true) { [weak self] _ in Task { @MainActor in self?.tick() } }
         } else if !needed {
-            timer?.invalidate(); timer = nil; level = 0
+            timer?.invalidate(); timer = nil; LevelMeter.shared.level = 0
             SkyNSView.current?.setGlow(0)
         }
     }
 
     private func tick() {
         let p = AmbientPlayer.shared
-        level = p.level()
+        let level = p.level()
+        LevelMeter.shared.level = level
         SkyNSView.current?.setGlow(level)
         if let x = extras, !x.synced.isEmpty {
             let n = x.line(at: p.currentTime)
             if n != lineIndex { lineIndex = n }
+            let lit = n.map { x.lit(line: $0, at: p.currentTime) } ?? (words: 0, singing: false)
+            if lit.words != litWords { litWords = lit.words }
+            if lit.singing != singing { singing = lit.singing }
         }
     }
 
@@ -129,9 +144,17 @@ struct SongExtras {
     }
 }
 
+/// The music's loudness, 15 times a second while it plays. Kept apart from NowPlaying so only the views that show it
+/// (the visualizer bars, the Player tab's pulse and lyrics) redraw that often: the sidebar player watches NowPlaying,
+/// and redrawing it 15 times a second re-laid out the whole window (about a third of a core with music playing).
+@MainActor final class LevelMeter: ObservableObject {
+    static let shared = LevelMeter()
+    @Published var level: Float = 0
+}
+
 /// Five bars that move with the music (the sidebar player and the mini player).
 struct Visualizer: View {
-    @ObservedObject private var now = NowPlaying.shared
+    @ObservedObject private var now = LevelMeter.shared
     var height: CGFloat = 16
     private let weights: [CGFloat] = [0.55, 0.9, 1, 0.75, 0.6]
     var body: some View {
@@ -538,6 +561,8 @@ struct PlayerScreen: View {
     @State private var era = ""
     @State private var palette = CoverPalette.fallback
     @State private var paletteFor: ObjectIdentifier?
+    @State private var lastPath: String?
+    @State private var wave: (scale: CGFloat, alpha: Double) = (1, 0) // the ring that rolls out when a new song starts
     private let changed = NotificationCenter.default.publisher(for: AmbientPlayer.changed)
 
     var body: some View {
@@ -549,10 +574,14 @@ struct PlayerScreen: View {
             let hole = max(160, min(w * 0.34, h * 0.4, 360))
             let cx = w / 2, cy = h * 0.44
             ZStack {
-                BlackHole(palette: palette, size: hole).position(x: cx, y: cy)
-                PlayerClock(size: hole * 0.34).position(x: cx, y: cy - hole * 0.62)
+                SpaceMotion()
+                Circle().stroke(AngularGradient(colors: [palette.a, palette.b, palette.c, palette.a], center: .center), lineWidth: 3)
+                    .frame(width: hole, height: hole).padding(4).drawingGroup().scaleEffect(wave.scale).opacity(wave.alpha).blur(radius: 1.5)
+                    .position(x: cx, y: cy).allowsHitTesting(false)
+                BlackHole(palette: palette, size: hole).frame(width: hole * 2.6, height: hole * 2.6).position(x: cx, y: cy)
+                PlayerClock(size: hole * 0.34, glow: palette.a).position(x: cx, y: cy - hole * 0.62)
                 let words = min(w * 0.42, 460) // starts just right of the cover card
-                KaraokeLine().frame(width: words).position(x: cx - hole * 0.08 + words / 2, y: cy + hole * 0.24)
+                KaraokeLine(glow: palette.a).frame(width: words).position(x: cx - hole * 0.08 + words / 2, y: cy + hole * 0.24)
                 CoverCard(version: version).frame(width: hole * 0.44).position(x: cx - hole * 0.36, y: cy + hole * 0.36)
                 QueuePanel(version: version).frame(width: 230).position(x: max(135, cx - hole * 1.3), y: cy)
                 VStack(alignment: .trailing, spacing: 10) {
@@ -561,7 +590,7 @@ struct PlayerScreen: View {
                             .background(Circle().fill(Color.white.opacity(0.1))).overlay(Circle().stroke(Color.white.opacity(0.2)))
                     }
                     .buttonStyle(.plain).help(browsing ? "Close your songs" : "Your songs").accessibilityLabel(browsing ? "Close your songs" : "Your songs")
-                    ControlBar(eras: eras, version: version)
+                    ControlBar(eras: eras, version: version, palette: palette)
                 }
                 .frame(width: min(w - 40, 760)).position(x: cx, y: h - 58)
                 if mine.isEmpty {
@@ -577,9 +606,20 @@ struct PlayerScreen: View {
             .animation(.easeOut(duration: 0.25), value: browsing)
         }
         .background(SpaceField(palette: palette).ignoresSafeArea())
-        .onReceive(changed) { _ in version += 1; updatePalette() }
+        .onReceive(changed) { _ in version += 1; updatePalette(); rollWave() }
         .onReceive(NowPlaying.shared.$song) { _ in version += 1 }
         .onAppear { updatePalette() }
+    }
+
+    /// A new song: a ring in its colors rolls out from the hole.
+    private func rollWave() {
+        let path = AmbientPlayer.shared.currentPath
+        guard path != lastPath else { return }
+        lastPath = path
+        guard path != nil else { return }
+        var still = Transaction(); still.disablesAnimations = true
+        withTransaction(still) { wave = (1, 0.9) }
+        DispatchQueue.main.async { withAnimation(.easeOut(duration: 1.6)) { wave = (2.8, 0) } }
     }
 
     private func updatePalette() {
@@ -653,48 +693,304 @@ private struct SpaceField: View {
     }
 }
 
-/// The ringed black hole: a glowing disc in the song's colors, slowly turning, passing behind the hole at the top
-/// and in front of it at the bottom.
-private struct BlackHole: View {
-    let palette: CoverPalette
-    let size: CGFloat
-    @State private var spin = 0.0
+// MARK: Motion, in Core Animation
+//
+// Everything that moves all the time here runs in Core Animation, like the sky behind the other pages: the render
+// server animates it, so the app does no work per frame. (Done in SwiftUI it was a third to half a core: each frame
+// re-laid out the whole window.) All of it pauses while the app is in the background.
 
-    var body: some View {
-        let span = size * 2.5
-        ZStack {
-            disc(span).mask(VStack(spacing: 0) { Rectangle(); Color.clear })
-            Circle().stroke(AngularGradient(colors: [palette.a, palette.b, palette.c, palette.a], center: .center), lineWidth: size * 0.05)
-                .blur(radius: size * 0.06).opacity(0.75).frame(width: size * 1.1, height: size * 1.1)
-            Circle().fill(Color.black).frame(width: size, height: size)
-                .overlay(Circle().stroke(Color.white.opacity(0.95), lineWidth: 3))
-                .shadow(color: .white.opacity(0.7), radius: 8)
-                .shadow(color: palette.b.opacity(0.6), radius: 30)
-            disc(span).mask(VStack(spacing: 0) { Color.clear; Rectangle() })
+/// Pauses a layer tree's animations while the app is in the background, and picks them up where they were.
+private final class PausesInBackground {
+    private weak var layer: CALayer?
+    private var tokens: [NSObjectProtocol] = []
+    init(_ layer: CALayer) {
+        self.layer = layer
+        let nc = NotificationCenter.default
+        tokens = [
+            nc.addObserver(forName: NSApplication.didResignActiveNotification, object: nil, queue: .main) { [weak self] _ in self?.pause() },
+            nc.addObserver(forName: NSApplication.didBecomeActiveNotification, object: nil, queue: .main) { [weak self] _ in self?.resume() },
+        ]
+        if !NSApp.isActive { pause() }
+    }
+    deinit { tokens.forEach(NotificationCenter.default.removeObserver) }
+    private func pause() {
+        guard let l = layer, l.speed != 0 else { return }
+        l.timeOffset = l.convertTime(CACurrentMediaTime(), from: nil)
+        l.speed = 0
+    }
+    private func resume() {
+        guard let l = layer, l.speed == 0 else { return }
+        let paused = l.timeOffset
+        l.speed = 1; l.timeOffset = 0; l.beginTime = 0
+        l.beginTime = l.convertTime(CACurrentMediaTime(), from: nil) - paused
+    }
+}
+
+/// A four-pointed sparkle (original shape) centered in a square of this side.
+private func sparklePath(_ side: CGFloat) -> CGPath {
+    let p = CGMutablePath(), c = side / 2, w = side * 0.12
+    p.move(to: CGPoint(x: c, y: 0))
+    p.addQuadCurve(to: CGPoint(x: side, y: c), control: CGPoint(x: c + w, y: c - w))
+    p.addQuadCurve(to: CGPoint(x: c, y: side), control: CGPoint(x: c + w, y: c + w))
+    p.addQuadCurve(to: CGPoint(x: 0, y: c), control: CGPoint(x: c - w, y: c + w))
+    p.addQuadCurve(to: CGPoint(x: c, y: 0), control: CGPoint(x: c - w, y: c - w))
+    return p
+}
+
+/// Bigger stars that twinkle each on its own beat, and now and then a shooting star.
+private struct SpaceMotion: NSViewRepresentable {
+    func makeNSView(context: Context) -> SpaceMotionView { SpaceMotionView() }
+    func updateNSView(_ view: SpaceMotionView, context: Context) {}
+}
+
+final class SpaceMotionView: NSView {
+    private var builtFor: CGSize = .zero
+    private var pauser: PausesInBackground?
+    private var shooter: Timer?
+
+    override init(frame: NSRect) {
+        super.init(frame: frame)
+        wantsLayer = true
+        if let layer { pauser = PausesInBackground(layer) }
+        shooter = Timer.scheduledTimer(withTimeInterval: 6.5, repeats: true) { [weak self] _ in self?.shoot() }
+    }
+    required init?(coder: NSCoder) { fatalError("init(coder:) is not used") }
+    deinit { shooter?.invalidate() }
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
+
+    override func layout() {
+        super.layout()
+        guard bounds.size != builtFor, bounds.width > 0, let root = layer else { return }
+        builtFor = bounds.size
+        root.sublayers?.forEach { $0.removeFromSuperlayer() }
+        var seed: UInt64 = 2018
+        func next() -> CGFloat { seed = seed &* 6364136223846793005 &+ 1442695040888963407; return CGFloat(Double(seed >> 11) / Double(UInt64(1) << 53)) }
+        for k in 0..<16 {
+            let side = 7 + next() * 10
+            let star = CAShapeLayer()
+            star.path = sparklePath(side)
+            star.fillColor = NSColor.white.cgColor
+            star.frame = CGRect(x: next() * bounds.width, y: bounds.height * (0.2 + next() * 0.8), width: side, height: side)
+            star.opacity = 0.1
+            star.shadowColor = NSColor.white.cgColor; star.shadowRadius = 3; star.shadowOpacity = 0.8; star.shadowOffset = .zero
+            let glow = CABasicAnimation(keyPath: "opacity")
+            glow.fromValue = 0.1; glow.toValue = 0.9
+            let grow = CABasicAnimation(keyPath: "transform.scale")
+            grow.fromValue = 0.4; grow.toValue = 1
+            let beat = CAAnimationGroup()
+            beat.animations = [glow, grow]
+            beat.duration = 1.8 + Double(k % 5) * 0.6
+            beat.autoreverses = true; beat.repeatCount = .infinity
+            beat.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+            beat.beginTime = CACurrentMediaTime() + Double(k) * 0.41
+            star.add(beat, forKey: "twinkle")
+            root.addSublayer(star)
         }
-        .frame(width: span, height: span)
-        .allowsHitTesting(false)
-        .onAppear { withAnimation(.linear(duration: 90).repeatForever(autoreverses: false)) { spin = 360 } }
     }
 
-    private func disc(_ span: CGFloat) -> some View {
-        ZStack {
-            Circle().stroke(AngularGradient(colors: [palette.a, palette.b.opacity(0.35), palette.c, palette.a.opacity(0.3), palette.b, palette.a], center: .center), lineWidth: size * 0.2)
-                .blur(radius: size * 0.07).opacity(0.9).frame(width: size * 1.95, height: size * 1.95)
-            Circle().stroke(AngularGradient(colors: [.white.opacity(0.8), palette.a.opacity(0.2), .white.opacity(0.55), palette.b.opacity(0.2), .white.opacity(0.8)], center: .center), lineWidth: size * 0.04)
-                .blur(radius: size * 0.02).frame(width: size * 1.55, height: size * 1.55)
-            Circle().stroke(palette.c.opacity(0.6), style: StrokeStyle(lineWidth: 1.5, dash: [1.5, 12])).frame(width: size * 2.35, height: size * 2.35)
+    /// A streak across the sky, from upper right toward lower left.
+    private func shoot() {
+        guard let root = layer, root.speed != 0, bounds.width > 0, Double.random(in: 0...1) < 0.7 else { return } // not like clockwork
+        let w = bounds.width, h = bounds.height // layer y runs up
+        let from = CGPoint(x: .random(in: w * 0.35...w * 1.05), y: .random(in: h * 0.75...h + 20))
+        let to = CGPoint(x: from.x - .random(in: w * 0.3...w * 0.55), y: from.y - .random(in: h * 0.2...h * 0.4))
+        let streak = CAGradientLayer()
+        streak.colors = [NSColor.white.withAlphaComponent(0).cgColor, NSColor.white.cgColor]
+        streak.startPoint = CGPoint(x: 0, y: 0.5); streak.endPoint = CGPoint(x: 1, y: 0.5)
+        streak.bounds = CGRect(x: 0, y: 0, width: 140, height: 2); streak.cornerRadius = 1
+        streak.anchorPoint = CGPoint(x: 1, y: 0.5) // the bright head leads
+        streak.setAffineTransform(CGAffineTransform(rotationAngle: atan2(to.y - from.y, to.x - from.x)))
+        streak.position = to; streak.opacity = 0
+        streak.shadowColor = NSColor.white.cgColor; streak.shadowRadius = 4; streak.shadowOpacity = 1; streak.shadowOffset = .zero
+        let move = CABasicAnimation(keyPath: "position")
+        move.fromValue = NSValue(point: from); move.toValue = NSValue(point: to)
+        let fade = CABasicAnimation(keyPath: "opacity")
+        fade.fromValue = 1; fade.toValue = 0
+        let flight = CAAnimationGroup()
+        flight.animations = [move, fade]; flight.duration = 1.1
+        flight.timingFunction = CAMediaTimingFunction(name: .easeIn)
+        CATransaction.begin()
+        CATransaction.setCompletionBlock { streak.removeFromSuperlayer() }
+        streak.add(flight, forKey: "flight")
+        root.addSublayer(streak)
+        CATransaction.commit()
+    }
+}
+
+/// The ringed black hole: a glowing disc in the song's colors, slowly turning (its inner sparks faster), passing
+/// behind the hole at the top and in front of it at the bottom; the side turning toward you is brighter; the ring
+/// hugging the hole swells with the music.
+private struct BlackHole: NSViewRepresentable {
+    let palette: CoverPalette
+    let size: CGFloat
+    func makeNSView(context: Context) -> BlackHoleView { BlackHoleView() }
+    func updateNSView(_ view: BlackHoleView, context: Context) {
+        view.show(size: size, colors: [NSColor(palette.a), NSColor(palette.b), NSColor(palette.c)])
+    }
+}
+
+final class BlackHoleView: NSView {
+    private var size: CGFloat = 0
+    private var colors: [NSColor] = []
+    private var tinted: [(layer: CAGradientLayer, recipe: ([NSColor]) -> [CGColor])] = [] // recolored when the song changes
+    private var glow = CAShapeLayer()       // the hole's halo in the song's color
+    private var pulse = CALayer()
+    private var pauser: PausesInBackground?
+    private var meter: AnyCancellable?
+
+    override init(frame: NSRect) {
+        super.init(frame: frame)
+        wantsLayer = true
+        layerUsesCoreImageFilters = true
+        if let layer { pauser = PausesInBackground(layer) }
+        meter = LevelMeter.shared.$level.sink { [weak self] level in self?.beat(CGFloat(level)) }
+    }
+    required init?(coder: NSCoder) { fatalError("init(coder:) is not used") }
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
+    override func layout() { super.layout(); if size > 0, layer?.sublayers?.isEmpty ?? true { build() } }
+
+    func show(size: CGFloat, colors: [NSColor]) {
+        if size != self.size { self.size = size; self.colors = colors; build(); return }
+        guard colors != self.colors else { return }
+        self.colors = colors
+        // the new song's colors flow in over a second
+        CATransaction.begin(); CATransaction.setAnimationDuration(1.2)
+        for t in tinted {
+            let to = t.recipe(colors)
+            let a = CABasicAnimation(keyPath: "colors"); a.fromValue = t.layer.colors; a.toValue = to; a.duration = 1.2
+            t.layer.add(a, forKey: "recolor"); t.layer.colors = to
         }
-        .frame(width: span, height: span)
-        .rotationEffect(.degrees(spin))
-        .scaleEffect(x: 1, y: 0.24)
-        .rotationEffect(.degrees(-8))
+        glow.shadowColor = colors[1].cgColor
+        CATransaction.commit()
+    }
+
+    private func beat(_ level: CGFloat) {
+        CATransaction.begin(); CATransaction.setAnimationDuration(0.12)
+        pulse.transform = CATransform3DMakeScale(1 + level * 0.09, 1 + level * 0.09, 1)
+        pulse.opacity = Float(0.55 + level * 0.45)
+        CATransaction.commit()
+    }
+
+    private func build() {
+        guard let root = layer, bounds.width > 0, size > 0, colors.count == 3 else { return }
+        root.sublayers?.forEach { $0.removeFromSuperlayer() }
+        tinted = []
+        let c = CGPoint(x: bounds.midX, y: bounds.midY)
+        root.addSublayer(disc(center: c, half: .top))
+        pulse = ring(center: c, diameter: size * 1.1, width: size * 0.05, blur: size * 0.06) { [$0[0], $0[1], $0[2], $0[0]].map(\.cgColor) }
+        pulse.opacity = 0.55
+        root.addSublayer(pulse)
+        glow = CAShapeLayer()
+        let circle = CGPath(ellipseIn: CGRect(x: c.x - size / 2, y: c.y - size / 2, width: size, height: size), transform: nil)
+        glow.path = circle; glow.fillColor = NSColor.black.cgColor
+        glow.shadowPath = circle; glow.shadowColor = colors[1].cgColor; glow.shadowRadius = 30; glow.shadowOpacity = 0.6; glow.shadowOffset = .zero
+        root.addSublayer(glow)
+        let hole = CAShapeLayer()
+        hole.path = circle; hole.fillColor = NSColor.black.cgColor
+        hole.strokeColor = NSColor.white.withAlphaComponent(0.95).cgColor; hole.lineWidth = 3
+        hole.shadowColor = NSColor.white.cgColor; hole.shadowRadius = 8; hole.shadowOpacity = 0.7; hole.shadowOffset = .zero
+        root.addSublayer(hole)
+        root.addSublayer(disc(center: c, half: .bottom))
+    }
+
+    private enum Half { case top, bottom }
+
+    /// The disc, tilted and squashed into an ellipse, shown above or below the middle line (layer y runs up).
+    private func disc(center c: CGPoint, half: Half) -> CALayer {
+        let span = size * 2.5
+        let clip = CALayer()
+        clip.frame = bounds
+        let keep = CALayer()
+        keep.backgroundColor = NSColor.black.cgColor
+        keep.frame = half == .top ? CGRect(x: 0, y: c.y, width: bounds.width, height: bounds.height - c.y) : CGRect(x: 0, y: 0, width: bounds.width, height: c.y)
+        clip.mask = keep
+
+        let tilt = CALayer()
+        tilt.bounds = CGRect(x: 0, y: 0, width: span, height: span); tilt.position = c
+        tilt.transform = CATransform3DConcat(CATransform3DMakeScale(1, 0.24, 1), CATransform3DMakeRotation(8 * .pi / 180, 0, 0, 1))
+        // brighter on the side turning toward you
+        let doppler = CAGradientLayer()
+        doppler.frame = tilt.bounds
+        doppler.colors = [NSColor.black.cgColor, NSColor.black.withAlphaComponent(0.5).cgColor]
+        doppler.startPoint = CGPoint(x: 0, y: 0.5); doppler.endPoint = CGPoint(x: 1, y: 0.5)
+        tilt.mask = doppler
+        clip.addSublayer(tilt)
+
+        let spin = CALayer()
+        spin.frame = tilt.bounds
+        let mid = CGPoint(x: span / 2, y: span / 2)
+        spin.addSublayer(ring(center: mid, diameter: size * 1.95, width: size * 0.2, blur: size * 0.07, opacity: 0.9) {
+            [$0[0], $0[1].withAlphaComponent(0.35), $0[2], $0[0].withAlphaComponent(0.3), $0[1], $0[0]].map(\.cgColor)
+        })
+        spin.addSublayer(ring(center: mid, diameter: size * 1.55, width: size * 0.04, blur: size * 0.02) {
+            let w = NSColor.white
+            return [w.withAlphaComponent(0.8), $0[0].withAlphaComponent(0.2), w.withAlphaComponent(0.55), $0[1].withAlphaComponent(0.2), w.withAlphaComponent(0.8)].map(\.cgColor)
+        })
+        let dust = CAShapeLayer()
+        dust.path = CGPath(ellipseIn: CGRect(x: mid.x - size * 1.175, y: mid.y - size * 1.175, width: size * 2.35, height: size * 2.35), transform: nil)
+        dust.fillColor = nil; dust.strokeColor = colors[2].withAlphaComponent(0.6).cgColor; dust.lineWidth = 1.5; dust.lineDashPattern = [1.5, 12]
+        spin.addSublayer(dust)
+        spin.add(turn(seconds: 90), forKey: "spin")
+        tilt.addSublayer(spin)
+
+        let sparks = CALayer()
+        sparks.frame = tilt.bounds
+        sparks.contents = sparkImage(span: span)
+        sparks.add(turn(seconds: 41), forKey: "spin") // the inner sparks orbit faster
+        tilt.addSublayer(sparks)
+        return clip
+    }
+
+    private func turn(seconds: Double) -> CABasicAnimation {
+        let a = CABasicAnimation(keyPath: "transform.rotation.z")
+        a.fromValue = 0; a.toValue = -2 * Double.pi; a.duration = seconds; a.repeatCount = .infinity
+        return a
+    }
+
+    /// A ring of light: a conic gradient through the colors, shaped by a circle stroke, softened by a blur.
+    private func ring(center: CGPoint, diameter: CGFloat, width: CGFloat, blur: CGFloat, opacity: Float = 1, recipe: @escaping ([NSColor]) -> [CGColor]) -> CALayer {
+        let side = diameter + width + blur * 6
+        let holder = CALayer() // blurs the shaped ring as a whole, with room for the blur
+        holder.bounds = CGRect(x: 0, y: 0, width: side, height: side); holder.position = center
+        holder.opacity = opacity
+        let g = CAGradientLayer()
+        g.type = .conic
+        g.frame = holder.bounds
+        g.startPoint = CGPoint(x: 0.5, y: 0.5); g.endPoint = CGPoint(x: 0.5, y: 0)
+        g.colors = recipe(colors)
+        let shape = CAShapeLayer()
+        shape.frame = holder.bounds
+        shape.path = CGPath(ellipseIn: CGRect(x: (side - diameter) / 2, y: (side - diameter) / 2, width: diameter, height: diameter), transform: nil)
+        shape.fillColor = nil; shape.strokeColor = NSColor.black.cgColor; shape.lineWidth = width
+        g.mask = shape
+        holder.addSublayer(g)
+        if blur > 0, let f = CIFilter(name: "CIGaussianBlur") { f.setValue(blur, forKey: kCIInputRadiusKey); holder.filters = [f] }
+        tinted.append((g, recipe))
+        return holder
+    }
+
+    /// Specks of light through the disc, drawn once (the same ones every time).
+    private func sparkImage(span: CGFloat) -> CGImage? {
+        let n = Int(span)
+        guard n > 0, let ctx = CGContext(data: nil, width: n, height: n, bitsPerComponent: 8, bytesPerRow: 0, space: CGColorSpaceCreateDeviceRGB(),
+                                         bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return nil }
+        var seed: UInt64 = 1998
+        func next() -> CGFloat { seed = seed &* 6364136223846793005 &+ 1442695040888963407; return CGFloat(Double(seed >> 11) / Double(UInt64(1) << 53)) }
+        let c = CGFloat(n) / 2
+        for k in 0..<90 {
+            let angle = next() * .pi * 2, r = c * 0.96 * (0.6 + next() * 0.36), d = 1 + next() * 2.4
+            let color = k % 3 == 2 ? NSColor.white : colors[k % 3]
+            ctx.setFillColor(color.withAlphaComponent(0.5 + next() * 0.5).cgColor)
+            ctx.fillEllipse(in: CGRect(x: c + cos(angle) * r - d / 2, y: c + sin(angle) * r - d / 2, width: d, height: d))
+        }
+        return ctx.makeImage()
     }
 }
 
 /// The date, then the time big and condensed, fading toward the hole.
 private struct PlayerClock: View {
     let size: CGFloat
+    let glow: Color
     private static let time: DateFormatter = {
         let f = DateFormatter()
         f.setLocalizedDateFormatFromTemplate("jmm")
@@ -708,6 +1004,7 @@ private struct PlayerClock: View {
                 Text(Self.time.string(from: ctx.date))
                     .font(.custom("HelveticaNeue-CondensedBold", size: size))
                     .foregroundStyle(LinearGradient(colors: [.white.opacity(0.92), .white.opacity(0.12)], startPoint: .top, endPoint: .bottom))
+                    .shadow(color: glow.opacity(0.45), radius: 24)
             }
         }
         .allowsHitTesting(false)
@@ -716,19 +1013,20 @@ private struct PlayerClock: View {
 
 /// The line being sung, its words lighting up as the song gets to them. Shown live from the site, never saved.
 private struct KaraokeLine: View {
+    let glow: Color
     @ObservedObject private var now = NowPlaying.shared
     var body: some View {
         let p = AmbientPlayer.shared
         Group {
             if let x = now.extras, !x.synced.isEmpty, let n = now.lineIndex, x.synced.indices.contains(n) {
-                let start = x.synced[n].at, end = n + 1 < x.synced.count ? x.synced[n + 1].at : start + 4
                 let words = x.synced[n].line.split(separator: " ").map(String.init)
-                let progress = min(1, max(0, (p.currentTime - start) / max(0.5, (end - start) * 0.85)))
-                let lit = Int((Double(words.count) * progress).rounded(.up))
+                let lit = now.litWords
                 (words.isEmpty ? Text("♪") : words.enumerated().reduce(Text("")) { line, w in
-                    line + Text((w.offset == 0 ? "" : " ") + w.element).foregroundColor(w.offset < lit ? .white : .white.opacity(0.28))
+                    // the word being sung right now takes the song's color
+                    line + Text((w.offset == 0 ? "" : " ") + w.element).foregroundColor(w.offset == lit - 1 && now.singing ? glow : w.offset < lit ? .white : .white.opacity(0.28))
                 })
-                .id(n).transition(.opacity)
+                .shadow(color: glow.opacity(0.55), radius: 14)
+                .id(n).transition(.asymmetric(insertion: .move(edge: .bottom).combined(with: .opacity), removal: .opacity))
             } else if p.title == nil {
                 Text("Press play").foregroundColor(.white.opacity(0.5))
             }
@@ -754,6 +1052,7 @@ private func thumb(_ image: NSImage?, _ side: CGFloat) -> some View {
 /// The cover on a glassy card, tilted toward the hole. Click opens the song's card.
 private struct CoverCard: View {
     let version: Int
+    @State private var hover = false
     var body: some View {
         let p = AmbientPlayer.shared
         VStack(spacing: 5) {
@@ -768,8 +1067,11 @@ private struct CoverCard: View {
         .padding(10)
         .background(RoundedRectangle(cornerRadius: 14).fill(LinearGradient(colors: [Color.white.opacity(0.24), Color.white.opacity(0.08)], startPoint: .topLeading, endPoint: .bottomTrailing)))
         .overlay(RoundedRectangle(cornerRadius: 14).stroke(Color.white.opacity(0.3)))
-        .rotation3DEffect(.degrees(16), axis: (x: 0.15, y: 1, z: 0), perspective: 0.6)
+        .rotation3DEffect(.degrees(hover ? 4 : 16), axis: (x: 0.15, y: 1, z: 0), perspective: 0.6)
+        .scaleEffect(hover ? 1.05 : 1)
         .shadow(color: .black.opacity(0.6), radius: 18, y: 10)
+        .animation(.spring(response: 0.4, dampingFraction: 0.7), value: hover)
+        .onHover { hover = $0 }
         .onTapGesture { if let s = NowPlaying.shared.song { NativeStore.shared.openSong = s } }
         .help("Open the song card")
     }
@@ -830,6 +1132,7 @@ private struct QueuePanel: View {
 private struct ControlBar: View {
     let eras: [String]
     let version: Int
+    let palette: CoverPalette
     @ObservedObject private var store = NativeStore.shared // the heart follows ratings
     @State private var volume = EngineAmbient.volume
 
@@ -847,7 +1150,9 @@ private struct ControlBar: View {
             .help(EngineAmbient.era.isEmpty ? "Shuffling all eras" : "Shuffling \(EngineAmbient.era)").accessibilityLabel("Which era to shuffle")
             Button { p.seek(to: 0) } label: { Image(systemName: "backward.fill") }.help("Start this song again").accessibilityLabel("Start this song again")
             Button { if p.title == nil { EngineAmbient.setOn(true); p.resume() } else { p.togglePause() } } label: {
-                Image(systemName: p.isPlaying ? "pause.fill" : "play.fill").font(.system(size: 20)).frame(width: 24)
+                Image(systemName: p.isPlaying ? "pause.fill" : "play.fill").font(.system(size: 18)).foregroundColor(.white).frame(width: 36, height: 36)
+                    .background(Circle().fill(LinearGradient(colors: [palette.a, palette.b], startPoint: .topLeading, endPoint: .bottomTrailing)))
+                    .shadow(color: palette.a.opacity(p.isPlaying ? 0.8 : 0.3), radius: p.isPlaying ? 12 : 4)
             }
             .help(p.isPlaying ? "Pause" : "Play").accessibilityLabel(p.isPlaying ? "Pause" : "Play")
             Button { p.skip() } label: { Image(systemName: "forward.fill") }.help("Next song").accessibilityLabel("Next song")
@@ -858,7 +1163,7 @@ private struct ControlBar: View {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(p.title ?? "Nothing playing").font(JT.body(12, .semibold)).lineLimit(1)
                     Text(NowPlaying.shared.song?.e ?? "Juice WRLD").font(JT.body(10)).foregroundColor(JT.muted).lineLimit(1)
-                    ProgressLine()
+                    ProgressLine(palette: palette)
                 }
             }
             .frame(maxWidth: .infinity)
@@ -881,13 +1186,15 @@ private struct ControlBar: View {
 
 /// A thin progress line; click or drag on it to move in the song.
 private struct ProgressLine: View {
+    let palette: CoverPalette
     var body: some View {
         TimelineView(.periodic(from: .now, by: 0.5)) { _ in
             let p = AmbientPlayer.shared, f = p.duration > 0 ? min(1, p.currentTime / p.duration) : 0
             GeometryReader { g in
                 ZStack(alignment: .leading) {
                     Capsule().fill(Color.white.opacity(0.15)).frame(height: 3)
-                    Capsule().fill(Color.white.opacity(0.85)).frame(width: g.size.width * f, height: 3)
+                    Capsule().fill(LinearGradient(colors: [palette.a, palette.b], startPoint: .leading, endPoint: .trailing)).frame(width: g.size.width * f, height: 3)
+                        .shadow(color: palette.a.opacity(0.8), radius: 4)
                 }
                 .frame(maxHeight: .infinity)
                 .contentShape(Rectangle())
