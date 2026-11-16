@@ -47,7 +47,11 @@ public sealed class PlayerPage : Grid, IRefresh
     readonly ComboBox eraPick = new() { MinWidth = 140 };
     readonly StackPanel eraButtons = new() { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 8, 0, 0) };
     readonly DispatcherTimer minute = new() { Interval = TimeSpan.FromSeconds(10) };
-    readonly DispatcherTimer shooter = new() { Interval = TimeSpan.FromSeconds(6.5) };
+    readonly DispatcherTimer shooter = new() { Interval = TimeSpan.FromSeconds(6.5) }, floater = new() { Interval = TimeSpan.FromSeconds(9) };
+    readonly Image wash = new() { Stretch = Stretch.UniformToFill, Opacity = 0.3, IsHitTestVisible = false, Effect = new BlurEffect { Radius = 60 }, CacheMode = new BitmapCache() }; // the cover washing the sky
+    readonly Canvas barRing = new() { IsHitTestVisible = false, Opacity = 0 }, comet = new() { IsHitTestVisible = false };
+    readonly Ellipse arc = new() { Opacity = 0.8, IsHitTestVisible = false, Effect = new BlurEffect { Radius = 3 } }; // the disc's far side, bent over the hole
+    readonly Image sticker = new() { Opacity = 0, IsHitTestVisible = false };
     readonly Canvas sky = new() { IsHitTestVisible = false, ClipToBounds = true }; // twinkles and shooting stars
     readonly Ellipse wave = new() { StrokeThickness = 3, Opacity = 0, IsHitTestVisible = false, RenderTransformOrigin = new Point(0.5, 0.5) }; // rolls out when a song starts
     readonly List<RotateTransform> sparkSpins = [];
@@ -59,6 +63,7 @@ public sealed class PlayerPage : Grid, IRefresh
     {
         Background = Brushes.Black;
         Children.Add(Space());
+        Children.Insert(1, wash);
         Children.Add(sky);
         Children.Add(stage);
         wave.Stroke = Ring((0, 1), (1, 1), (2, 1), (0, 1)); wave.Effect = new BlurEffect { Radius = 2 };
@@ -147,9 +152,10 @@ public sealed class PlayerPage : Grid, IRefresh
         stage.SizeChanged += (_, _) => Place();
         minute.Tick += (_, _) => Clock();
         shooter.Tick += (_, _) => Shoot();
-        sky.SizeChanged += (_, _) => Twinkles();
-        Loaded += (_, _) => { Player.Shared.Changed += Tick; minute.Start(); shooter.Start(); Spin(true); Tick(); };
-        Unloaded += (_, _) => { Player.Shared.Changed -= Tick; minute.Stop(); shooter.Stop(); Spin(false); };
+        floater.Tick += (_, _) => Float();
+        sky.SizeChanged += (_, _) => { Twinkles(); PlaceSticker(); };
+        Loaded += (_, _) => { Player.Shared.Changed += Tick; minute.Start(); shooter.Start(); floater.Start(); Spin(true); Tick(); };
+        Unloaded += (_, _) => { Player.Shared.Changed -= Tick; minute.Stop(); shooter.Stop(); floater.Stop(); Spin(false); };
         Clock();
         Refresh();
     }
@@ -200,6 +206,8 @@ public sealed class PlayerPage : Grid, IRefresh
     {
         hole.IsHitTestVisible = false;
         hole.Children.Add(backDisc);
+        arc.Stroke = Ring((0, 1), (-1, 1), (1, 1), (-1, 1), (0, 1));
+        hole.Children.Add(arc);
         var glow = new Ellipse { StrokeThickness = 18, Stroke = Ring((0, 1), (1, 1), (2, 1), (0, 1)), Opacity = 0.75, Effect = new BlurEffect { Radius = 22 }, Tag = 1.1 };
         // breathes slowly
         glow.BeginAnimation(OpacityProperty, new DoubleAnimation(0.55, 0.95, TimeSpan.FromSeconds(2.6)) { AutoReverse = true, RepeatBehavior = RepeatBehavior.Forever, EasingFunction = new SineEase() });
@@ -207,6 +215,7 @@ public sealed class PlayerPage : Grid, IRefresh
         var ball = new Ellipse { Fill = Brushes.Black, Stroke = JT.Brush(Color.FromArgb(242, 255, 255, 255)), StrokeThickness = 3, Tag = 1.0,
                                  Effect = new DropShadowEffect { Color = Colors.White, BlurRadius = 22, ShadowDepth = 0, Opacity = 0.75 } };
         hole.Children.Add(ball);
+        hole.Children.Add(barRing);
         hole.Children.Add(frontDisc);
         return hole;
     }
@@ -338,7 +347,12 @@ public sealed class PlayerPage : Grid, IRefresh
         backDisc.Children.Add(Disc(spinBack, size)); frontDisc.Children.Add(Disc(spinFront, size));
         backDisc.Clip = new RectangleGeometry(new Rect(0, 0, span, span / 2));
         frontDisc.Clip = new RectangleGeometry(new Rect(0, span / 2, span, span / 2));
-        foreach (var e in hole.Children.OfType<Ellipse>()) { e.Width = e.Height = size * (double)e.Tag; }
+        foreach (var e in hole.Children.OfType<Ellipse>().Where(e => e.Tag is double)) { e.Width = e.Height = size * (double)e.Tag; }
+        arc.Width = size * 1.7; arc.Height = size * 1.12; arc.StrokeThickness = size * 0.022;
+        arc.Clip = new RectangleGeometry(new Rect(0, 0, arc.Width, arc.Height / 2 - size * 0.05)); // only above the disc
+        Bars(size, new Point(span / 2, span / 2));
+        if (comet.Parent is null) stage.Children.Insert(stage.Children.IndexOf(hole) + 1, comet);
+        Comet(size, new Point(cx, cy));
         At(hole, cx - span / 2, cy - span / 2);
         time.FontSize = size * 0.34;
         clock.Width = 400; At(clock, cx - 200, cy - size * 0.62 - size * 0.34 * 0.75);
@@ -398,6 +412,8 @@ public sealed class PlayerPage : Grid, IRefresh
     {
         palette = [found.Length > 0 ? found[0] : Fallback[0], found.Length > 1 ? found[1] : found.Length > 0 ? found[0] : Fallback[1], found.Length > 2 ? found[2] : Fallback[2]];
         playGlow.BeginAnimation(DropShadowEffect.ColorProperty, new ColorAnimation(palette[0], TimeSpan.FromSeconds(1.2)));
+        int n = 0;
+        foreach (var bar in barRing.Children.OfType<Rectangle>()) if (bar.Fill is SolidColorBrush b && !b.IsFrozen) b.BeginAnimation(SolidColorBrush.ColorProperty, new ColorAnimation(palette[n++ % 3], TimeSpan.FromSeconds(1.2)));
         foreach (var (stop, slot, alpha) in tinted)
         {
             var c = palette[slot];
@@ -407,8 +423,14 @@ public sealed class PlayerPage : Grid, IRefresh
     void ShowArt(BitmapSource? art, string forFile)
     {
         foreach (var img in new[] { cover, barThumb, queueThumb }) { img.Source = art ?? JT.Image("jt-logo"); img.Stretch = art is null ? Stretch.Uniform : Stretch.UniformToFill; }
-        if (art is null) { UsePalette([]); return; }
-        void Use() { if (artFor == forFile) try { UsePalette(Hues(art)); } catch (Exception) { UsePalette([]); } }
+        if (art is null) { UsePalette([]); wash.Source = null; return; }
+        void Use()
+        {
+            if (artFor != forFile) return;
+            try { UsePalette(Hues(art)); } catch (Exception) { UsePalette([]); }
+            // the cover, shrunk and blurred, washes the sky in its colors
+            try { wash.Source = new TransformedBitmap(art, new ScaleTransform(48.0 / art.PixelWidth, 48.0 / art.PixelHeight)); } catch (Exception) { wash.Source = null; }
+        }
         if (art is BitmapImage { IsDownloading: true } web) { web.DownloadCompleted += (_, _) => Use(); web.DownloadFailed += (_, _) => UsePalette([]); }
         else Use();
     }
@@ -497,6 +519,8 @@ public sealed class PlayerPage : Grid, IRefresh
         progress.Width = dur > 0 && progressTrack.ActualWidth > 0 ? progressTrack.ActualWidth * Math.Min(1, p.Position.TotalSeconds / dur) : 0;
         if (!volume.IsMouseCaptureWithin) volume.Value = p.Volume;
         ((TextBlock)repeat.Content).Foreground = JT.Brush(store.Me.InOrder ? JT.Lavender : JT.Mist);
+        var barsOn = p.IsPlaying ? 0.85 : 0;
+        if (barRing.Tag as double? != barsOn) { barRing.Tag = barsOn; barRing.BeginAnimation(OpacityProperty, new DoubleAnimation(barsOn, TimeSpan.FromSeconds(0.6))); }
         var loved = SongId is { } id && store.Me.Ratings.ContainsKey(id);
         ((TextBlock)heart.Content).Text = loved ? "" : ""; ((TextBlock)heart.Content).Foreground = JT.Brush(loved ? JT.Missing : JT.Mist);
         UI.AutomationName(heart, loved ? "Clear the rating" : "Rate 5 hearts"); heart.IsEnabled = SongId is not null;
@@ -508,9 +532,10 @@ public sealed class PlayerPage : Grid, IRefresh
         if (p.CurrentFile != file)
         {
             file = p.CurrentFile; synced = []; line = -2; lit = -1; artFor = file;
-            if (file is not null) Wave();
+            if (file is not null) { Wave(); Burst(); Flip(); }
             var i = file is null ? -1 : store.SongForFile(file);
             var era = i >= 0 ? Engine.EraName(store.Catalog[i]) : "Juice WRLD";
+            ShowSticker(i >= 0 ? era : null, Math.Max(i, 0));
             cardTitle.Text = barTitle.Text = p.Title ?? "Nothing playing"; cardEra.Text = barEra.Text = era;
             ShowArt(null, file ?? "");
             var playing = file;
@@ -550,6 +575,12 @@ public sealed class PlayerPage : Grid, IRefresh
                 // the word being sung right now takes the song's color
                 Foreground = k == on - 1 && on < words.Length ? JT.Brush(palette[0]) : k < on ? Brushes.White : JT.Brush(Color.FromArgb(71, 255, 255, 255)),
             });
+        // the next line waits, faint, underneath
+        if (n + 1 < synced.Count && synced[n + 1].Line.Trim().Length > 0)
+        {
+            karaoke.Inlines.Add(new System.Windows.Documents.LineBreak());
+            karaoke.Inlines.Add(new System.Windows.Documents.Run(synced[n + 1].Line) { FontSize = 17, FontWeight = FontWeights.SemiBold, Foreground = JT.Brush(Color.FromArgb(77, 255, 255, 255)) });
+        }
     }
 
     /// The song playing, then Up next. Click plays one now; right-click to move it or take it out.
@@ -593,5 +624,118 @@ public sealed class PlayerPage : Grid, IRefresh
         var s = UI.Text(sub, 10, JT.Muted); s.TextTrimming = TextTrimming.CharacterEllipsis;
         return UI.Row(8, new Border { Width = 26, Height = 26, CornerRadius = new CornerRadius(5), Background = JT.Brush(Color.FromArgb(30, 255, 255, 255)), Child = UI.Icon("", 11, JT.Muted) },
                       UI.Column(0, t, s));
+    }
+
+    // MARK: More flair: bars, the bent light, a comet, sparks, the era's sticker, floating 999s
+
+    /// The ring of bars around the hole, jumping while music plays (Windows doesn't measure the music's loudness as it
+    /// plays, so each bar keeps its own rhythm).
+    void Bars(double size, Point c)
+    {
+        barRing.Children.Clear();
+        var rng = new Random(72);
+        for (int k = 0; k < 48; k++)
+        {
+            double angle = k * 360.0 / 48;
+            // grows outward from the hole's edge: scaled and turned about the middle of its base
+            var scale = new ScaleTransform(1, 0.15, 1.2, size * 0.16);
+            var bar = new Rectangle { Width = 2.4, Height = size * 0.16, RadiusX = 1.2, RadiusY = 1.2, Fill = new SolidColorBrush(palette[k % 3]),
+                                      RenderTransform = new TransformGroup { Children = { scale, new RotateTransform(angle + 90, 1.2, size * 0.16) } } };
+            // the bar's base sits on a circle just outside the hole
+            double rad = angle * Math.PI / 180, r = size * 0.56;
+            At(bar, c.X + Math.Cos(rad) * r - 1.2, c.Y + Math.Sin(rad) * r - size * 0.16);
+            var beat = TimeSpan.FromSeconds(0.32 + rng.NextDouble() * 0.5);
+            scale.BeginAnimation(ScaleTransform.ScaleYProperty, new DoubleAnimation(0.12, 0.35 + rng.NextDouble() * 0.6, beat)
+                { AutoReverse = true, RepeatBehavior = RepeatBehavior.Forever, BeginTime = TimeSpan.FromSeconds(rng.NextDouble()), EasingFunction = new SineEase() });
+            barRing.Children.Add(bar);
+        }
+    }
+
+    /// A small comet circling the hole on a tilted orbit wide enough to pass around it, its tail streaming behind.
+    void Comet(double size, Point c)
+    {
+        comet.Children.Clear();
+        comet.Children.Add(new Rectangle { Width = 46, Height = 6, RadiusX = 3, RadiusY = 3, Fill = new LinearGradientBrush(Colors.Transparent, Colors.White, 0),
+                                           Effect = new DropShadowEffect { Color = Colors.White, BlurRadius = 10, ShadowDepth = 0 } });
+        Canvas.SetLeft(comet.Children[0], -46); Canvas.SetTop(comet.Children[0], -3); // the bright end leads
+        var orbit = new EllipseGeometry(c, size * 1.45, size * 0.68) { Transform = new RotateTransform(-8, c.X, c.Y) };
+        var move = new MatrixTransform(); comet.RenderTransform = move;
+        move.BeginAnimation(MatrixTransform.MatrixProperty, new MatrixAnimationUsingPath
+            { PathGeometry = PathGeometry.CreateFromGeometry(orbit), Duration = TimeSpan.FromSeconds(16), RepeatBehavior = RepeatBehavior.Forever, DoesRotateWithTangent = true });
+    }
+
+    /// A new song: sparks spray out from the hole's edge.
+    void Burst()
+    {
+        if (holeSize == 0 || Canvas.GetLeft(hole) is double.NaN) return;
+        double cx = Canvas.GetLeft(hole) + hole.Width / 2, cy = Canvas.GetTop(hole) + hole.Height / 2;
+        for (int k = 0; k < 40; k++)
+        {
+            double angle = Random.Shared.NextDouble() * Math.PI * 2, d = 2 + Random.Shared.NextDouble() * 3, reach = holeSize * (0.3 + Random.Shared.NextDouble() * 0.5);
+            var c = k % 3 == 2 ? Colors.White : palette[k % 3];
+            var spark = new Ellipse { Width = d, Height = d, Fill = new SolidColorBrush(c), IsHitTestVisible = false,
+                                      Effect = new DropShadowEffect { Color = c, BlurRadius = 6, ShadowDepth = 0 } };
+            At(spark, cx + Math.Cos(angle) * holeSize / 2, cy + Math.Sin(angle) * holeSize / 2);
+            var go = new TranslateTransform(); spark.RenderTransform = go;
+            var time = TimeSpan.FromSeconds(1.2 + Random.Shared.NextDouble() * 0.6); var ease = new QuadraticEase { EasingMode = EasingMode.EaseOut };
+            var fade = new DoubleAnimation(1, 0, time); fade.Completed += (_, _) => stage.Children.Remove(spark);
+            go.BeginAnimation(TranslateTransform.XProperty, new DoubleAnimation(0, Math.Cos(angle) * reach, time) { EasingFunction = ease });
+            go.BeginAnimation(TranslateTransform.YProperty, new DoubleAnimation(0, Math.Sin(angle) * reach, time) { EasingFunction = ease });
+            spark.BeginAnimation(OpacityProperty, fade);
+            stage.Children.Add(spark);
+        }
+    }
+
+    /// The playing song's era sticker, drifting slowly in the upper right.
+    void ShowSticker(string? era, int i)
+    {
+        sticker.BeginAnimation(OpacityProperty, new DoubleAnimation(era is null ? 0 : 0.55, TimeSpan.FromSeconds(1.2)));
+        if (era is not null) sticker.Source = JT.Image(CollectionPage.EraSticker(era, i));
+    }
+    void PlaceSticker()
+    {
+        double w = sky.ActualWidth, h = sky.ActualHeight, side = Math.Min(w, h) * 0.16;
+        if (w == 0) return;
+        sticker.Width = sticker.Height = side;
+        if (sticker.Parent is null) sky.Children.Add(sticker);
+        At(sticker, w * 0.84 - side / 2, h * 0.26 - side / 2);
+        var drift = new TranslateTransform(); var tilt = new RotateTransform();
+        sticker.RenderTransform = new TransformGroup { Children = { tilt, drift } }; sticker.RenderTransformOrigin = new Point(0.5, 0.5);
+        drift.BeginAnimation(TranslateTransform.XProperty, new DoubleAnimation(0, -w * 0.04, TimeSpan.FromSeconds(24)) { AutoReverse = true, RepeatBehavior = RepeatBehavior.Forever, EasingFunction = new SineEase() });
+        drift.BeginAnimation(TranslateTransform.YProperty, new DoubleAnimation(0, h * 0.06, TimeSpan.FromSeconds(24)) { AutoReverse = true, RepeatBehavior = RepeatBehavior.Forever, EasingFunction = new SineEase() });
+        tilt.BeginAnimation(RotateTransform.AngleProperty, new DoubleAnimation(-7, 7, TimeSpan.FromSeconds(17)) { AutoReverse = true, RepeatBehavior = RepeatBehavior.Forever, EasingFunction = new SineEase() });
+    }
+
+    /// Now and then a 999, a heart or a butterfly floats up from the bottom, sways, and fades.
+    void Float()
+    {
+        double w = sky.ActualWidth, h = sky.ActualHeight;
+        if (w == 0) return;
+        double side = 26 + Random.Shared.NextDouble() * 14, x = w * (0.1 + Random.Shared.NextDouble() * 0.8);
+        var bit = new Image { Source = JT.Image(new[] { "jt-era-999", "jt-heart", "jt-fly" }[Random.Shared.Next(3)]), Width = side, Height = side, Opacity = 0,
+                              RenderTransformOrigin = new Point(0.5, 0.5), Effect = new DropShadowEffect { Color = Colors.White, BlurRadius = 10, ShadowDepth = 0, Opacity = 0.6 } };
+        var sway = new RotateTransform(); bit.RenderTransform = sway;
+        At(bit, x, h);
+        sky.Children.Add(bit);
+        var time = TimeSpan.FromSeconds(9);
+        var rise = new DoubleAnimation(h, h * 0.4, time); rise.Completed += (_, _) => sky.Children.Remove(bit);
+        bit.BeginAnimation(Canvas.TopProperty, rise);
+        var drift = new DoubleAnimationUsingKeyFrames { Duration = time };
+        drift.KeyFrames.Add(new SplineDoubleKeyFrame(x - 50, KeyTime.FromPercent(0.35))); drift.KeyFrames.Add(new SplineDoubleKeyFrame(x + 30, KeyTime.FromPercent(1)));
+        bit.BeginAnimation(Canvas.LeftProperty, drift);
+        var fade = new DoubleAnimationUsingKeyFrames { Duration = time };
+        foreach (var (v, t) in new[] { (0.0, 0.0), (0.8, 0.15), (0.8, 0.7), (0.0, 1.0) }) fade.KeyFrames.Add(new LinearDoubleKeyFrame(v, KeyTime.FromPercent(t)));
+        bit.BeginAnimation(OpacityProperty, fade);
+        sway.BeginAnimation(RotateTransform.AngleProperty, new DoubleAnimation(-14, 14, time));
+    }
+
+    /// The cover card spins round when a new song starts.
+    void Flip()
+    {
+        if (card.RenderTransform is not TransformGroup { Children: [_, ScaleTransform scale] }) return;
+        var turn = new DoubleAnimationUsingKeyFrames { Duration = TimeSpan.FromSeconds(0.7) };
+        turn.KeyFrames.Add(new EasingDoubleKeyFrame(0, KeyTime.FromPercent(0.5), new SineEase()));
+        turn.KeyFrames.Add(new EasingDoubleKeyFrame(card.IsMouseOver ? 1.05 : 1, KeyTime.FromPercent(1), new SineEase()));
+        scale.BeginAnimation(ScaleTransform.ScaleXProperty, turn);
     }
 }

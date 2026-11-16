@@ -152,20 +152,56 @@ struct SongExtras {
     @Published var level: Float = 0
 }
 
-/// Five bars that move with the music (the sidebar player and the mini player).
+/// Five bars that move with the music (the sidebar player and the mini player). Core Animation, not SwiftUI: as a
+/// SwiftUI view it redrew 15 times a second, and each redraw re-laid out the whole window.
 struct Visualizer: View {
-    @ObservedObject private var now = LevelMeter.shared
     var height: CGFloat = 16
-    private let weights: [CGFloat] = [0.55, 0.9, 1, 0.75, 0.6]
-    var body: some View {
-        HStack(alignment: .bottom, spacing: 2) {
-            ForEach(0..<5, id: \.self) { n in
-                Capsule().fill(JT.lavender)
-                    .frame(width: 3, height: max(3, height * min(1, CGFloat(now.level) * weights[n] * 1.25 + (now.level > 0 ? 0.08 * CGFloat((n * 7 + Int(now.level * 40)) % 3) : 0))))
-            }
+    var body: some View { VisualizerBars(height: height).frame(width: 23, height: height) }
+}
+
+private struct VisualizerBars: NSViewRepresentable {
+    let height: CGFloat
+    func makeNSView(context: Context) -> VisualizerView { VisualizerView(height: height) }
+    func updateNSView(_ view: VisualizerView, context: Context) {}
+}
+
+final class VisualizerView: NSView {
+    private let height: CGFloat
+    private var bars: [CALayer] = []
+    private var meter: AnyCancellable?
+    private static let weights: [CGFloat] = [0.55, 0.9, 1, 0.75, 0.6]
+
+    init(height: CGFloat) {
+        self.height = height
+        super.init(frame: NSRect(x: 0, y: 0, width: 23, height: height))
+        wantsLayer = true
+        bars = (0..<5).map { n in
+            let b = CALayer()
+            b.anchorPoint = CGPoint(x: 0.5, y: 0) // grows up from the bottom
+            b.bounds = CGRect(x: 0, y: 0, width: 3, height: height)
+            b.position = CGPoint(x: 1.5 + CGFloat(n) * 5, y: 0)
+            b.cornerRadius = 1.5
+            b.setAffineTransform(CGAffineTransform(scaleX: 1, y: 3 / height))
+            layer?.addSublayer(b)
+            return b
         }
-        .frame(height: height, alignment: .bottom)
-        .animation(.easeOut(duration: 0.12), value: now.level)
+        recolor()
+        NotificationCenter.default.addObserver(self, selector: #selector(recolor), name: EraTheme.changed, object: nil)
+        meter = LevelMeter.shared.$level.sink { [weak self] level in self?.show(CGFloat(level)) }
+    }
+    required init?(coder: NSCoder) { fatalError("init(coder:) is not used") }
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
+
+    @objc private func recolor() { for b in bars { b.backgroundColor = NSColor(JT.lavender).cgColor } }
+
+    private func show(_ level: CGFloat) {
+        CATransaction.begin(); CATransaction.setAnimationDuration(0.12)
+        for (n, b) in bars.enumerated() {
+            let wobble = level > 0 ? 0.08 * CGFloat((n * 7 + Int(level * 40)) % 3) : 0
+            let h = max(3, height * min(1, level * Self.weights[n] * 1.25 + wobble))
+            b.setAffineTransform(CGAffineTransform(scaleX: 1, y: h / height))
+        }
+        CATransaction.commit()
     }
 }
 
@@ -574,11 +610,12 @@ struct PlayerScreen: View {
             let hole = max(160, min(w * 0.34, h * 0.4, 360))
             let cx = w / 2, cy = h * 0.44
             ZStack {
-                SpaceMotion()
+                CoverWash(image: AmbientPlayer.shared.coverImage).frame(width: w, height: h).position(x: w / 2, y: h / 2)
+                SpaceMotion(era: NowPlaying.shared.song?.e)
                 Circle().stroke(AngularGradient(colors: [palette.a, palette.b, palette.c, palette.a], center: .center), lineWidth: 3)
                     .frame(width: hole, height: hole).padding(4).drawingGroup().scaleEffect(wave.scale).opacity(wave.alpha).blur(radius: 1.5)
                     .position(x: cx, y: cy).allowsHitTesting(false)
-                BlackHole(palette: palette, size: hole).frame(width: hole * 2.6, height: hole * 2.6).position(x: cx, y: cy)
+                BlackHole(palette: palette, size: hole, song: lastPath).frame(width: hole * 2.6, height: hole * 2.6).position(x: cx, y: cy)
                 PlayerClock(size: hole * 0.34, glow: palette.a).position(x: cx, y: cy - hole * 0.62)
                 let words = min(w * 0.42, 460) // starts just right of the cover card
                 KaraokeLine(glow: palette.a).frame(width: words).position(x: cx - hole * 0.08 + words / 2, y: cy + hole * 0.24)
@@ -737,25 +774,107 @@ private func sparklePath(_ side: CGFloat) -> CGPath {
     return p
 }
 
+/// The cover, hugely enlarged and soft, washing the whole sky in its colors. Blurred once per song, not every frame.
+private struct CoverWash: NSViewRepresentable {
+    let image: NSImage?
+    func makeNSView(context: Context) -> CoverWashView { CoverWashView() }
+    func updateNSView(_ view: CoverWashView, context: Context) { view.show(image) }
+}
+
+final class CoverWashView: NSView {
+    private weak var shown: NSImage?
+    override init(frame: NSRect) {
+        super.init(frame: frame)
+        wantsLayer = true
+        layer?.contentsGravity = .resizeAspectFill
+        layer?.magnificationFilter = .linear
+        layer?.opacity = 0.32
+    }
+    required init?(coder: NSCoder) { fatalError("init(coder:) is not used") }
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
+    func show(_ image: NSImage?) {
+        guard image !== shown else { return }
+        shown = image
+        let fade = CATransition(); fade.type = .fade; fade.duration = 1.2
+        layer?.add(fade, forKey: "fade")
+        layer?.contents = image.flatMap(Self.soft)
+    }
+    /// The image shrunk to 64 pixels and blurred: stretched over the window it's a smooth wash of its colors.
+    private static func soft(_ image: NSImage) -> CGImage? {
+        var rect = NSRect(x: 0, y: 0, width: 64, height: 64)
+        guard let cg = image.cgImage(forProposedRect: &rect, context: nil, hints: nil) else { return nil }
+        let small = CIImage(cgImage: cg).transformed(by: CGAffineTransform(scaleX: 64 / CGFloat(cg.width), y: 64 / CGFloat(cg.height)))
+        // darker and more colorful, so a pale cover tints the night instead of greying it
+        let tinted = small.applyingFilter("CIColorControls", parameters: [kCIInputSaturationKey: 1.6, kCIInputBrightnessKey: -0.35, kCIInputContrastKey: 1.1])
+        let blurred = tinted.clampedToExtent().applyingGaussianBlur(sigma: 5).cropped(to: CGRect(x: 0, y: 0, width: 64, height: 64))
+        return CIContext().createCGImage(blurred, from: blurred.extent)
+    }
+}
+
 /// Bigger stars that twinkle each on its own beat, and now and then a shooting star.
 private struct SpaceMotion: NSViewRepresentable {
+    let era: String?
     func makeNSView(context: Context) -> SpaceMotionView { SpaceMotionView() }
-    func updateNSView(_ view: SpaceMotionView, context: Context) {}
+    func updateNSView(_ view: SpaceMotionView, context: Context) { view.showEra(era) }
 }
 
 final class SpaceMotionView: NSView {
     private var builtFor: CGSize = .zero
     private var pauser: PausesInBackground?
-    private var shooter: Timer?
+    private var shooter: Timer?, floater: Timer?
+    private let sticker = CALayer()   // the era's sticker, drifting through space
+    private var era: String?
 
     override init(frame: NSRect) {
         super.init(frame: frame)
         wantsLayer = true
         if let layer { pauser = PausesInBackground(layer) }
         shooter = Timer.scheduledTimer(withTimeInterval: 6.5, repeats: true) { [weak self] _ in self?.shoot() }
+        floater = Timer.scheduledTimer(withTimeInterval: 9, repeats: true) { [weak self] _ in self?.float() }
+        sticker.contentsGravity = .resizeAspect
+        sticker.opacity = 0
+    }
+
+    /// The playing song's era sticker (a race car for DRFL, a halo for LND, ...), drifting slowly in the upper right.
+    func showEra(_ name: String?) {
+        guard name != era else { return }
+        era = name
+        let image = name.flatMap { NSImage(named: eraSticker($0, fallback: abs($0.hashValue))) }
+        CATransaction.begin(); CATransaction.setAnimationDuration(1.2)
+        sticker.contents = image
+        sticker.opacity = image == nil ? 0 : 0.55
+        CATransaction.commit()
+    }
+
+    /// Now and then a 999 or a heart floats up from the bottom, sways, and fades.
+    private func float() {
+        guard let root = layer, root.speed != 0, bounds.width > 0 else { return }
+        let name = ["jt-era-999", "jt-heart", "jt-fly"][Int.random(in: 0...2)]
+        guard let image = NSImage(named: name) else { return }
+        let side = CGFloat.random(in: 26...40)
+        let bit = CALayer()
+        bit.contents = image; bit.contentsGravity = .resizeAspect
+        bit.bounds = CGRect(x: 0, y: 0, width: side, height: side)
+        let x = CGFloat.random(in: bounds.width * 0.1...bounds.width * 0.9)
+        bit.position = CGPoint(x: x, y: -side); bit.opacity = 0
+        bit.shadowColor = NSColor.white.cgColor; bit.shadowRadius = 6; bit.shadowOpacity = 0.6; bit.shadowOffset = .zero
+        let rise = CAKeyframeAnimation(keyPath: "position")
+        let path = CGMutablePath(); path.move(to: CGPoint(x: x, y: -side))
+        path.addCurve(to: CGPoint(x: x + 30, y: bounds.height * 0.6), control1: CGPoint(x: x - 60, y: bounds.height * 0.2), control2: CGPoint(x: x + 70, y: bounds.height * 0.4))
+        rise.path = path
+        let fade = CAKeyframeAnimation(keyPath: "opacity")
+        fade.values = [0, 0.8, 0.8, 0]; fade.keyTimes = [0, 0.15, 0.7, 1]
+        let sway = CABasicAnimation(keyPath: "transform.rotation.z")
+        sway.fromValue = -0.25; sway.toValue = 0.25
+        let all = CAAnimationGroup(); all.animations = [rise, fade, sway]; all.duration = 9
+        CATransaction.begin()
+        CATransaction.setCompletionBlock { bit.removeFromSuperlayer() }
+        bit.add(all, forKey: "float")
+        root.addSublayer(bit)
+        CATransaction.commit()
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) is not used") }
-    deinit { shooter?.invalidate() }
+    deinit { shooter?.invalidate(); floater?.invalidate() }
     override func hitTest(_ point: NSPoint) -> NSView? { nil }
 
     override func layout() {
@@ -763,6 +882,18 @@ final class SpaceMotionView: NSView {
         guard bounds.size != builtFor, bounds.width > 0, let root = layer else { return }
         builtFor = bounds.size
         root.sublayers?.forEach { $0.removeFromSuperlayer() }
+        let side = min(bounds.width, bounds.height) * 0.16
+        sticker.bounds = CGRect(x: 0, y: 0, width: side, height: side)
+        sticker.position = CGPoint(x: bounds.width * 0.84, y: bounds.height * 0.74)
+        let drift = CABasicAnimation(keyPath: "position")
+        drift.fromValue = NSValue(point: sticker.position); drift.toValue = NSValue(point: CGPoint(x: bounds.width * 0.8, y: bounds.height * 0.68))
+        drift.duration = 24; drift.autoreverses = true; drift.repeatCount = .infinity
+        drift.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+        let tilt = CABasicAnimation(keyPath: "transform.rotation.z")
+        tilt.fromValue = -0.12; tilt.toValue = 0.12; tilt.duration = 17; tilt.autoreverses = true; tilt.repeatCount = .infinity
+        tilt.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+        sticker.add(drift, forKey: "drift"); sticker.add(tilt, forKey: "tilt")
+        root.addSublayer(sticker)
         var seed: UInt64 = 2018
         func next() -> CGFloat { seed = seed &* 6364136223846793005 &+ 1442695040888963407; return CGFloat(Double(seed >> 11) / Double(UInt64(1) << 53)) }
         for k in 0..<16 {
@@ -823,9 +954,11 @@ final class SpaceMotionView: NSView {
 private struct BlackHole: NSViewRepresentable {
     let palette: CoverPalette
     let size: CGFloat
+    let song: String?
     func makeNSView(context: Context) -> BlackHoleView { BlackHoleView() }
     func updateNSView(_ view: BlackHoleView, context: Context) {
         view.show(size: size, colors: [NSColor(palette.a), NSColor(palette.b), NSColor(palette.c)])
+        view.newSong(song)
     }
 }
 
@@ -835,6 +968,13 @@ final class BlackHoleView: NSView {
     private var tinted: [(layer: CAGradientLayer, recipe: ([NSColor]) -> [CGColor])] = [] // recolored when the song changes
     private var glow = CAShapeLayer()       // the hole's halo in the song's color
     private var pulse = CALayer()
+    private var bars: [CALayer] = []                // the ring of bars that jump with the music
+    private var barRing = CALayer()
+    private var dust: [CAEmitterLayer] = []         // glittering specks drifting in the disc
+    private var burster = CAEmitterLayer()          // a spray of sparks when a song starts
+    private var flash = CAShapeLayer()              // the rim flashing on a strong beat
+    private var song: String?
+    private var lastLevel: CGFloat = 0, lastFlash = 0.0
     private var pauser: PausesInBackground?
     private var meter: AnyCancellable?
 
@@ -861,22 +1001,54 @@ final class BlackHoleView: NSView {
             t.layer.add(a, forKey: "recolor"); t.layer.colors = to
         }
         glow.shadowColor = colors[1].cgColor
+        for (k, b) in bars.enumerated() { b.backgroundColor = colors[k % 3].cgColor }
+        for e in dust { for k in 0..<2 { e.setValue(colors[k].cgColor, forKeyPath: "emitterCells.c\(k).color") } }
         CATransaction.commit()
     }
 
+    /// A new song: sparks spray out from the hole's edge.
+    func newSong(_ key: String?) {
+        guard key != song else { return }
+        song = key
+        guard key != nil else { return }
+        burster.birthRate = 1
+        burster.beginTime = CACurrentMediaTime() // particles from now, not from when the layer was made
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.18) { [weak self] in self?.burster.birthRate = 0 }
+    }
+
     private func beat(_ level: CGFloat) {
+        // a strong beat (a jump in loudness) flashes the rim
+        let now = CACurrentMediaTime()
+        if level - lastLevel > 0.16, level > 0.45, now - lastFlash > 0.3 {
+            lastFlash = now
+            let bright = CABasicAnimation(keyPath: "opacity"); bright.fromValue = 0.9; bright.toValue = 0
+            let grow = CABasicAnimation(keyPath: "transform.scale"); grow.fromValue = 1; grow.toValue = 1.18
+            let pop = CAAnimationGroup(); pop.animations = [bright, grow]; pop.duration = 0.45
+            pop.timingFunction = CAMediaTimingFunction(name: .easeOut)
+            flash.add(pop, forKey: "flash")
+        }
+        lastLevel = level
         CATransaction.begin(); CATransaction.setAnimationDuration(0.12)
         pulse.transform = CATransform3DMakeScale(1 + level * 0.09, 1 + level * 0.09, 1)
         pulse.opacity = Float(0.55 + level * 0.45)
+        // the bars jump with the loudness, each a little differently, like a spectrum
+        let t = CACurrentMediaTime()
+        barRing.opacity = level > 0 ? 0.9 : 0
+        for (k, b) in bars.enumerated() {
+            let wobble = (sin(t * 6 + Double(k) * 0.9) + sin(t * 3.7 + Double(k) * 2.3) + 2) / 4
+            let s = max(0.06, level * CGFloat(0.3 + 0.7 * wobble))
+            b.setAffineTransform(CGAffineTransform(rotationAngle: CGFloat(k) / CGFloat(bars.count) * 2 * .pi - .pi / 2).scaledBy(x: 1, y: s))
+        }
         CATransaction.commit()
     }
 
     private func build() {
         guard let root = layer, bounds.width > 0, size > 0, colors.count == 3 else { return }
         root.sublayers?.forEach { $0.removeFromSuperlayer() }
-        tinted = []
+        tinted = []; dust = []
         let c = CGPoint(x: bounds.midX, y: bounds.midY)
         root.addSublayer(disc(center: c, half: .top))
+        root.addSublayer(lensedArc(center: c))
         pulse = ring(center: c, diameter: size * 1.1, width: size * 0.05, blur: size * 0.06) { [$0[0], $0[1], $0[2], $0[0]].map(\.cgColor) }
         pulse.opacity = 0.55
         root.addSublayer(pulse)
@@ -890,7 +1062,133 @@ final class BlackHoleView: NSView {
         hole.strokeColor = NSColor.white.withAlphaComponent(0.95).cgColor; hole.lineWidth = 3
         hole.shadowColor = NSColor.white.cgColor; hole.shadowRadius = 8; hole.shadowOpacity = 0.7; hole.shadowOffset = .zero
         root.addSublayer(hole)
+        barRing = CALayer(); barRing.frame = bounds; barRing.opacity = 0
+        bars = (0..<72).map { k in
+            let b = CALayer(), angle = CGFloat(k) / 72 * 2 * .pi
+            b.bounds = CGRect(x: 0, y: 0, width: 2.2, height: size * 0.16)
+            b.anchorPoint = CGPoint(x: 0.5, y: 0) // grows outward from the hole's edge
+            b.position = CGPoint(x: c.x + cos(angle) * size * 0.56, y: c.y + sin(angle) * size * 0.56)
+            b.cornerRadius = 1.1
+            b.backgroundColor = colors[k % 3].cgColor
+            b.setAffineTransform(CGAffineTransform(rotationAngle: angle - .pi / 2).scaledBy(x: 1, y: 0.06))
+            barRing.addSublayer(b)
+            return b
+        }
+        root.addSublayer(barRing)
+        // the rim's flash: a white ring the size of the hole, seen only while it pops
+        flash = CAShapeLayer()
+        flash.frame = CGRect(x: c.x - size / 2, y: c.y - size / 2, width: size, height: size)
+        flash.path = CGPath(ellipseIn: flash.bounds, transform: nil)
+        flash.fillColor = nil; flash.strokeColor = NSColor.white.cgColor; flash.lineWidth = 5; flash.opacity = 0
+        flash.shadowColor = NSColor.white.cgColor; flash.shadowRadius = 14; flash.shadowOpacity = 1; flash.shadowOffset = .zero
+        root.addSublayer(flash)
         root.addSublayer(disc(center: c, half: .bottom))
+        root.addSublayer(comet(center: c))
+        burster = CAEmitterLayer()
+        burster.frame = bounds
+        burster.emitterPosition = c; burster.emitterShape = .circle; burster.emitterMode = .outline
+        burster.emitterSize = CGSize(width: size, height: size)
+        burster.renderMode = .additive; burster.birthRate = 0
+        burster.emitterCells = [colors[0], colors[1], NSColor.white].map { color in
+            let cell = CAEmitterCell()
+            cell.contents = Self.speck; cell.color = color.cgColor
+            cell.birthRate = 260; cell.lifetime = 1.6; cell.lifetimeRange = 0.6
+            cell.velocity = size * 0.55; cell.velocityRange = size * 0.3; cell.emissionRange = 2 * .pi
+            cell.scale = 0.35; cell.scaleRange = 0.2; cell.scaleSpeed = -0.15; cell.alphaSpeed = -0.6
+            return cell
+        }
+        root.addSublayer(burster)
+    }
+
+    /// A small comet circling the hole on a tilted orbit, its tail streaming behind.
+    private func comet(center c: CGPoint) -> CALayer {
+        let holder = CALayer()
+        holder.frame = bounds
+        let head = CALayer()
+        head.bounds = CGRect(x: 0, y: 0, width: 46, height: 6)
+        let tail = CAGradientLayer()
+        tail.frame = head.bounds
+        tail.colors = [NSColor.white.withAlphaComponent(0).cgColor, NSColor.white.withAlphaComponent(0.7).cgColor, NSColor.white.cgColor]
+        tail.locations = [0, 0.8, 1]
+        tail.startPoint = CGPoint(x: 0, y: 0.5); tail.endPoint = CGPoint(x: 1, y: 0.5)
+        tail.cornerRadius = 3
+        head.addSublayer(tail)
+        head.anchorPoint = CGPoint(x: 1, y: 0.5) // the bright end leads along the path
+        head.shadowColor = NSColor.white.cgColor; head.shadowRadius = 6; head.shadowOpacity = 0.9; head.shadowOffset = .zero
+        let orbit = CGMutablePath()
+        let rx = size * 1.45, ry = size * 0.68 // wide enough to pass around the hole, never across it
+        orbit.addEllipse(in: CGRect(x: -rx, y: -ry, width: rx * 2, height: ry * 2),
+                         transform: CGAffineTransform(translationX: c.x, y: c.y).rotated(by: 0.14))
+        let fly = CAKeyframeAnimation(keyPath: "position")
+        fly.path = orbit; fly.duration = 16; fly.repeatCount = .infinity
+        fly.calculationMode = .paced; fly.rotationMode = .rotateAuto
+        head.add(fly, forKey: "orbit")
+        holder.addSublayer(head)
+        return holder
+    }
+
+    /// The far side of the disc, its light bent up and over the top of the hole (like a real one's).
+    private func lensedArc(center c: CGPoint) -> CALayer {
+        let w = size * 1.7, h = size * 1.12, line = size * 0.022, blur = size * 0.012
+        let side = CGSize(width: w + line + blur * 8, height: h + line + blur * 8)
+        let clip = CALayer()
+        clip.frame = bounds
+        let keep = CALayer(); keep.backgroundColor = NSColor.black.cgColor
+        keep.frame = CGRect(x: 0, y: c.y + size * 0.05, width: bounds.width, height: bounds.height) // only above the disc
+        clip.mask = keep
+        let holder = CALayer()
+        holder.bounds = CGRect(origin: .zero, size: side); holder.position = c
+        let g = CAGradientLayer()
+        g.frame = holder.bounds
+        g.startPoint = CGPoint(x: 0, y: 0.5); g.endPoint = CGPoint(x: 1, y: 0.5)
+        let recipe: ([NSColor]) -> [CGColor] = { [$0[0], NSColor.white, $0[1], NSColor.white, $0[0]].map(\.cgColor) }
+        g.colors = recipe(colors)
+        let shape = CAShapeLayer()
+        shape.frame = holder.bounds
+        shape.path = CGPath(ellipseIn: CGRect(x: (side.width - w) / 2, y: (side.height - h) / 2, width: w, height: h), transform: nil)
+        shape.fillColor = nil; shape.strokeColor = NSColor.black.cgColor; shape.lineWidth = line
+        g.mask = shape
+        holder.addSublayer(g)
+        holder.opacity = 0.8
+        if let f = CIFilter(name: "CIGaussianBlur") { f.setValue(blur, forKey: kCIInputRadiusKey); holder.filters = [f] }
+        tinted.append((g, recipe))
+        clip.addSublayer(holder)
+        return clip
+    }
+
+    /// A soft round speck, white, tinted by each particle's color.
+    private static let speck: CGImage? = {
+        let n = 16
+        guard let ctx = CGContext(data: nil, width: n, height: n, bitsPerComponent: 8, bytesPerRow: 0, space: CGColorSpaceCreateDeviceRGB(),
+                                  bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue),
+              let g = CGGradient(colorsSpace: CGColorSpaceCreateDeviceRGB(), colors: [NSColor.white.cgColor, NSColor.white.withAlphaComponent(0).cgColor] as CFArray, locations: [0, 1])
+        else { return nil }
+        ctx.drawRadialGradient(g, startCenter: CGPoint(x: 8, y: 8), startRadius: 0, endCenter: CGPoint(x: 8, y: 8), endRadius: 8, options: [])
+        return ctx.makeImage()
+    }()
+
+    /// Glittering specks born along the disc, drifting and fading as they turn with it.
+    private func glitter(in bounds: CGRect) -> CAEmitterLayer {
+        let e = CAEmitterLayer()
+        e.frame = bounds
+        e.emitterPosition = CGPoint(x: bounds.midX, y: bounds.midY)
+        e.emitterShape = .circle; e.emitterMode = .outline
+        e.emitterSize = CGSize(width: size * 1.9, height: size * 1.9)
+        e.renderMode = .additive
+        e.emitterCells = [colors[0], colors[1], NSColor.white].enumerated().map { k, color in
+            let cell = CAEmitterCell()
+            cell.name = "c\(k)"
+            cell.contents = Self.speck
+            cell.color = color.cgColor
+            cell.birthRate = k == 2 ? 4 : 6
+            cell.lifetime = 7; cell.lifetimeRange = 3
+            cell.velocity = 8; cell.velocityRange = 10; cell.emissionRange = 2 * .pi
+            cell.scale = 0.22; cell.scaleRange = 0.14; cell.scaleSpeed = -0.02
+            cell.alphaSpeed = -0.13
+            return cell
+        }
+        dust.append(e)
+        return e
     }
 
     private enum Half { case top, bottom }
@@ -930,6 +1228,7 @@ final class BlackHoleView: NSView {
         dust.path = CGPath(ellipseIn: CGRect(x: mid.x - size * 1.175, y: mid.y - size * 1.175, width: size * 2.35, height: size * 2.35), transform: nil)
         dust.fillColor = nil; dust.strokeColor = colors[2].withAlphaComponent(0.6).cgColor; dust.lineWidth = 1.5; dust.lineDashPattern = [1.5, 12]
         spin.addSublayer(dust)
+        spin.addSublayer(glitter(in: spin.bounds))
         spin.add(turn(seconds: 90), forKey: "spin")
         tilt.addSublayer(spin)
 
@@ -1021,11 +1320,17 @@ private struct KaraokeLine: View {
             if let x = now.extras, !x.synced.isEmpty, let n = now.lineIndex, x.synced.indices.contains(n) {
                 let words = x.synced[n].line.split(separator: " ").map(String.init)
                 let lit = now.litWords
-                (words.isEmpty ? Text("♪") : words.enumerated().reduce(Text("")) { line, w in
-                    // the word being sung right now takes the song's color
-                    line + Text((w.offset == 0 ? "" : " ") + w.element).foregroundColor(w.offset == lit - 1 && now.singing ? glow : w.offset < lit ? .white : .white.opacity(0.28))
-                })
-                .shadow(color: glow.opacity(0.55), radius: 14)
+                VStack(alignment: .leading, spacing: 10) {
+                    (words.isEmpty ? Text("♪") : words.enumerated().reduce(Text("")) { line, w in
+                        // the word being sung right now takes the song's color
+                        line + Text((w.offset == 0 ? "" : " ") + w.element).foregroundColor(w.offset == lit - 1 && now.singing ? glow : w.offset < lit ? .white : .white.opacity(0.28))
+                    })
+                    .shadow(color: glow.opacity(0.55), radius: 14)
+                    // the next line waits, faint, underneath
+                    if n + 1 < x.synced.count, !x.synced[n + 1].line.isEmpty {
+                        Text(x.synced[n + 1].line).font(JT.body(17, .semibold)).foregroundColor(.white.opacity(0.3)).lineLimit(2)
+                    }
+                }
                 .id(n).transition(.asymmetric(insertion: .move(edge: .bottom).combined(with: .opacity), removal: .opacity))
             } else if p.title == nil {
                 Text("Press play").foregroundColor(.white.opacity(0.5))
@@ -1053,6 +1358,8 @@ private func thumb(_ image: NSImage?, _ side: CGFloat) -> some View {
 private struct CoverCard: View {
     let version: Int
     @State private var hover = false
+    @State private var flip = 0.0
+    @State private var shownPath: String?
     var body: some View {
         let p = AmbientPlayer.shared
         VStack(spacing: 5) {
@@ -1067,11 +1374,18 @@ private struct CoverCard: View {
         .padding(10)
         .background(RoundedRectangle(cornerRadius: 14).fill(LinearGradient(colors: [Color.white.opacity(0.24), Color.white.opacity(0.08)], startPoint: .topLeading, endPoint: .bottomTrailing)))
         .overlay(RoundedRectangle(cornerRadius: 14).stroke(Color.white.opacity(0.3)))
+        .rotation3DEffect(.degrees(flip), axis: (x: 0, y: 1, z: 0), perspective: 0.5) // spins round when a new song starts
         .rotation3DEffect(.degrees(hover ? 4 : 16), axis: (x: 0.15, y: 1, z: 0), perspective: 0.6)
         .scaleEffect(hover ? 1.05 : 1)
         .shadow(color: .black.opacity(0.6), radius: 18, y: 10)
         .animation(.spring(response: 0.4, dampingFraction: 0.7), value: hover)
         .onHover { hover = $0 }
+        .onAppear { shownPath = p.currentPath }
+        .onChange(of: version) { _ in
+            guard p.currentPath != shownPath else { return }
+            shownPath = p.currentPath
+            if p.currentPath != nil { withAnimation(.spring(response: 0.8, dampingFraction: 0.75)) { flip += 360 } }
+        }
         .onTapGesture { if let s = NowPlaying.shared.song { NativeStore.shared.openSong = s } }
         .help("Open the song card")
     }
