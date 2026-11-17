@@ -11,6 +11,9 @@ public partial class App : Application
 
     protected override void OnStartup(StartupEventArgs e)
     {
+        // animations at 30 frames a second, not 60: the slow sky and disc look the same and cost half as much
+        System.Windows.Media.Animation.Timeline.DesiredFrameRateProperty.OverrideMetadata(typeof(System.Windows.Media.Animation.Timeline),
+            new FrameworkPropertyMetadata { DefaultValue = 30 });
         base.OnStartup(e);
         if (e.Args.Contains("--smoke-test")) { SmokeTest(); return; }
         // CI: --rtmp-selftest <server> <key> streams six seconds and quits
