@@ -74,11 +74,11 @@ public sealed class PlayerPage : Grid, IRefresh
         Children.Add(sky);
         Children.Add(stage);
         wave.Stroke = Ring((0, 1), (1, 1), (2, 1), (0, 1)); wave.Effect = new BlurEffect { Radius = 2 };
-        stage.Children.Add(wave);
+        stage.Children.Add(Cached(wave));
         stage.Children.Add(BuildHole());
         stage.Children.Add(swirl);
         clock.Children.Add(UI.Column(0, date, time)); clock.IsHitTestVisible = false; stage.Children.Add(clock);
-        stage.Children.Add(karaoke);
+        stage.Children.Add(Cached(karaoke));
 
         // the cover on a glassy card, turned toward the hole; click opens the song card
         var art = new Border { CornerRadius = new CornerRadius(10), ClipToBounds = true, Child = cover, Background = JT.Brush(Color.FromArgb(30, 255, 255, 255)) };
@@ -96,7 +96,7 @@ public sealed class PlayerPage : Grid, IRefresh
         // straightens up and comes closer under the pointer
         card.MouseEnter += (_, _) => Lift(true); card.MouseLeave += (_, _) => Lift(false);
         card.MouseLeftButtonUp += (_, _) => { if (Player.Shared.CurrentFile is { } f && Store.Shared.SongForFile(f) is var i and >= 0) MainWindow.Current?.OpenSong(Store.Shared.Songs[i]); };
-        stage.Children.Add(card);
+        stage.Children.Add(Cached(card));
 
         // the queue, on a panel turned toward the middle
         queueBox = new Border { Padding = new Thickness(12), Width = 230, Child = queue, RenderTransform = new SkewTransform(0, 7) };
@@ -249,10 +249,10 @@ public sealed class PlayerPage : Grid, IRefresh
         var glow = new Ellipse { StrokeThickness = 18, Stroke = Ring((0, 1), (1, 1), (2, 1), (0, 1)), Opacity = 0.75, Effect = new BlurEffect { Radius = 22 }, Tag = 1.1 };
         // breathes slowly
         glow.BeginAnimation(OpacityProperty, new DoubleAnimation(0.55, 0.95, TimeSpan.FromSeconds(2.6)) { AutoReverse = true, RepeatBehavior = RepeatBehavior.Forever, EasingFunction = new SineEase() });
-        hole.Children.Add(glow);
+        hole.Children.Add(Cached(glow));
         var ball = new Ellipse { Fill = Brushes.Black, Stroke = JT.Brush(Color.FromArgb(242, 255, 255, 255)), StrokeThickness = 3, Tag = 1.0,
                                  Effect = new DropShadowEffect { Color = Colors.White, BlurRadius = 22, ShadowDepth = 0, Opacity = 0.75 } };
-        hole.Children.Add(ball);
+        hole.Children.Add(Cached(ball));
         hole.Children.Add(frontDisc);
         return hole;
     }
@@ -262,8 +262,8 @@ public sealed class PlayerPage : Grid, IRefresh
         void Add(double scale, double thickness, Brush stroke, double blur, double opacity = 1, DoubleCollection? dash = null)
         {
             var e = new Ellipse { Width = size * scale, Height = size * scale, StrokeThickness = thickness, Stroke = stroke, Opacity = opacity, StrokeDashArray = dash,
-                                  Effect = blur > 0 ? new BlurEffect { Radius = blur } : null };
-            turning.Children.Add(e);
+                                  Effect = blur > 0 ? new BlurEffect { Radius = blur, KernelType = KernelType.Box } : null };
+            turning.Children.Add(Cached(e));
         }
         Add(1.95, size * 0.2, Ring((0, 1), (1, 0.35), (2, 1), (0, 0.3), (1, 1), (0, 1)), size * 0.14, 0.9);
         Add(1.55, size * 0.04, Ring((-1, 0.8), (0, 0.2), (-1, 0.55), (1, 0.2), (-1, 0.8)), size * 0.04);
@@ -273,9 +273,8 @@ public sealed class PlayerPage : Grid, IRefresh
         flat.Children.Add(turning);
         // specks of light through the disc, orbiting faster than it turns
         var sparkSpin = new RotateTransform(); sparkSpins.Add(sparkSpin);
-        flat.Children.Add(new Image { Source = Sparks(size * 2.4), Width = size * 2.4, Height = size * 2.4, RenderTransform = sparkSpin, RenderTransformOrigin = new Point(0.5, 0.5) });
+        flat.Children.Add(Cached(new Image { Source = Sparks(size * 2.4), Width = size * 2.4, Height = size * 2.4, RenderTransform = sparkSpin, RenderTransformOrigin = new Point(0.5, 0.5) }));
         // the side turning toward you is brighter
-        flat.OpacityMask = new LinearGradientBrush(Colors.White, Color.FromArgb(128, 255, 255, 255), 0);
         return flat;
     }
     void Spin(bool on)
@@ -321,7 +320,7 @@ public sealed class PlayerPage : Grid, IRefresh
             star.BeginAnimation(OpacityProperty, new DoubleAnimation(0.1, 0.9, beat) { AutoReverse = true, RepeatBehavior = RepeatBehavior.Forever, BeginTime = begin, EasingFunction = new SineEase() });
             var grow = new DoubleAnimation(0.4, 1, beat) { AutoReverse = true, RepeatBehavior = RepeatBehavior.Forever, BeginTime = begin, EasingFunction = new SineEase() };
             scale.BeginAnimation(ScaleTransform.ScaleXProperty, grow); scale.BeginAnimation(ScaleTransform.ScaleYProperty, grow);
-            sky.Children.Add(star);
+            sky.Children.Add(Cached(star));
         }
         Doodles();
     }
@@ -337,7 +336,7 @@ public sealed class PlayerPage : Grid, IRefresh
         // the bright head (the right end) leads; it turns around that end
         var streak = new Rectangle { Width = 140, Height = 2, RadiusX = 1, RadiusY = 1, Fill = new LinearGradientBrush(Colors.Transparent, Colors.White, 0),
                                      RenderTransform = new RotateTransform(angle, 140, 1), Effect = new DropShadowEffect { Color = Colors.White, BlurRadius = 8, ShadowDepth = 0 } };
-        sky.Children.Add(streak);
+        sky.Children.Add(Cached(streak));
         var time = TimeSpan.FromSeconds(1.1); var ease = new QuadraticEase { EasingMode = EasingMode.EaseIn };
         var fly = new DoubleAnimation(from.X - 140, to.X - 140, time) { EasingFunction = ease };
         fly.Completed += (_, _) => sky.Children.Remove(streak);
@@ -414,6 +413,11 @@ public sealed class PlayerPage : Grid, IRefresh
         Spin(IsLoaded);
     }
     static void At(UIElement e, double x, double y) { Canvas.SetLeft(e, x); Canvas.SetTop(e, y); }
+
+    /// Draws an element (with its blur or glow) once into a GPU texture: moving, turning, scaling or fading it then
+    /// reuses the texture. Without this WPF re-renders every effect each frame something moves near it, which made the
+    /// Player tab lag and stall (the disc turns all the time).
+    static T Cached<T>(T e) where T : UIElement { e.CacheMode = new BitmapCache { SnapsToDevicePixels = false }; return e; }
 
     /// LIVE with the time on air, connecting, or why it stopped (click to dismiss).
     void ShowLive()
@@ -505,7 +509,7 @@ public sealed class PlayerPage : Grid, IRefresh
         eraPick.SelectedItem = eras.Contains(picked) ? picked : "All eras";
         updating = false;
         if (songsPanel.Visibility == Visibility.Visible) BuildRows();
-        upNextKey = null; Tick();
+        upNextKey = null; idFor = "\0"; Tick(); // the library changed: look the song up again
     }
 
     void ToggleSongs()
@@ -559,7 +563,17 @@ public sealed class PlayerPage : Grid, IRefresh
         if (p.CurrentFile is null && !Store.Shared.Me.AmbientOn) p.SetOn(true); else p.TogglePause();
     }
 
-    string? SongId => Player.Shared.CurrentFile is { } f && Store.Shared.SongForFile(f) is var i and >= 0 ? Store.Shared.Catalog[i].Id : null;
+    // looked up once per song: finding a file's song walks the whole library, and this is read several times per update
+    string? idFor, id;
+    string? SongId
+    {
+        get
+        {
+            var f = Player.Shared.CurrentFile;
+            if (f != idFor) { idFor = f; id = f is not null && Store.Shared.SongForFile(f) is var i and >= 0 ? Store.Shared.Catalog[i].Id : null; }
+            return id;
+        }
+    }
     void Love() { if (SongId is { } id) Store.Shared.SetRating(id, Store.Shared.Me.Ratings.ContainsKey(id) ? 0 : 5); }
 
     /// The parts that move with the music.
@@ -689,7 +703,7 @@ public sealed class PlayerPage : Grid, IRefresh
             var icon = new Image { Source = JT.Image(SwirlArt[k]), Width = side, Height = side, Opacity = 0.7 + rng.NextDouble() * 0.3, RenderTransform = spin,
                                    Effect = new DropShadowEffect { Color = Colors.White, BlurRadius = 8, ShadowDepth = 0, Opacity = 0.5 } };
             Canvas.SetLeft(icon, -side / 2); Canvas.SetTop(icon, -side / 2);
-            holder.Children.Add(icon);
+            holder.Children.Add(Cached(icon));
             // a third go the other way round
             var orbit = new EllipseGeometry(c, rx, ry) { Transform = new TransformGroup { Children = { new ScaleTransform(k % 3 == 0 ? -1 : 1, 1, c.X, c.Y), new RotateTransform((rng.NextDouble() - 0.5) * 23, c.X, c.Y) } } };
             var move = new MatrixTransform(); holder.RenderTransform = move;

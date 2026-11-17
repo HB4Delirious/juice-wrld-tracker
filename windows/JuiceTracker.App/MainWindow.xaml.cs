@@ -100,7 +100,7 @@ public partial class MainWindow : Window
         bool setup = store.Catalog.Count == 0 || store.Root is null || (store.Files.Count == 0 && store.Match.Owned.Count == 0 && !store.Scanning && store.FolderStatus.Length == 0);
         if (setup)
         {
-            if (shownPage is not SetupPage) { shownPage = new SetupPage(); PageHost.Content = shownPage; UI.FadeIn(shownPage); }
+            if (shownPage is not SetupPage) { shownPage = new SetupPage(); PageHost.Content = shownPage; UI.FadeIn(shownPage); SkyLayer.Visibility = Visibility.Visible; }
             else ((SetupPage)shownPage).Update();
             pageNeedsSetup = true;
             return;
@@ -115,6 +115,8 @@ public partial class MainWindow : Window
             };
             PageHost.Content = shownPage;
             UI.FadeIn(shownPage);
+            // the Player draws its own space over everything; WPF would still draw the animated sky hidden under it
+            SkyLayer.Visibility = shownPage is PlayerPage ? Visibility.Hidden : Visibility.Visible;
         }
         else (shownPage as IRefresh)?.Refresh();
     }

@@ -55,7 +55,9 @@ public sealed class Player
     public void Seek(TimeSpan t) { media.Position = t; Changed?.Invoke(); }
 
     /// The eras you have songs from (for the era menu).
-    public List<string> Eras => Playables().Select(p => p.Era).Distinct().Order().ToList();
+    /// Worked out when the library changes (Sync), not on every redraw: the sidebar player reads it 4 times a second,
+    /// and going through every file each time stuttered the window.
+    public List<string> Eras { get; private set; } = [];
 
     List<(string File, string Title, string Era, int When)> Playables()
     {
@@ -72,6 +74,7 @@ public sealed class Player
     public void Sync()
     {
         var store = Store.Shared; var all = Playables();
+        Eras = all.Select(p => p.Era).Distinct().Order().ToList();
         var era = store.Me.AmbientEra;
         var picked = era.Length > 0 ? all.Where(p => p.Era == era).ToList() : [];
         bool radio = store.Me.InOrder && picked.Count > 0;
