@@ -149,18 +149,25 @@ public sealed partial class Store
 
     public async Task StartAsync()
     {
-        Directory.CreateDirectory(DataDir);
-        Me = Read<Personal>("personal.json") ?? new();
+        // Off the UI thread: the catalog and tag cache are megabytes, and a sleeping network drive can take seconds to
+        // say whether the music folder is there. Done on the UI thread, the window froze at every launch.
+        var (me, sv, cf, tags, q) = await Task.Run(() =>
+        {
+            Directory.CreateDirectory(DataDir);
+            return (Read<Personal>("personal.json") ?? new(), Read<Saved>("saved.json") ?? new(), Read<CatalogFile>("catalog.json"),
+                    Read<Dictionary<string, Engine.CachedTags>>("tags.json") ?? [], Read<List<QueueItem>>("queue.json") ?? []);
+        });
+        Me = me;
         Themes.Apply(); MainWindow.Current?.Restyle();
-        saved = Read<Saved>("saved.json") ?? new();
-        if (Read<CatalogFile>("catalog.json") is { } cf) { Catalog = cf.Songs; Eras = cf.Eras; FetchedAt = cf.FetchedAt; }
-        cache = Read<Dictionary<string, Engine.CachedTags>>("tags.json") ?? [];
-        queue = Read<List<QueueItem>>("queue.json") ?? [];
-        if (Me.MusicFolder is { } folder && Directory.Exists(folder))
+        saved = sv;
+        if (cf is not null) { Catalog = cf.Songs; Eras = cf.Eras; FetchedAt = cf.FetchedAt; }
+        cache = tags; queue = q;
+        loaded = true;
+        if (Me.MusicFolder is { } folder && await Task.Run(() => Directory.Exists(folder)))
         {
             Root = folder;
-            var items = Read<List<string>>("items.json") ?? [];
-            Files = items.Where(cache.ContainsKey).Select(p => LibraryFile(p, cache[p])).OfType<LibraryFile>().OrderBy(f => f.Path, StringComparer.CurrentCultureIgnoreCase).ToList();
+            Files = await Task.Run(() => (Read<List<string>>("items.json") ?? []).Where(tags.ContainsKey).Select(p => LibraryFile(p, tags[p])).OfType<LibraryFile>()
+                                                .OrderBy(f => f.Path, StringComparer.CurrentCultureIgnoreCase).ToList());
         }
         Rebuild();
         if (Catalog.Count > 0 && (FetchedAt is null || (DateTime.UtcNow - FetchedAt.Value).TotalHours > CacheHours)) _ = ReloadCatalogAsync();
@@ -175,8 +182,12 @@ public sealed partial class Store
         catch (Exception) { return null; }
     }
     /// Saved atomically: written next to the old copy, then swapped in, so a crash never leaves half a file.
+    /// Set once the saved files are read. Until then nothing is written: saving the blank defaults at launch would
+    /// replace your wishlist, notes and ratings.
+    static bool loaded;
     static void Write<T>(string name, T value)
     {
+        if (!loaded) return;
         Directory.CreateDirectory(DataDir);
         var tmp = FilePath(name + ".tmp");
         File.WriteAllText(tmp, JsonSerializer.Serialize(value, Json));
@@ -240,13 +251,19 @@ public sealed partial class Store
     public async Task ScanAsync(bool reread)
     {
         if (Root is not { } root || Scanning) return;
-        if (!Directory.Exists(root)) { FolderStatus = $"Your music folder ({root}) isn't available. If it's on a network drive, reconnect it."; Notify(); return; }
-        Scanning = true; FolderStatus = "Looking through your music folder…"; Notify();
+        Scanning = true; // before the wait below, so a second scan can't start meanwhile
+        if (!await Task.Run(() => Directory.Exists(root))) // a sleeping network drive can take seconds to answer
+        {
+            Scanning = false; FolderStatus = $"Your music folder ({root}) isn't available. If it's on a network drive, reconnect it."; Notify(); return;
+        }
+        FolderStatus = "Looking through your music folder…"; Notify();
         try
         {
             // a file changed since its tags were cached (size or date) is read again
             var fresh = new Dictionary<string, Engine.CachedTags>(cache);
-            var result = await Engine.ScanAsync(root, Me.OnlyJuice, Valid(root, fresh), reread, (n, total) => OnUi(() => { FolderStatus = $"Reading {n:N0} of {total:N0} files…"; Notify(); }));
+            // checking every cached file's size and date means a network round trip each: off the UI thread
+            var valid = await Task.Run(() => Valid(root, fresh));
+            var result = await Engine.ScanAsync(root, Me.OnlyJuice, valid, reread, (n, total) => OnUi(() => { FolderStatus = $"Reading {n:N0} of {total:N0} files…"; Notify(); }));
             foreach (var (k, v) in result.Fresh) cache[k] = v;
             var present = result.Paths.ToHashSet();
             foreach (var k in cache.Keys.Where(k => !present.Contains(k)).ToList()) cache.Remove(k);

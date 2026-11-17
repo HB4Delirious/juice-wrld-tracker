@@ -118,20 +118,52 @@ public sealed class TimelinePage : ToolPage
             var songs = byMonth.GetValueOrDefault(m) ?? [];
             var row = new DockPanel { Margin = new Thickness(0, 2, 0, 2) };
             row.Children.Add(UI.Text(months[m % 12], 12, JT.Muted).Also(t => { t.Width = 44; DockPanel.SetDock(t, Dock.Left); }));
-            var dots = new WrapPanel();
-            foreach (var s in songs)
-            {
-                var dot = new Ellipse { Width = 10, Height = 10, Margin = new Thickness(0, 2, 4, 2), Fill = JT.Brush(s.Owned ? JT.Have : Color.FromArgb(60, 255, 255, 255)), ToolTip = s.Name, Cursor = Cursors.Hand };
-                if (s.Owned) dot.Effect = UI.Glow(JT.Have, 4, 0.7);
-                dot.MouseLeftButtonUp += (_, _) => MainWindow.Current?.OpenSong(s);
-                UI.AutomationName(dot, s.Name);
-                dots.Children.Add(dot);
-            }
-            row.Children.Add(dots);
+            row.Children.Add(new DotRow(songs, $"{months[m % 12]} {m / 12}"));
             col.Children.Add(row);
         }
         Add(UI.Panel(col, 0, 18));
     }
+}
+
+/// One month's songs as dots, drawn in one go. (A separate element per dot, each owned one with its own glow effect,
+/// made about 2,500 elements and 2,000 effects that WPF redrew whenever anything moved: the Timeline crawled.)
+sealed class DotRow : FrameworkElement
+{
+    const double Dot = 10, Pitch = 14;
+    static readonly Brush Have = JT.Brush(JT.Have), Halo = JT.Brush(Color.FromArgb(70, JT.Have.R, JT.Have.G, JT.Have.B)), Missing = JT.Brush(Color.FromArgb(60, 255, 255, 255));
+    readonly List<Song> songs;
+    public DotRow(List<Song> songs, string month)
+    {
+        this.songs = songs;
+        Cursor = songs.Count > 0 ? Cursors.Hand : null;
+        ToolTipService.SetInitialShowDelay(this, 150);
+        UI.AutomationName(this, $"{month}: {songs.Count} songs, {songs.Count(s => s.Owned)} yours");
+    }
+    int PerRow(double width) => Math.Max(1, (int)((width + Pitch - Dot) / Pitch));
+    protected override Size MeasureOverride(Size available)
+    {
+        double w = double.IsInfinity(available.Width) ? 600 : available.Width;
+        int per = PerRow(w), rows = Math.Max(1, (songs.Count + per - 1) / per);
+        return new Size(w, rows * Pitch);
+    }
+    protected override void OnRender(DrawingContext dc)
+    {
+        dc.DrawRectangle(Brushes.Transparent, null, new Rect(RenderSize)); // the whole row answers the mouse
+        int per = PerRow(ActualWidth);
+        for (int k = 0; k < songs.Count; k++)
+        {
+            var c = new Point(k % per * Pitch + Dot / 2, k / per * Pitch + Pitch / 2);
+            if (songs[k].Owned) dc.DrawEllipse(Halo, null, c, Dot * 0.75, Dot * 0.75); // a soft glow, without an effect
+            dc.DrawEllipse(songs[k].Owned ? Have : Missing, null, c, Dot / 2, Dot / 2);
+        }
+    }
+    Song? At(Point p)
+    {
+        int per = PerRow(ActualWidth), col = (int)(p.X / Pitch), k = (int)(p.Y / Pitch) * per + col;
+        return col < per && k >= 0 && k < songs.Count ? songs[k] : null;
+    }
+    protected override void OnMouseMove(MouseEventArgs e) { var s = At(e.GetPosition(this)); if (!Equals(ToolTip, s?.Name)) ToolTip = s?.Name; }
+    protected override void OnMouseLeftButtonUp(MouseButtonEventArgs e) { if (At(e.GetPosition(this)) is { } s) MainWindow.Current?.OpenSong(s); }
 }
 
 // MARK: - Badges
