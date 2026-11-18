@@ -436,6 +436,9 @@ struct SettingsView: View {
     @AppStorage("compactMode") private var compactMode = false
     @AppStorage("animatedDock") private var animatedDock = true
     @AppStorage("landedChime") private var landedChime = false
+    @AppStorage("lyricStyle") private var lyricStyle = "line"
+    @AppStorage("lyricBlur") private var lyricBlur = true
+    @AppStorage("widget.edgeColor") private var edgeColor = ""
     @AppStorage("customAccent") private var customAccent = "ff6ad5"
     @AppStorage("customSky1") private var customSky1 = "d6308c"
     @AppStorage("customSky2") private var customSky2 = "5082ff"
@@ -506,6 +509,16 @@ struct SettingsView: View {
                                                      set: { UserDefaults.standard.set($0, forKey: "widget.\(w.key)"); DesktopWidgets.apply() }))
                     }
                 }
+                HStack {
+                    Toggle("Edge light in the cover's colors", isOn: Binding(get: { edgeColor.isEmpty }, set: { edgeColor = $0 ? "" : "ff6ad5" }))
+                    if !edgeColor.isEmpty { ColorPicker("", selection: hex($edgeColor)).labelsHidden() }
+                }
+                .onChange(of: edgeColor) { _ in DesktopWidgets.apply() }
+                Picker("Player lyrics", selection: $lyricStyle) {
+                    Text("The line being sung, word by word").tag("line")
+                    Text("The scrolling list").tag("list")
+                }
+                if lyricStyle == "list" { Toggle("Blur the lines not being sung", isOn: $lyricBlur) }
                 Text("Recolors the app's accents and sky after an era's mood.").font(.caption).foregroundColor(.secondary)
             } header: { Text("Look").bold() }
 

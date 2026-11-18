@@ -349,6 +349,9 @@ struct LyricsCardSheet: View {
     let close: () -> Void
     @State private var picked: Set<Int> = []
     @State private var note = ""
+    @State private var picture: NSImage?
+    @State private var tint = JT.lavender
+    @State private var showInfo = true
 
     private var lines: [String] {
         guard let x = NowPlaying.shared.extras else { return [] }
@@ -385,8 +388,13 @@ struct LyricsCardSheet: View {
                     }
                     .frame(width: 360)
                     VStack(spacing: 10) {
-                        LyricsCard(lines: chosen.isEmpty ? ["Pick a line"] : chosen, title: song?.n ?? "", era: song?.e ?? "", cover: AmbientPlayer.shared.coverImage)
+                        card(chosen.isEmpty ? ["Pick a line"] : chosen, song)
                             .frame(width: 1080, height: 1350).scaleEffect(0.3).frame(width: 324, height: 405)
+                        HStack(spacing: 8) {
+                            Button(picture == nil ? "Choose picture…" : "Use the cover") { picture = picture == nil ? choosePicture() : nil }
+                            ColorPicker("", selection: $tint).labelsHidden().help("The card's color")
+                            Toggle("Song info", isOn: $showInfo)
+                        }
                         HStack {
                             Button("Save image…") { save(chosen, song) }.disabled(chosen.isEmpty)
                             Button("Copy") { copy(chosen, song) }.disabled(chosen.isEmpty)
@@ -403,8 +411,15 @@ struct LyricsCardSheet: View {
     private func toggle(_ k: Int) {
         if picked.contains(k) { picked.remove(k) } else if picked.count < 4 { picked.insert(k) }
     }
+    private func card(_ lines: [String], _ song: Song?) -> LyricsCard {
+        LyricsCard(lines: lines, title: song?.n ?? "", era: song?.e ?? "", cover: picture ?? AmbientPlayer.shared.coverImage, tint: tint, showInfo: showInfo)
+    }
+    private func choosePicture() -> NSImage? {
+        let panel = NSOpenPanel(); panel.allowedContentTypes = [.image]
+        return panel.runModal() == .OK ? panel.url.flatMap(NSImage.init(contentsOf:)) : nil
+    }
     private func render(_ lines: [String], _ song: Song?) -> Data? {
-        let host = NSHostingView(rootView: LyricsCard(lines: lines, title: song?.n ?? "", era: song?.e ?? "", cover: AmbientPlayer.shared.coverImage))
+        let host = NSHostingView(rootView: card(lines, song))
         host.frame = NSRect(x: 0, y: 0, width: 1080, height: 1350)
         return snapshot(host)
     }
@@ -423,27 +438,33 @@ private struct LyricsCard: View {
     let title: String
     let era: String
     let cover: NSImage?
+    var tint = JT.lavender
+    var showInfo = true
     var body: some View {
         ZStack {
             LinearGradient(colors: [Color(red: 7 / 255, green: 4 / 255, blue: 15 / 255), Color(red: 29 / 255, green: 11 / 255, blue: 64 / 255), Color(red: 74 / 255, green: 18 / 255, blue: 80 / 255)],
                            startPoint: .topLeading, endPoint: .bottomTrailing)
             // its own frame: a filled image is wider than the card, and would widen the text's room with it
-            if let cover { Image(nsImage: cover).resizable().scaledToFill().frame(width: 1080, height: 1350).clipped().opacity(0.22) }
-            LinearGradient(colors: [.clear, .black.opacity(0.7)], startPoint: .top, endPoint: .bottom)
+            if let cover { Image(nsImage: cover).resizable().scaledToFill().frame(width: 1080, height: 1350).clipped().opacity(showInfo ? 0.22 : 0.4) }
+            LinearGradient(colors: [tint.opacity(0.35), .clear, .black.opacity(0.7)], startPoint: .top, endPoint: .bottom)
             VStack(spacing: 40) {
+                if showInfo {
                 Group {
                     if let cover { Image(nsImage: cover).resizable().scaledToFill() } else { Image("jt-logo").resizable().scaledToFit().padding(50) }
                 }
                 .frame(width: 360, height: 360).clipShape(RoundedRectangle(cornerRadius: 28)).shadow(color: .black.opacity(0.6), radius: 30, y: 12)
+                }
                 VStack(spacing: 18) {
                     ForEach(Array(lines.enumerated()), id: \.offset) { _, line in
                         Text(line).font(JT.body(54, .heavy)).foregroundColor(.white).multilineTextAlignment(.center)
                     }
                 }
                 .padding(.horizontal, 70).frame(width: 1080)
-                VStack(spacing: 6) {
-                    Text(title).font(JT.marker(42)).foregroundColor(JT.lavender).multilineTextAlignment(.center)
-                    Text(era.isEmpty ? "Juice WRLD" : "Juice WRLD · \(era)").font(JT.body(26, .semibold)).foregroundColor(.white.opacity(0.7))
+                if showInfo {
+                    VStack(spacing: 6) {
+                        Text(title).font(JT.marker(42)).foregroundColor(tint).multilineTextAlignment(.center)
+                        Text(era.isEmpty ? "Juice WRLD" : "Juice WRLD · \(era)").font(JT.body(26, .semibold)).foregroundColor(.white.opacity(0.7))
+                    }
                 }
             }
             .padding(.vertical, 90)
@@ -619,7 +640,7 @@ struct HeardleScreen: View {
 /// close it). They stay where you put them.
 @MainActor enum DesktopWidgets {
     static let changed = Notification.Name("DesktopWidgetsChanged")
-    static let kinds: [(key: String, name: String)] = [("clock", "Clock"), ("playing", "What's playing"), ("upnext", "Up next"), ("edge", "Edge light")]
+    static let kinds: [(key: String, name: String)] = [("clock", "Clock"), ("playing", "What's playing"), ("upnext", "Up next"), ("playlist", "Playlist"), ("edge", "Edge light")]
     private static var windows: [String: NSWindow] = [:]
     static func isOn(_ key: String) -> Bool { UserDefaults.standard.bool(forKey: "widget.\(key)") }
     /// The edge light follows the music's loudness, so the meter keeps ticking while the app is in the background.
@@ -633,6 +654,12 @@ struct HeardleScreen: View {
         NotificationCenter.default.post(name: changed, object: nil)
     }
     static func close(_ key: String) { UserDefaults.standard.set(false, forKey: "widget.\(key)"); apply() }
+    static func isLocked(_ key: String) -> Bool { UserDefaults.standard.bool(forKey: "widget.locked.\(key)") }
+    /// A locked widget stays put when dragged.
+    static func setLocked(_ key: String, _ locked: Bool) {
+        UserDefaults.standard.set(locked, forKey: "widget.locked.\(key)")
+        windows[key]?.isMovableByWindowBackground = !locked
+    }
 
     private static func open(_ key: String) {
         if key == "edge" { openEdge(); return }
@@ -641,18 +668,19 @@ struct HeardleScreen: View {
         switch key {
         case "clock": view = AnyView(ClockWidget()); size = NSSize(width: 260, height: 130)
         case "playing": view = AnyView(PlayingWidget()); size = NSSize(width: 340, height: 96)
+        case "playlist": view = AnyView(PlaylistWidget()); size = NSSize(width: 290, height: 300)
         default: view = AnyView(UpNextWidget()); size = NSSize(width: 280, height: 220)
         }
         let p = NSPanel(contentRect: NSRect(origin: .zero, size: size), styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
         p.isFloatingPanel = true; p.level = .floating
         p.backgroundColor = .clear; p.isOpaque = false; p.hasShadow = false
-        p.isMovableByWindowBackground = true
+        p.isMovableByWindowBackground = !isLocked(key)
         p.collectionBehavior = [.canJoinAllSpaces, .stationary, .fullScreenAuxiliary]
         p.isReleasedWhenClosed = false
-        p.contentView = NSHostingView(rootView: view.contextMenu { Button("Close this widget") { close(key) } })
+        p.contentView = NSHostingView(rootView: view.contextMenu { WidgetMenu(key: key) })
         if !p.setFrameUsingName("widget.\(key)") {
             let v = NSScreen.main?.visibleFrame ?? .zero, k = CGFloat(kinds.firstIndex { $0.key == key } ?? 0)
-            p.setFrameOrigin(NSPoint(x: v.maxX - size.width - 30, y: v.maxY - size.height - 30 - k * 150))
+            p.setFrameOrigin(NSPoint(x: v.maxX - size.width - 30, y: max(v.minY + 20, v.maxY - size.height - 30 - k * 150)))
         }
         p.setFrameAutosaveName("widget.\(key)")
         p.orderFrontRegardless()
@@ -673,6 +701,16 @@ struct HeardleScreen: View {
     }
 }
 
+private struct WidgetMenu: View {
+    let key: String
+    @AppStorage private var locked: Bool
+    init(key: String) { self.key = key; _locked = AppStorage(wrappedValue: false, "widget.locked.\(key)") }
+    var body: some View {
+        Button(locked ? "Unlock position" : "Lock position") { DesktopWidgets.setLocked(key, !locked) }
+        Button("Close this widget") { DesktopWidgets.close(key) }
+    }
+}
+
 private struct WidgetBox<Content: View>: View {
     let content: Content
     init(@ViewBuilder _ content: () -> Content) { self.content = content() }
@@ -689,15 +727,25 @@ private struct ClockWidget: View {
         let f = DateFormatter(); f.setLocalizedDateFormatFromTemplate("jmm")
         f.dateFormat = f.dateFormat.replacingOccurrences(of: "a", with: "").trimmingCharacters(in: .whitespaces); return f
     }()
+    /// Takes the cover's color while a song plays.
+    @State private var glow = JT.lavender
+    private let changed = NotificationCenter.default.publisher(for: AmbientPlayer.changed)
     var body: some View {
         WidgetBox {
             TimelineView(.everyMinute) { ctx in
                 VStack(alignment: .leading, spacing: 0) {
-                    Text(ctx.date.formatted(.dateTime.weekday(.wide).month(.abbreviated).day())).font(JT.body(13, .semibold)).foregroundColor(JT.lavender)
-                    Text(Self.time.string(from: ctx.date)).font(.custom("HelveticaNeue-CondensedBold", size: 64)).shadow(color: JT.lavender.opacity(0.5), radius: 14)
+                    Text(ctx.date.formatted(.dateTime.weekday(.wide).month(.abbreviated).day())).font(JT.body(13, .semibold)).foregroundColor(glow)
+                    Text(Self.time.string(from: ctx.date)).font(.custom("HelveticaNeue-CondensedBold", size: 64)).shadow(color: glow.opacity(0.6), radius: 14)
                 }
             }
         }
+        .overlay(RoundedRectangle(cornerRadius: 18).fill(glow.opacity(0.1)).allowsHitTesting(false))
+        .animation(.easeInOut(duration: 1.2), value: glow)
+        .onAppear(perform: tint).onReceive(changed) { _ in tint() }
+    }
+    private func tint() {
+        let p = AmbientPlayer.shared
+        glow = p.isPlaying ? (p.coverImage.map(CoverPalette.init(image:)) ?? .fallback).a : JT.lavender
     }
 }
 
@@ -746,31 +794,75 @@ private struct UpNextWidget: View {
     }
 }
 
+/// A playlist (or the songs you rated 4 or 5 hearts) on the desktop; click a song to play from it.
+private struct PlaylistWidget: View {
+    @AppStorage("widget.playlistPick") private var pick = "" // a playlist id, or "" for liked songs
+    @ObservedObject private var store = NativeStore.shared
+    var body: some View {
+        let lists = EngineState.shared.playlists
+        let list = lists.first { $0.id == pick }
+        let ids = list?.songs ?? store.songs.filter { (EngineState.shared.ratings[$0.s.id] ?? 0) >= 4 }.map(\.s.id)
+        let byId = Dictionary(store.songs.map { ($0.s.id, $0) }, uniquingKeysWith: { a, _ in a })
+        let songs = ids.compactMap { byId[$0] }.filter(\.o)
+        WidgetBox {
+            VStack(alignment: .leading, spacing: 5) {
+                Menu {
+                    Button("Liked songs") { pick = "" }
+                    ForEach(lists) { p in Button(p.name) { pick = p.id } }
+                } label: { Text(list?.name ?? "Liked songs").font(JT.marker(18)).foregroundColor(JT.lavender) }
+                .menuStyle(.borderlessButton).menuIndicator(.visible).fixedSize()
+                if songs.isEmpty { Text(list == nil ? "Rate songs 4 or 5 hearts to see them here." : "No songs you have in this playlist.").foregroundColor(JT.muted) }
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 3) {
+                        ForEach(Array(songs.enumerated()), id: \.offset) { k, s in
+                            Button { playInOrder(songs[k...].map(\.i)) } label: {
+                                Text("\(k + 1). \(s.n)").lineLimit(1).foregroundColor(AmbientPlayer.shared.title == s.n ? JT.lavender : JT.mist.opacity(0.85))
+                                    .frame(maxWidth: .infinity, alignment: .leading).contentShape(Rectangle())
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
 /// A glow around the screen's edges in the song's colours, brighter on the beat. Core Animation; clicks pass through.
 final class EdgeLightView: NSView {
     private let glow = CAShapeLayer()
     private var meter: AnyCancellable?
-    private var token: NSObjectProtocol?
+    private var tokens: [NSObjectProtocol] = []
 
     override init(frame: NSRect) {
         super.init(frame: frame)
         wantsLayer = true
         glow.fillColor = nil; glow.lineWidth = 6
         glow.shadowRadius = 34; glow.shadowOpacity = 1; glow.shadowOffset = .zero
-        glow.opacity = 0.25
+        glow.opacity = AmbientPlayer.shared.isPlaying ? 0.25 : 0
         layer?.addSublayer(glow)
         recolor()
-        token = NotificationCenter.default.addObserver(forName: AmbientPlayer.changed, object: nil, queue: .main) { [weak self] _ in MainActor.assumeIsolated { self?.recolor() } }
+        for name in [AmbientPlayer.changed, DesktopWidgets.changed] {
+            tokens.append(NotificationCenter.default.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in MainActor.assumeIsolated { self?.recolor() } })
+        }
+        // brighter on the beat; fades out when the music stops
         meter = LevelMeter.shared.$level.sink { [weak self] level in
-            CATransaction.begin(); CATransaction.setAnimationDuration(0.12)
-            self?.glow.opacity = Float(0.25 + CGFloat(level) * 0.75)
-            CATransaction.commit()
+            MainActor.assumeIsolated {
+                let on = AmbientPlayer.shared.isPlaying
+                CATransaction.begin(); CATransaction.setAnimationDuration(on ? 0.12 : 1.2)
+                self?.glow.opacity = on ? Float(0.25 + CGFloat(level) * 0.75) : 0
+                CATransaction.commit()
+            }
         }
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) is not used") }
-    deinit { if let token { NotificationCenter.default.removeObserver(token) } }
+    deinit { tokens.forEach(NotificationCenter.default.removeObserver) }
     override func layout() { super.layout(); glow.frame = bounds; glow.path = CGPath(rect: bounds.insetBy(dx: 2, dy: 2), transform: nil) }
+    /// The cover's two strongest colors, or your own color (Settings > Look).
     private func recolor() {
+        if let own = EraTheme.color(UserDefaults.standard.string(forKey: "widget.edgeColor")) {
+            glow.strokeColor = own.cgColor; glow.shadowColor = own.cgColor; return
+        }
         let palette = AmbientPlayer.shared.coverImage.map(CoverPalette.init(image:)) ?? .fallback
         CATransaction.begin(); CATransaction.setAnimationDuration(1.2)
         glow.strokeColor = NSColor(palette.a).cgColor; glow.shadowColor = NSColor(palette.b).cgColor
@@ -818,5 +910,108 @@ private struct SongPicture: View {
             VStack { Spacer(); Text("Juice Tracker").font(JT.marker(22)).foregroundColor(.white.opacity(0.35)).padding(.bottom, 36) }
         }
         .frame(width: 1080, height: 1350).clipped()
+    }
+}
+
+// MARK: - Time the lyrics
+
+/// Make synced lyrics for the song playing: play it, and press Space as each line starts (or each word, word by
+/// word). The Player then sings your timing. Saved on this Mac; export it as an .lrc file.
+struct LyricsMakerSheet: View {
+    let close: () -> Void
+    @ObservedObject private var now = NowPlaying.shared
+    @AppStorage("lyricsMakerWords") private var byWord = false
+    @State private var song: Song?
+    @State private var lines: [String] = []
+    @State private var marks: [[Double]] = []
+    @State private var note = ""
+
+    /// The line waiting for its next tap (nil when every line is timed).
+    private var cursor: Int? { marks.indices.first { marks[$0].count < need($0) } }
+    private func need(_ k: Int) -> Int { byWord ? max(1, lines[k].split(separator: " ").count) : 1 }
+    private var sameSong: Bool { song != nil && now.song?.s.id == song?.s.id }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Text("Time the lyrics").font(JT.marker(26))
+                Spacer()
+                Button("Close", action: close).keyboardShortcut(.cancelAction)
+            }
+            if let song, !lines.isEmpty {
+                Text("“\(song.n)”: press Space as each \(byWord ? "word" : "line") starts. Delete takes the last tap back and plays from just before it.")
+                    .foregroundColor(JT.muted).fixedSize(horizontal: false, vertical: true)
+                HStack(spacing: 12) {
+                    Picker("", selection: $byWord) { Text("By line").tag(false); Text("Word by word").tag(true) }
+                        .pickerStyle(.segmented).labelsHidden().frame(width: 220).disabled(marks.contains { !$0.isEmpty })
+                    Button("Start from the top") { restart() }
+                    TimelineView(.periodic(from: .now, by: 0.25)) { _ in
+                        Text(Engine.lrcStamp(AmbientPlayer.shared.currentTime)).font(.system(.body, design: .monospaced)).foregroundColor(JT.muted)
+                    }
+                    Spacer()
+                    if song.o, MyLyrics.lrc(song.s.id) != nil { Button("Remove my timing") { MyLyrics.set(song.s.id, nil); note = "Removed: the site's timing is back." } }
+                }
+                ScrollViewReader { proxy in
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: 3) {
+                            ForEach(Array(lines.enumerated()), id: \.offset) { k, line in
+                                HStack(alignment: .firstTextBaseline, spacing: 10) {
+                                    Text(marks[k].first.map(Engine.lrcStamp) ?? "--:--.--").font(.system(size: 12, design: .monospaced)).foregroundColor(JT.muted).frame(width: 66, alignment: .leading)
+                                    let words = line.split(separator: " ").map(String.init)
+                                    words.enumerated().reduce(Text("")) { t, w in
+                                        t + Text((w.offset == 0 ? "" : " ") + w.element).foregroundColor(w.offset < (byWord ? marks[k].count : marks[k].isEmpty ? 0 : words.count) ? .white : JT.muted)
+                                    }
+                                }
+                                .font(JT.body(15, k == cursor ? .bold : .regular))
+                                .padding(.horizontal, 8).padding(.vertical, 4).frame(maxWidth: .infinity, alignment: .leading)
+                                .background(RoundedRectangle(cornerRadius: 6).fill(k == cursor ? JT.lavender.opacity(0.25) : .clear)).id(k)
+                            }
+                        }
+                    }
+                    .onChange(of: cursor) { k in if let k { withAnimation { proxy.scrollTo(k, anchor: .center) } } }
+                }
+                HStack(spacing: 10) {
+                    Button(cursor == nil ? "All timed" : "Tap (Space)") { tap() }.keyboardShortcut(.space, modifiers: []).disabled(cursor == nil || !sameSong)
+                    Button("Take back (Delete)") { undo() }.keyboardShortcut(.delete, modifiers: []).disabled(!marks.contains { !$0.isEmpty })
+                    Spacer()
+                    if !note.isEmpty { Text(note).font(JT.body(12)).foregroundColor(JT.muted) }
+                    Button("Export .lrc…") { if let lrc = timed() { _ = Files.save(Data(lrc.utf8), name: "\(Engine.safeName(song.n)).lrc", type: UTType(filenameExtension: "lrc") ?? .plainText) } }.disabled(timed() == nil)
+                    Button("Save") { if let lrc = timed() { MyLyrics.set(song.s.id, lrc); note = "Saved: the Player sings your timing." } }.keyboardShortcut(.defaultAction).disabled(timed() == nil)
+                }
+                if !sameSong { Text("The song changed: play “\(song.n)” again to keep timing it.").font(JT.body(12)).foregroundColor(JT.missing) }
+            } else {
+                Text(now.song == nil ? "Play a song first; its lyrics show up here." : "The site has no lyrics for this song to time.").foregroundColor(JT.muted)
+            }
+        }
+        .padding(22).frame(width: 760, height: 600, alignment: .topLeading)
+        .onAppear(perform: load)
+        .onChange(of: byWord) { _ in marks = lines.map { _ in [] } }
+    }
+
+    private func load() {
+        song = now.song
+        guard let x = now.extras else { return }
+        let source = x.lyrics.isEmpty ? x.synced.map(\.line) : x.lyrics.components(separatedBy: .newlines)
+        lines = source.map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
+        marks = lines.map { _ in [] }
+    }
+    private func restart() {
+        marks = lines.map { _ in [] }; note = ""
+        AmbientPlayer.shared.seek(to: 0)
+        if !AmbientPlayer.shared.isPlaying { AmbientPlayer.shared.togglePause() }
+    }
+    private func tap() {
+        guard let k = cursor, sameSong else { return }
+        marks[k].append(AmbientPlayer.shared.currentTime)
+    }
+    private func undo() {
+        guard let k = marks.lastIndex(where: { !$0.isEmpty }), let t = marks[k].popLast() else { return }
+        AmbientPlayer.shared.seek(to: max(0, t - 3))
+    }
+    /// The lines timed so far as LRC, or nil before the first tap.
+    private func timed() -> String? {
+        let done = lines.indices.filter { marks[$0].count == need($0) }
+        guard !done.isEmpty else { return nil }
+        return Engine.formatLrc(done.map { Engine.LrcLine(at: marks[$0][0], line: lines[$0], words: byWord ? marks[$0] : []) })
     }
 }

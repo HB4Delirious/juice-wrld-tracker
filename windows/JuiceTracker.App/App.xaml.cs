@@ -106,6 +106,8 @@ public partial class App : Application
                     window.ShowOverlay(new SongCard(song));
                     window.ShowOverlay(new SongCard(Store.Shared.Songs.First(s => !s.Owned && s.HasFile)));
                     SettingsWindow.Open();
+                    // the lyrics windows open
+                    LyricsMakerWindow.Open(); LyricsCardWindow.Open(null);
                     // every desktop widget opens and closes
                     foreach (var (k, _) in DesktopWidgets.Kinds) DesktopWidgets.Set(k, true);
                     foreach (var (k, _) in DesktopWidgets.Kinds) DesktopWidgets.Set(k, false);

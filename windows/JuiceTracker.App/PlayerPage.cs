@@ -61,7 +61,12 @@ public sealed class PlayerPage : Grid, IRefresh
     readonly List<RotateTransform> sparkSpins = [];
     double holeSize;
 
-    string? file, upNextKey, artFor; List<(double At, string Line)> synced = []; int line = -2, lit = -1, limit = 250; bool updating;
+    // the lines before and after the one being sung, for the scrolling-list lyric style
+    readonly TextBlock before = new() { FontWeight = FontWeights.Bold, TextWrapping = TextWrapping.Wrap, Foreground = JT.Brush(Color.FromArgb(97, 255, 255, 255)), IsHitTestVisible = false },
+                       after = new() { FontWeight = FontWeights.Bold, TextWrapping = TextWrapping.Wrap, Foreground = JT.Brush(Color.FromArgb(97, 255, 255, 255)), IsHitTestVisible = false };
+    readonly StackPanel lyrics = new() { IsHitTestVisible = false };
+    string styleKey = "";
+    string? file, upNextKey, artFor; List<Engine.LrcLine> synced = []; int line = -2, lit = -1, limit = 250; bool updating;
 
     /// For a stream window: just the picture (no queue, buttons or song list), laid out for the window's shape.
     readonly bool stream;
@@ -78,7 +83,8 @@ public sealed class PlayerPage : Grid, IRefresh
         stage.Children.Add(BuildHole());
         stage.Children.Add(swirl);
         clock.Children.Add(UI.Column(0, date, time)); clock.IsHitTestVisible = false; stage.Children.Add(clock);
-        stage.Children.Add(Cached(karaoke));
+        lyrics.Children.Add(before); lyrics.Children.Add(karaoke); lyrics.Children.Add(after);
+        stage.Children.Add(Cached(lyrics));
 
         // the cover on a glassy card, turned toward the hole; click opens the song card
         var art = new Border { CornerRadius = new CornerRadius(10), ClipToBounds = true, Child = cover, Background = JT.Brush(Color.FromArgb(30, 255, 255, 255)) };
@@ -146,6 +152,10 @@ public sealed class PlayerPage : Grid, IRefresh
         cardButton.ToolTip = "Lyrics card: save a line as a picture";
         stage.Children.Add(new Border { Width = 32, Height = 32, CornerRadius = new CornerRadius(16), Background = JT.Brush(Color.FromArgb(26, 255, 255, 255)),
                                         BorderBrush = JT.Brush(Color.FromArgb(51, 255, 255, 255)), BorderThickness = new Thickness(1), Child = cardButton, Tag = "card" });
+        var timeButton = UI.IconButton("\uE916", "Time the lyrics: make the song's synced lyrics yourself", LyricsMakerWindow.Open, 14);
+        timeButton.ToolTip = "Time the lyrics: make the song's synced lyrics yourself";
+        stage.Children.Add(new Border { Width = 32, Height = 32, CornerRadius = new CornerRadius(16), Background = JT.Brush(Color.FromArgb(26, 255, 255, 255)),
+                                        BorderBrush = JT.Brush(Color.FromArgb(51, 255, 255, 255)), BorderThickness = new Thickness(1), Child = timeButton, Tag = "time" });
         // the stream button: a clean window of the player to capture in TikTok LIVE Studio or OBS
         Button? streamButton = null;
         streamButton = UI.IconButton("\uE93E", "Stream windows", () =>
@@ -189,7 +199,7 @@ public sealed class PlayerPage : Grid, IRefresh
         }
         if (stream)
         {
-            foreach (var b in stage.Children.OfType<Border>().Where(b => b == queueBox || b == bar || b == songsPanel || b.Tag is "search" or "stream" or "card").ToList()) b.Visibility = Visibility.Collapsed;
+            foreach (var b in stage.Children.OfType<Border>().Where(b => b == queueBox || b == bar || b == songsPanel || b.Tag is "search" or "stream" or "card" or "time").ToList()) b.Visibility = Visibility.Collapsed;
             mark.Text = "Juice Tracker"; stage.Children.Add(mark);
         }
 
@@ -198,8 +208,8 @@ public sealed class PlayerPage : Grid, IRefresh
         shooter.Tick += (_, _) => Shoot();
         listen.Tick += (_, _) => Hear();
         sky.SizeChanged += (_, _) => Twinkles();
-        Loaded += (_, _) => { Player.Shared.Changed += Tick; minute.Start(); shooter.Start(); listen.Start(); Spin(true); Tick(); };
-        Unloaded += (_, _) => { Player.Shared.Changed -= Tick; minute.Stop(); shooter.Stop(); listen.Stop(); Spin(false); };
+        Loaded += (_, _) => { Player.Shared.Changed += Tick; MyLyrics.Changed += Relyric; minute.Start(); shooter.Start(); listen.Start(); Spin(true); Tick(); };
+        Unloaded += (_, _) => { Player.Shared.Changed -= Tick; MyLyrics.Changed -= Relyric; minute.Stop(); shooter.Stop(); listen.Stop(); Spin(false); };
         Clock();
         Refresh();
     }
@@ -397,13 +407,14 @@ public sealed class PlayerPage : Grid, IRefresh
         time.FontSize = size * 0.34;
         clock.Width = 400; At(clock, cx - 200, cy - size * 0.62 - size * 0.34 * 0.75);
         double words = Math.Min(w * 0.42, 460);
-        karaoke.Width = words; At(karaoke, cx - size * 0.08, cy + size * 0.24 - 30);
+        karaoke.Width = words; At(lyrics, cx - size * 0.08, cy + size * 0.24 - 30);
         card.Width = size * 0.44; At(card, cx - size * 0.58, cy + size * 0.36 - size * 0.32);
         karaoke.TextAlignment = portrait ? TextAlignment.Center : TextAlignment.Left;
         karaoke.FontSize = portrait ? Math.Max(22, w * 0.06) : 30;
+        foreach (var t in new[] { before, after }) { t.Width = karaoke.Width; t.FontSize = karaoke.FontSize * 0.62; t.TextAlignment = karaoke.TextAlignment; }
         if (portrait)
         {
-            karaoke.Width = w * 0.86; At(karaoke, cx - w * 0.43, cy + size * 0.84 - karaoke.FontSize);
+            karaoke.Width = w * 0.86; foreach (var t in new[] { before, after }) t.Width = karaoke.Width; At(lyrics, cx - w * 0.43, cy + size * 0.84 - karaoke.FontSize);
             card.Width = w * 0.26; At(card, cx - w * 0.13, h * 0.85 - w * 0.2);
         }
         if (stream) { mark.FontSize = portrait ? 15 : 13; At(mark, portrait ? cx - 55 : w - 130, h - 34); }
@@ -413,6 +424,7 @@ public sealed class PlayerPage : Grid, IRefresh
         At(ring, cx + bar.Width / 2 - 34, h - 126);
         At(stage.Children.OfType<Border>().First(b => "stream".Equals(b.Tag)), cx + bar.Width / 2 - 74, h - 126);
         At(stage.Children.OfType<Border>().First(b => "card".Equals(b.Tag)), cx + bar.Width / 2 - 114, h - 126);
+        At(stage.Children.OfType<Border>().First(b => "time".Equals(b.Tag)), cx + bar.Width / 2 - 154, h - 126);
         songsPanel.Width = Math.Min(460, w - 40); songsPanel.Height = Math.Max(240, h - 170); At(songsPanel, w - songsPanel.Width - 20, 20);
         empty.Width = 420; empty.TextAlignment = TextAlignment.Center; At(empty, cx - 210, cy - 10);
         Spin(IsLoaded);
@@ -612,7 +624,7 @@ public sealed class PlayerPage : Grid, IRefresh
             // lyrics and the era's art come live from the site, never saved
             if (i >= 0 && await store.DetailsAsync(store.Catalog[i]) is { } json && playing == file)
             {
-                synced = Listen.ParseSynced(json["synced_lyrics"]?.GetValue<string>() ?? "");
+                synced = Engine.ParseLrc(MyLyrics.Lrc(store.Catalog[i].Id) ?? json["synced_lyrics"]?.GetValue<string>() ?? "");
                 if (json["image_url"]?.GetValue<string>() is { Length: > 0 } img && Uri.TryCreate(new Uri("https://juicewrldapi.com"), img, out var url))
                     try { ShowArt(new BitmapImage(url), playing ?? ""); } catch (Exception) { }
             }
@@ -622,9 +634,17 @@ public sealed class PlayerPage : Grid, IRefresh
     }
 
     /// The line being sung, its words lighting up as the song gets to them. Shown live from the site, never saved.
+    /// Your own lyrics timing was saved or removed: look the song up again.
+    void Relyric() { file = "\0"; Tick(); }
+
     void Karaoke(double at)
     {
         int n = synced.FindLastIndex(x => x.At <= at + 0.15);
+        var me = Store.Shared.Me; var key = $"{me.LyricStyle}{me.LyricBlur}";
+        if (key != styleKey) { styleKey = key; line = -2; foreach (var t in new[] { before, after }) t.Effect = me.LyricBlur ? new BlurEffect { Radius = 2.5 } : null; }
+        bool list = me.LyricStyle == "list" && n >= 0;
+        before.Visibility = after.Visibility = list ? Visibility.Visible : Visibility.Collapsed;
+        lyrics.Margin = new Thickness(0, list ? -before.FontSize * 1.5 : 0, 0, 0); // the line being sung stays where it was
         if (n < 0)
         {
             if (line == n && lit == -1) return;
@@ -632,18 +652,22 @@ public sealed class PlayerPage : Grid, IRefresh
             if (Player.Shared.CurrentFile is null) karaoke.Inlines.Add(new System.Windows.Documents.Run("Press play") { Foreground = JT.Brush(Color.FromArgb(128, 255, 255, 255)) });
             return;
         }
-        double start = synced[n].At, end = n + 1 < synced.Count ? synced[n + 1].At : start + 4;
         var words = synced[n].Line.Split(' ', StringSplitOptions.RemoveEmptyEntries);
-        int on = (int)Math.Ceiling(words.Length * Math.Clamp((at - start) / Math.Max(0.5, (end - start) * 0.85), 0, 1));
+        var (on, singing) = Engine.LitWords(synced, n, at);
         if (n == line && on == lit) return;
-        if (n != line) karaoke.BeginAnimation(OpacityProperty, new DoubleAnimation(0, 1, TimeSpan.FromSeconds(0.3)));
+        if (n != line)
+        {
+            karaoke.BeginAnimation(OpacityProperty, new DoubleAnimation(0, 1, TimeSpan.FromSeconds(0.3)));
+            before.Text = n > 0 ? synced[n - 1].Line : "";
+            after.Text = string.Join("\n", synced.Skip(n + 1).Take(2).Select(x => x.Line));
+        }
         line = n; lit = on; karaoke.Inlines.Clear();
         if (words.Length == 0) { karaoke.Inlines.Add(new System.Windows.Documents.Run("♪")); return; }
         for (int k = 0; k < words.Length; k++)
             karaoke.Inlines.Add(new System.Windows.Documents.Run((k == 0 ? "" : " ") + words[k])
             {
                 // the word being sung right now takes the song's color
-                Foreground = k == on - 1 && on < words.Length ? JT.Brush(palette[0]) : k < on ? Brushes.White : JT.Brush(Color.FromArgb(71, 255, 255, 255)),
+                Foreground = k == on - 1 && singing ? JT.Brush(palette[0]) : k < on ? Brushes.White : JT.Brush(Color.FromArgb(71, 255, 255, 255)),
             });
     }
 

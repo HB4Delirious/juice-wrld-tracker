@@ -11,21 +11,16 @@ import Combine
 
 struct SongExtras {
     var lyrics = ""
-    var synced: [(at: Double, line: String)] = []
+    var synced: [Engine.LrcLine] = []
+    /// The timing is your own (made with Time the lyrics), not the site's.
+    var mine = false
     var image: URL?
     var instrumentals = ""
     var snippets: [String] = []
 
     /// The index of the synced line being sung at `time`, or nil before the first.
     func line(at time: Double) -> Int? { synced.lastIndex { $0.at <= time + 0.15 } }
-    /// How many words of line n have been sung at `time` (the line's time spread over its words), and whether the
-    /// last of them is still being sung.
-    func lit(line n: Int, at time: Double) -> (words: Int, singing: Bool) {
-        let start = synced[n].at, end = n + 1 < synced.count ? synced[n + 1].at : start + 4
-        let count = synced[n].line.split(separator: " ").count
-        let progress = min(1, max(0, (time - start) / max(0.5, (end - start) * 0.85)))
-        return (Int((Double(count) * progress).rounded(.up)), progress < 1)
-    }
+    func lit(line n: Int, at time: Double) -> (words: Int, singing: Bool) { Engine.litWords(synced, n, at: time) }
 }
 
 @MainActor final class Extras: ObservableObject {
@@ -33,14 +28,21 @@ struct SongExtras {
     private var cache: [String: SongExtras] = [:]
     private var images: [URL: NSImage] = [:]
 
+    /// The site's lyrics and art, with your own timing in place of the site's when you've made one.
     func extras(for id: String) async -> SongExtras? {
+        guard var x = await siteExtras(for: id) else { return nil }
+        if let own = MyLyrics.lrc(id) { x.synced = Engine.parseLrc(own); x.mine = true }
+        return x
+    }
+
+    private func siteExtras(for id: String) async -> SongExtras? {
         if let hit = cache[id] { return hit }
         guard let url = URL(string: "https://juicewrldapi.com/juicewrld/songs/\(id)/"),
               let (data, response) = try? await URLSession.shared.data(from: url), (response as? HTTPURLResponse)?.statusCode == 200,
               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return nil }
         var x = SongExtras()
         x.lyrics = (json["lyrics"] as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-        x.synced = Self.parseSynced(json["synced_lyrics"] as? String ?? "")
+        x.synced = Engine.parseLrc(json["synced_lyrics"] as? String ?? "")
         if let path = json["image_url"] as? String, !path.isEmpty { x.image = URL(string: path, relativeTo: URL(string: "https://juicewrldapi.com"))?.absoluteURL }
         x.instrumentals = [json["instrumentals"] as? String ?? "", json["instrumental_names"] as? String ?? ""]
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty && $0 != "N/A" }.joined(separator: "\n")
@@ -56,15 +58,20 @@ struct SongExtras {
         return img
     }
 
-    /// "[1:23.45] line" → (83.45, "line"); lines without a time are skipped.
-    static func parseSynced(_ text: String) -> [(at: Double, line: String)] {
-        text.split(whereSeparator: \.isNewline).compactMap { raw in
-            let line = String(raw)
-            guard line.hasPrefix("["), let close = line.firstIndex(of: "]") else { return nil }
-            let stamp = line[line.index(after: line.startIndex)..<close].split(separator: ":")
-            guard stamp.count == 2, let m = Double(stamp[0]), let s = Double(stamp[1]) else { return nil }
-            return (m * 60 + s, line[line.index(after: close)...].trimmingCharacters(in: .whitespaces))
-        }
+}
+
+/// Lyrics timing you made yourself (Time the lyrics on the Player tab), by song id, as LRC text. Kept on this Mac only.
+@MainActor enum MyLyrics {
+    private static let file = FileManager.default.homeDirectoryForCurrentUser
+        .appendingPathComponent("Library/Application Support/JuiceTracker/\(Bundle.main.bundleIdentifier ?? "com.hb4delirious.JuiceTracker")/mylyrics.json")
+    private static var all: [String: String] = (try? JSONDecoder().decode([String: String].self, from: Data(contentsOf: file))) ?? [:]
+    static func lrc(_ id: String) -> String? { all[id] }
+    /// Saves (or with nil removes) your timing, and the Player picks it up right away.
+    static func set(_ id: String, _ lrc: String?) {
+        all[id] = lrc
+        try? FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try? JSONEncoder().encode(all).write(to: file, options: .atomic)
+        Task { await NowPlaying.shared.reloadExtras() }
     }
 }
 
@@ -136,6 +143,13 @@ struct SongExtras {
             if lit.words != litWords { litWords = lit.words }
             if lit.singing != singing { singing = lit.singing }
         }
+    }
+
+    /// Lyrics again for the song playing (after you time them yourself).
+    func reloadExtras() async {
+        guard let s = song else { return }
+        extras = await Extras.shared.extras(for: s.s.id)
+        lineIndex = nil; litWords = 0
     }
 
     var currentLine: String? {
@@ -630,6 +644,7 @@ struct PlayerScreen: View {
     @State private var version = 0 // bumps when the player or the song changes; the small parts redraw from it
     @State private var browsing = false
     @State private var lyricsCard = false
+    @State private var lyricsMaker = false
     @State private var query = ""
     @State private var era = ""
     @State private var palette = CoverPalette.fallback
@@ -680,6 +695,11 @@ struct PlayerScreen: View {
                             .background(Circle().fill(Color.white.opacity(0.1))).overlay(Circle().stroke(Color.white.opacity(0.2)))
                     }
                     .buttonStyle(.plain).help("Lyrics card: save a line as a picture").accessibilityLabel("Lyrics card")
+                    Button { lyricsMaker = true } label: {
+                        Image(systemName: "timer").frame(width: 30, height: 30)
+                            .background(Circle().fill(Color.white.opacity(0.1))).overlay(Circle().stroke(Color.white.opacity(0.2)))
+                    }
+                    .buttonStyle(.plain).help("Time the lyrics: make the song's synced lyrics yourself").accessibilityLabel("Time the lyrics")
                     Menu {
                         if live.isOn {
                             Button("Stop the live stream") { live.stop() }
@@ -716,6 +736,7 @@ struct PlayerScreen: View {
         }
         .background(SpaceField(palette: palette).ignoresSafeArea())
         .sheet(isPresented: $lyricsCard) { LyricsCardSheet { lyricsCard = false } }
+        .sheet(isPresented: $lyricsMaker) { LyricsMakerSheet { lyricsMaker = false } }
         .onReceive(changed) { _ in version += 1; updatePalette(); rollWave() }
         .onReceive(NowPlaying.shared.$song) { _ in version += 1 }
         .onAppear { updatePalette() }
@@ -1304,18 +1325,32 @@ private struct KaraokeLine: View {
     var centered = false
     var size: CGFloat = 30
     @ObservedObject private var now = NowPlaying.shared
+    /// "line": the line being sung, word by word, like a lyric video; "list": it among the lines around it.
+    @AppStorage("lyricStyle") private var style = "line"
+    @AppStorage("lyricBlur") private var blur = true
     var body: some View {
         let p = AmbientPlayer.shared
         Group {
             if let x = now.extras, !x.synced.isEmpty, let n = now.lineIndex, x.synced.indices.contains(n) {
                 let words = x.synced[n].line.split(separator: " ").map(String.init)
                 let lit = now.litWords
-                (words.isEmpty ? Text("♪") : words.enumerated().reduce(Text("")) { line, w in
+                let sung = (words.isEmpty ? Text("♪") : words.enumerated().reduce(Text("")) { line, w in
                     // the word being sung right now takes the song's color
                     line + Text((w.offset == 0 ? "" : " ") + w.element).foregroundColor(w.offset == lit - 1 && now.singing ? glow : w.offset < lit ? .white : .white.opacity(0.28))
                 })
                 .shadow(color: glow.opacity(0.55), radius: 14)
-                .id(n).transition(.asymmetric(insertion: .move(edge: .bottom).combined(with: .opacity), removal: .opacity))
+                if style == "list" {
+                    VStack(alignment: centered ? .center : .leading, spacing: size * 0.35) {
+                        ForEach(max(0, n - 1)...min(x.synced.count - 1, n + 2), id: \.self) { k in
+                            if k == n { sung } else {
+                                Text(x.synced[k].line).font(JT.body(size * 0.62, .bold)).foregroundColor(.white.opacity(0.38)).blur(radius: blur ? 2.5 : 0)
+                            }
+                        }
+                    }
+                    .animation(.easeOut(duration: 0.35), value: n)
+                } else {
+                    sung.id(n).transition(.asymmetric(insertion: .move(edge: .bottom).combined(with: .opacity), removal: .opacity))
+                }
             } else if p.title == nil {
                 Text("Press play").foregroundColor(.white.opacity(0.5))
             }

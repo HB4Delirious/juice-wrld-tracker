@@ -234,6 +234,14 @@ foreach (var c in fx["csvCases"]!.AsArray())
     Expect(Engine.WordleWord("Can't Die") == "CANT DIE", () => "wordle: apostrophes dropped");
     Expect(Engine.WordleWord("All Girls Are The Same") is null && Engine.WordleWord("Hey") is null, () => "wordle: too long or too short is skipped");
     Expect(Engine.WordleScore("CRANE", "CREAK").SequenceEqual([2, 2, 1, 0, 1]), () => "wordle: green, yellow and grey");
+    var lrc = Engine.ParseLrc("[ar:Juice WRLD]\n[00:12.50]second line\n[00:03.00]<00:03.00>first <00:03.60>line <00:04.20>here\n[00:20.00]<00:20.00>wrong count");
+    Expect(lrc.Select(l => l.At).SequenceEqual([3, 12.5, 20]) && lrc[0].Line == "first line here", () => "lrc: tags skipped, sorted by time, word times taken out of the text");
+    Expect(lrc[0].Words.SequenceEqual([3, 3.6, 4.2]) && lrc[1].Words.Length == 0 && lrc[2].Words.Length == 0, () => "lrc: word times only when every word has one");
+    var back = Engine.ParseLrc(Engine.FormatLrc(lrc));
+    Expect(back.Count == lrc.Count && back.Zip(lrc).All(p => p.First.At == p.Second.At && p.First.Line == p.Second.Line && p.First.Words.SequenceEqual(p.Second.Words)), () => "lrc: what's written reads back the same");
+    Expect(Engine.LrcStamp(83.456) == "01:23.46" && Engine.LrcStamp(600) == "10:00.00", () => "lrc: times as mm:ss.xx");
+    Expect(Engine.LitWords(lrc, 0, 3.7) == (2, true) && Engine.LitWords(lrc, 0, 13) == (3, false), () => "lrc: word times light the words they time");
+    Expect(Engine.LitWords(lrc, 1, 12.5 + 7.5 * 0.85 / 2) == (1, true) && Engine.LitWords(lrc, 1, 19.9) == (2, false), () => "lrc: an untimed line spreads over its words");
     Expect(Engine.WordleScore("LLAMA", "HELLO").SequenceEqual([1, 1, 0, 0, 0]), () => "wordle: a repeated letter is yellow as often as the answer has it");
     Expect(Engine.WordleScore("EERIE", "THREE").SequenceEqual([1, 0, 2, 0, 2]), () => "wordle: greens first, then yellows from what's left");
     Expect(Engine.WordleScore("LUCIDDREAMS", "LUCID DREAMS").SequenceEqual(Enumerable.Repeat(2, 11)), () => "wordle: spaces don't count");

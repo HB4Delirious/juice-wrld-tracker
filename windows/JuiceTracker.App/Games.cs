@@ -349,6 +349,9 @@ public sealed class TierListPage : ToolPage
 public sealed class LyricsCardWindow : Window
 {
     readonly ImageSource? cover;
+    ImageSource? picture;            // your own background picture, in place of the cover
+    Color tint = JT.Lavender;
+    bool showInfo = true;
     readonly Song? song;
     readonly List<string> lines = [];
     readonly SortedSet<int> picked = [];
@@ -368,7 +371,24 @@ public sealed class LyricsCardWindow : Window
         var left = new DockPanel { Width = 380 };
         var hint = UI.Muted("Pick up to four lines", 13); DockPanel.SetDock(hint, Dock.Top); left.Children.Add(hint);
         left.Children.Add(new ScrollViewer { Content = list, VerticalScrollBarVisibility = ScrollBarVisibility.Auto, Margin = new Thickness(0, 6, 0, 0) });
-        var right = UI.Column(10, preview, UI.Row(10, UI.Button("Save image…", Save), UI.Button("Copy", CopyImage)), note);
+        var pictureButton = UI.Button("Choose picture…", () => { });
+        pictureButton.Click += (_, _) =>
+        {
+            if (picture is not null) { picture = null; pictureButton.Content = "Choose picture…"; DrawPreview(); return; }
+            var d = new Microsoft.Win32.OpenFileDialog { Filter = "Pictures|*.png;*.jpg;*.jpeg;*.bmp;*.gif;*.webp" };
+            if (d.ShowDialog(this) != true) return;
+            try { var img = new BitmapImage(); img.BeginInit(); img.UriSource = new Uri(d.FileName); img.CacheOption = BitmapCacheOption.OnLoad; img.EndInit(); img.Freeze(); picture = img; }
+            catch (Exception) { note.Text = "That picture couldn't be opened."; return; }
+            pictureButton.Content = "Use the cover"; DrawPreview();
+        };
+        var colorButton = UI.Button("Color…", () =>
+        {
+            var d = new System.Windows.Forms.ColorDialog { FullOpen = true, Color = System.Drawing.Color.FromArgb(tint.R, tint.G, tint.B) };
+            if (d.ShowDialog() == System.Windows.Forms.DialogResult.OK) { tint = Color.FromRgb(d.Color.R, d.Color.G, d.Color.B); DrawPreview(); }
+        });
+        var info = new CheckBox { Content = "Song info", IsChecked = true, VerticalAlignment = VerticalAlignment.Center, Foreground = JT.Brush(JT.Mist) };
+        info.Click += (_, _) => { showInfo = info.IsChecked == true; DrawPreview(); };
+        var right = UI.Column(10, preview, UI.Row(8, pictureButton, colorButton, info), UI.Row(10, UI.Button("Save image…", Save), UI.Button("Copy", CopyImage)), note);
         right.Margin = new Thickness(20, 0, 0, 0);
         var body = new DockPanel { Margin = new Thickness(22) };
         DockPanel.SetDock(right, Dock.Right); body.Children.Add(right); body.Children.Add(left);
@@ -415,15 +435,18 @@ public sealed class LyricsCardWindow : Window
     FrameworkElement Card(List<string> chosen)
     {
         var card = new Grid { Width = 1080, Height = 1350, Background = Games.Night, ClipToBounds = true };
-        if (cover is not null) card.Children.Add(new Image { Source = cover, Stretch = Stretch.UniformToFill, Opacity = 0.22 });
-        card.Children.Add(new Border { Background = new LinearGradientBrush(Colors.Transparent, Color.FromArgb(178, 0, 0, 0), 90) });
+        var back = picture ?? cover;
+        if (back is not null) card.Children.Add(new Image { Source = back, Stretch = Stretch.UniformToFill, Opacity = showInfo ? 0.22 : 0.4 });
+        var shade = new LinearGradientBrush { StartPoint = new Point(0, 0), EndPoint = new Point(0, 1) };
+        shade.GradientStops.Add(new GradientStop(Color.FromArgb(89, tint.R, tint.G, tint.B), 0)); shade.GradientStops.Add(new GradientStop(Colors.Transparent, 0.45)); shade.GradientStops.Add(new GradientStop(Color.FromArgb(178, 0, 0, 0), 1));
+        card.Children.Add(new Border { Background = shade });
         var col = new StackPanel { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(70, 0, 70, 0) };
-        col.Children.Add(new Border { Width = 360, Height = 360, CornerRadius = new CornerRadius(28), ClipToBounds = true, Margin = new Thickness(0, 0, 0, 40),
-                                      Background = new ImageBrush(cover ?? JT.Image("jt-logo")) { Stretch = cover is null ? Stretch.Uniform : Stretch.UniformToFill } });
+        if (showInfo) col.Children.Add(new Border { Width = 360, Height = 360, CornerRadius = new CornerRadius(28), ClipToBounds = true, Margin = new Thickness(0, 0, 0, 40),
+                                      Background = new ImageBrush(back ?? JT.Image("jt-logo")) { Stretch = back is null ? Stretch.Uniform : Stretch.UniformToFill } });
         foreach (var l in chosen)
             col.Children.Add(new TextBlock { Text = l, FontSize = 54, FontWeight = FontWeights.Black, Foreground = Brushes.White, TextAlignment = TextAlignment.Center, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 18) });
-        col.Children.Add(new TextBlock { Text = song?.Name ?? "", FontFamily = JT.Marker, FontSize = 42, Foreground = JT.Brush(JT.Lavender), TextAlignment = TextAlignment.Center, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 22, 0, 6) });
-        col.Children.Add(new TextBlock { Text = song is null ? "Juice WRLD" : $"Juice WRLD · {song.Era}", FontSize = 26, FontWeight = FontWeights.SemiBold, Foreground = JT.Brush(Color.FromArgb(178, 255, 255, 255)), TextAlignment = TextAlignment.Center });
+        if (showInfo) col.Children.Add(new TextBlock { Text = song?.Name ?? "", FontFamily = JT.Marker, FontSize = 42, Foreground = JT.Brush(tint), TextAlignment = TextAlignment.Center, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 22, 0, 6) });
+        if (showInfo) col.Children.Add(new TextBlock { Text = song is null ? "Juice WRLD" : $"Juice WRLD · {song.Era}", FontSize = 26, FontWeight = FontWeights.SemiBold, Foreground = JT.Brush(Color.FromArgb(178, 255, 255, 255)), TextAlignment = TextAlignment.Center });
         card.Children.Add(col);
         card.Children.Add(new TextBlock { Text = "Juice Tracker", FontFamily = JT.Marker, FontSize = 22, Foreground = JT.Brush(Color.FromArgb(89, 255, 255, 255)), HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Bottom, Margin = new Thickness(0, 0, 0, 36) });
         return card;

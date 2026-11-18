@@ -163,6 +163,53 @@ public static partial class Engine
     }
 
     /// "4:26" or "1:02:03" to seconds.
+    /// A line of timed lyrics (LRC): when it starts, its text, and when each word starts (empty when only the line is timed).
+    public sealed record LrcLine(double At, string Line, double[] Words);
+
+    /// "[01:23.45] line" lines, with word times written "<01:23.80>word"; lines without a time (tags like [ar:…]) are
+    /// skipped. Word times are kept only when there is one for every word.
+    public static List<LrcLine> ParseLrc(string text)
+    {
+        static double Sec(Group m, Group s) => int.Parse(m.Value) * 60 + double.Parse(s.Value, System.Globalization.CultureInfo.InvariantCulture);
+        var output = new List<LrcLine>();
+        foreach (var raw in text.Split('\n'))
+        {
+            var g = Regex.Match(raw.Trim(), @"^\[(\d+):(\d+(?:\.\d+)?)\](.*)$");
+            if (!g.Success) continue;
+            var rest = g.Groups[3].Value;
+            var words = Regex.Matches(rest, @"<(\d+):(\d+(?:\.\d+)?)>").Select(m => Sec(m.Groups[1], m.Groups[2])).ToArray();
+            var line = string.Join(' ', Regex.Replace(rest, @"<\d+:\d+(?:\.\d+)?>", " ").Split(' ', StringSplitOptions.RemoveEmptyEntries));
+            output.Add(new LrcLine(Sec(g.Groups[1], g.Groups[2]), line, words.Length == line.Split(' ', StringSplitOptions.RemoveEmptyEntries).Length ? words : []));
+        }
+        return output.OrderBy(l => l.At).ToList();
+    }
+    /// 83.456 → "01:23.46".
+    public static string LrcStamp(double t)
+    {
+        var cs = (int)Math.Round(Math.Max(0, t) * 100, MidpointRounding.AwayFromZero);
+        return $"{cs / 6000:00}:{cs % 6000 / 100:00}.{cs % 100:00}";
+    }
+    public static string FormatLrc(IEnumerable<LrcLine> lines) => string.Join("\n", lines.Select(l =>
+    {
+        var words = l.Line.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        var text = l.Words.Length == words.Length && words.Length > 0 ? string.Join(' ', l.Words.Zip(words, (t, w) => $"<{LrcStamp(t)}>{w}")) : l.Line;
+        return $"[{LrcStamp(l.At)}]{text}";
+    }));
+    /// How many words of line n are sung at `time`, and whether the last of them is still being sung. With word times
+    /// it follows them; without, the line's time is spread over its words.
+    public static (int Words, bool Singing) LitWords(IReadOnlyList<LrcLine> lines, int n, double time)
+    {
+        var l = lines[n]; double end = n + 1 < lines.Count ? lines[n + 1].At : l.At + 4;
+        if (l.Words.Length > 0)
+        {
+            int on = l.Words.Count(t => t <= time + 0.05);
+            return (on, on > 0 && time < (on < l.Words.Length ? l.Words[on] : end));
+        }
+        int count = l.Line.Split(' ', StringSplitOptions.RemoveEmptyEntries).Length;
+        double progress = Math.Clamp((time - l.At) / Math.Max(0.5, (end - l.At) * 0.85), 0, 1);
+        return ((int)Math.Ceiling(count * progress), progress < 1);
+    }
+
     public static double? LengthSeconds(string text)
     {
         var g = Regex.Match(text, @"^\s*(?:(\d+):)?(\d{1,2}):(\d{2})\s*$");
