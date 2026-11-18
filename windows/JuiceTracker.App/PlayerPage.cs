@@ -684,8 +684,13 @@ public sealed class PlayerPage : Grid, IRefresh
     void Karaoke(double at)
     {
         int n = synced.FindLastIndex(x => x.At <= at + 0.15);
-        var me = Store.Shared.Me; var key = $"{me.LyricStyle}{me.LyricBlur}";
-        if (key != styleKey) { styleKey = key; line = -2; foreach (var t in new[] { before, after }) t.Effect = me.LyricBlur ? new BlurEffect { Radius = 2.5 } : null; }
+        var me = Store.Shared.Me; var key = $"{me.LyricStyle}{me.LyricBlur}{me.LyricFont}";
+        if (key != styleKey)
+        {
+            styleKey = key; line = -2;
+            foreach (var t in new[] { before, after }) t.Effect = me.LyricBlur ? new BlurEffect { Radius = 2.5 } : null;
+            foreach (var t in new[] { before, karaoke, after }) t.FontFamily = LyricFonts.Family(me.LyricFont);
+        }
         bool list = me.LyricStyle == "list" && n >= 0;
         before.Visibility = after.Visibility = list ? Visibility.Visible : Visibility.Collapsed;
         lyrics.Margin = new Thickness(0, list ? -before.FontSize * 1.5 : 0, 0, 0); // the line being sung stays where it was

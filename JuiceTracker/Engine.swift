@@ -1347,6 +1347,13 @@ extension Engine {
         }.joined()
     }
 
+    /// Of the songs a file could be (versions share a title), the one whose listed length is closest to the file's.
+    static func closestByLength(_ candidates: [Int], catalog: [EngineSong], seconds: Double?) -> Int? {
+        guard let seconds, candidates.count > 1 else { return candidates.first }
+        func off(_ i: Int) -> Double { lengthSeconds(catalog[i].length).map { abs($0 - seconds) } ?? .infinity }
+        return candidates.min { off($0) < off($1) }
+    }
+
     /// The equalizer's presets: bass, mids and treble in dB.
     static let eqPresets: [(name: String, bands: [Double])] = [("Flat", [0, 0, 0]), ("Bass boost", [6, 0, 1]), ("Vocals", [-2, 4, 2]), ("Bright", [0, 1, 5]), ("Late night", [-4, 1, -3])]
     /// The preset these bands match, or "Custom".

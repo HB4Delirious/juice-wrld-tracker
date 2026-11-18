@@ -209,6 +209,11 @@ enum SongAlerts {
         defaults.set(Date(), forKey: "alertsLastCheck")
         defaults.set("\(songs.count) songs, \(known.isEmpty ? 0 : added.count) new, \(nowReleased.count) newly released", forKey: "alertsLastResult")
         if !known.isEmpty, !wishNews.isEmpty, !defaults.bool(forKey: "alertsDryRun") { notifyWishlist(wishNews) }
+        // Settings > Downloads: new songs (and older ones that just got a file) download on their own
+        if !known.isEmpty, Pref.bool("autoDownload", default: false) {
+            let fresh = songs.filter { s in s.hasFile && (!known.contains(s.id) || (hadFile.map { !$0.contains(s.id) } ?? false)) }.map(\.id)
+            await MainActor.run { _ = EngineDownloads.shared.autoDownload(fresh) }
+        }
         let wishIds = Set(wishNews.map(\.id)) // already in their own alert
         let others = added.filter { !wishIds.contains($0.id) }, otherReleases = nowReleased.filter { !wishIds.contains($0.id) }
         guard !known.isEmpty, !added.isEmpty || !nowReleased.isEmpty else { return } // first run only takes a snapshot
@@ -238,6 +243,7 @@ enum SongAlerts {
         let content = UNMutableNotificationContent()
         content.title = news.count == 1 ? "On your wishlist: \(news[0].name)" : "\(news.count) wishlist songs have news"
         content.body = news.prefix(4).map { "\($0.name) \($0.what)." }.joined(separator: " ")
+        DispatchQueue.main.async { Inbox.add(content.title, content.body, ids: news.map(\.id)) }
         content.sound = .default
         content.categoryIdentifier = wishCategory
         content.userInfo = ["songIds": news.map(\.id)]
@@ -259,6 +265,7 @@ enum SongAlerts {
         content.title = "Juice Tracker"
         if !downloadable.isEmpty { parts.append("\(downloadable.count) \(downloadable.count == 1 ? "has a file" : "have files") to download.") }
         content.body = parts.joined(separator: " ")
+        DispatchQueue.main.async { Inbox.add(added.isEmpty ? "Newly released songs" : "New songs in the catalog", content.body, ids: downloadable) }
         content.sound = .default
         if !downloadable.isEmpty { content.categoryIdentifier = wishCategory; content.userInfo = ["songIds": downloadable] } // its Download button
         let center = UNUserNotificationCenter.current()
@@ -345,6 +352,7 @@ enum Updater {
             let assets = json["assets"] as? [[String: Any]] ?? []
             guard let dmg = assets.first(where: { ($0["name"] as? String)?.hasSuffix(".dmg") == true })?["browser_download_url"] as? String,
                   let dmgURL = URL(string: dmg) else { throw Failure(errorDescription: "The \(tag) release has no DMG.") }
+            Inbox.add("Juice Tracker \(latest) is available", "You have \(current).")
             let ask = NSAlert()
             ask.messageText = "Juice Tracker \(latest) is available"
             ask.informativeText = "You have \(current). Update now? The app will quit, update, and reopen."
@@ -428,6 +436,7 @@ enum Updater {
 
 struct SettingsView: View {
     @AppStorage(Pref.dailyCheck) private var dailyCheck = true
+    @AppStorage("autoDownload") private var autoDownload = false
     @AppStorage("crossfadeSeconds") private var crossfade = 4.0
     @AppStorage(Pref.keepRunning) private var keepRunning = false
     @AppStorage(Pref.autoUpdate) private var autoUpdate = true
@@ -476,6 +485,7 @@ struct SettingsView: View {
         Form {
             Section {
                 Toggle("Check for new and newly released songs every day", isOn: $dailyCheck)
+                Toggle("Download new songs on their own when they have a file (keeps 2 GB free)", isOn: $autoDownload).disabled(!dailyCheck)
                 Toggle("Keep running when the window is closed", isOn: $keepRunning)
                 if #available(macOS 13, *) {
                     Toggle("Open Juice Tracker at login", isOn: $openAtLogin)
@@ -540,6 +550,7 @@ struct SettingsView: View {
                     Text("The scrolling list").tag("list")
                 }
                 if lyricStyle == "list" { Toggle("Blur the lines not being sung", isOn: $lyricBlur) }
+                LyricFontPicker()
                 Text("Recolors the app's accents and sky after an era's mood.").font(.caption).foregroundColor(.secondary)
             } header: { Text("Look").bold() }
 
@@ -869,5 +880,82 @@ private struct EqualizerSettings: View {
         .onChange(of: bass) { _ in AmbientPlayer.shared.equalizerChanged() }
         .onChange(of: mid) { _ in AmbientPlayer.shared.equalizerChanged() }
         .onChange(of: treble) { _ in AmbientPlayer.shared.equalizerChanged() }
+    }
+}
+
+// MARK: - Notifications list
+
+/// The app's recent alerts (new songs, downloads that landed, updates, a full drive), kept so you can see what you
+/// missed: the bell at the top of the sidebar. The newest 50, on this Mac.
+@MainActor enum Inbox {
+    struct Item: Codable, Hashable { var title: String; var body: String; var at: Date; var ids: [String] }
+    static let changed = Notification.Name("InboxChanged")
+    private static let key = "inbox"
+    static var items: [Item] { (UserDefaults.standard.data(forKey: key)).flatMap { try? JSONDecoder().decode([Item].self, from: $0) } ?? [] }
+    static var unread: Int { let seen = UserDefaults.standard.object(forKey: "inboxSeen") as? Date ?? .distantPast; return items.filter { $0.at > seen }.count }
+    static func add(_ title: String, _ body: String, ids: [String] = []) {
+        let list = Array(([Item(title: title, body: body, at: Date(), ids: ids)] + items).prefix(50))
+        UserDefaults.standard.set(try? JSONEncoder().encode(list), forKey: key)
+        NotificationCenter.default.post(name: changed, object: nil)
+    }
+    static func markSeen() { UserDefaults.standard.set(Date(), forKey: "inboxSeen"); NotificationCenter.default.post(name: changed, object: nil) }
+    static func clear() { UserDefaults.standard.removeObject(forKey: key); NotificationCenter.default.post(name: changed, object: nil) }
+}
+
+struct InboxBell: View {
+    @State private var open = false
+    @State private var version = 0
+    private let changed = NotificationCenter.default.publisher(for: Inbox.changed)
+    var body: some View {
+        let unread = Inbox.unread
+        Button { open.toggle(); Inbox.markSeen() } label: {
+            Image(systemName: unread > 0 ? "bell.badge.fill" : "bell").font(.system(size: 14)).foregroundColor(unread > 0 ? JT.lavender : JT.muted)
+                .frame(width: 28, height: 28).contentShape(Rectangle())
+        }
+        .buttonStyle(.plain).help(unread > 0 ? "\(unread) new notification\(unread == 1 ? "" : "s")" : "Notifications")
+        .accessibilityLabel(unread > 0 ? "\(unread) new notifications" : "Notifications")
+        .popover(isPresented: $open, arrowEdge: .trailing) { InboxList { open = false } }
+        .onReceive(changed) { _ in version += 1 }
+        .id(version)
+    }
+}
+
+private struct InboxList: View {
+    let close: () -> Void
+    var body: some View {
+        let items = Inbox.items
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Text("Notifications").font(JT.marker(20))
+                Spacer()
+                if !items.isEmpty { Button("Clear") { Inbox.clear(); close() }.buttonStyle(.link) }
+            }
+            if items.isEmpty {
+                Text("New songs, downloads that land and updates show up here.").foregroundColor(JT.muted).fixedSize(horizontal: false, vertical: true)
+            } else {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 8) {
+                        ForEach(items, id: \.self) { item in
+                            Button {
+                                if let id = item.ids.first, let s = NativeStore.shared.songs.first(where: { $0.s.id == id }) { NativeStore.shared.openSong = s; close() }
+                            } label: {
+                                VStack(alignment: .leading, spacing: 3) {
+                                    HStack(alignment: .firstTextBaseline) {
+                                        Text(item.title).font(JT.body(13, .semibold)).foregroundColor(JT.mist)
+                                        Spacer()
+                                        Text(item.at, style: .relative).font(JT.body(11)).foregroundColor(JT.muted)
+                                    }
+                                    if !item.body.isEmpty { Text(item.body).font(JT.body(12)).foregroundColor(JT.muted).fixedSize(horizontal: false, vertical: true) }
+                                }
+                                .padding(8).frame(maxWidth: .infinity, alignment: .leading)
+                                .background(RoundedRectangle(cornerRadius: 8).fill(Color.white.opacity(0.05))).contentShape(Rectangle())
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                }
+            }
+        }
+        .padding(16).frame(width: 340).frame(maxHeight: 460)
     }
 }

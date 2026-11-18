@@ -191,6 +191,7 @@ public static class Updater
             if (!userAsked && Store.Shared.Me.SkippedVersion == latest) return;
             var url = (json?["assets"] as JsonArray)?.FirstOrDefault(a => a?["name"]?.GetValue<string>() == "JuiceTracker.exe")?["browser_download_url"]?.GetValue<string>()
                       ?? throw new EngineError($"The {tag} release has no Windows app.");
+            Inbox.Add($"Juice Tracker {latest} is available", $"You have {Current}.");
             var answer = MessageBox.Show($"You have {Current}. Update now? Juice Tracker will close, update and reopen.\n\n(No skips this version.)", $"Juice Tracker {latest} is available", MessageBoxButton.YesNoCancel, MessageBoxImage.Information);
             if (answer == MessageBoxResult.No) { Store.Shared.Me.SkippedVersion = latest; Store.Shared.SavePersonal(); return; }
             if (answer != MessageBoxResult.Yes) return;

@@ -124,6 +124,10 @@ public sealed partial class Store
         public bool MusicVideos { get; set; } = true;      // play a song's music video on the Player tab
         public bool EqOn { get; set; }                     // the equalizer
         public List<double> EqBands { get; set; } = [0, 0, 0]; // bass, mids, treble in dB
+        public List<InboxItem> Notices { get; set; } = []; // recent alerts, newest first
+        public DateTime NoticesSeen { get; set; }           // when the list was last opened
+        public bool AutoDownload { get; set; }             // new songs with a file download on their own
+        public string LyricFont { get; set; } = "figtree"; // the Player's lyrics font
     }
     public sealed record Playlist(string Id, string Name, List<string> Songs);
     public Personal Me { get; private set; } = new();
@@ -232,6 +236,7 @@ public sealed partial class Store
 
     /// Downloads the catalog, notes which songs are new or newly released since the last time, and saves it.
     /// Names of the songs added to the catalog at the last check (for the tray menu).
+    public List<string> NewSongIds => [.. saved.NewIds];
     public List<string> NewSongNames { get { var n = saved.NewIds.ToHashSet(); return Catalog.Where(s => n.Contains(s.Id)).Select(s => s.Name).ToList(); } }
     /// Wished songs that were released or got a file at the last check (for the alert).
     public List<string> WishedReleasedNames { get { var r = saved.ReleasedIds.Concat(saved.NewIds).ToHashSet(); return Catalog.Where(s => r.Contains(s.Id) && Me.Wish.ContainsKey(s.Id)).Select(s => s.Name).ToList(); } }
@@ -480,6 +485,12 @@ public sealed partial class Store
         Job = (0, queue.Count, "", false); Notify();
         while (!stopping && queue.Count > 0)
         {
+            // never fill the drive: stop with 1 GB left, and say so in the notifications
+            if (await Task.Run(() => Disk.Free(Root)) is { } free && free < 1_000_000_000)
+            {
+                Inbox.Add("Downloads stopped: the music drive is almost full", $"{queue.Count} song{(queue.Count == 1 ? "" : "s")} still to download. Free up some space, then download them again.");
+                break;
+            }
             var item = queue[0];
             int i = Catalog.FindIndex(s => s.Id == item.Id);
             if (i < 0 || Catalog[i].FilePath.Length == 0) { queue.RemoveAt(0); Write("queue.json", queue); done++; continue; }

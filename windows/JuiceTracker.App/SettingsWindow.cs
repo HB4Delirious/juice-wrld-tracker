@@ -120,6 +120,14 @@ public sealed class SettingsWindow : Window
         UI.AutomationName(style, "Player lyrics");
         body.Children.Add(UI.Row(12, UI.Text("Player lyrics", 14, JT.Muted), style).Also(r => r.Margin = new Thickness(0, 10, 0, 0)));
         Check("Blur the lines not being sung (scrolling list)", store.Me.LyricBlur, v => store.Me.LyricBlur = v);
+        body.Children.Add(UI.Text("Player lyrics font", 14, JT.Muted).Also(t => t.Margin = new Thickness(0, 10, 0, 2)));
+        foreach (var (id, name) in LyricFonts.All)
+        {
+            var pick = new RadioButton { GroupName = "lyricFont", IsChecked = store.Me.LyricFont == id, Margin = new Thickness(0, 4, 0, 0), VerticalContentAlignment = VerticalAlignment.Center,
+                                         Content = UI.Row(12, UI.Text(name, 14).Also(t => t.Width = 90), new TextBlock { Text = "Juice WRLD forever", FontFamily = LyricFonts.Family(id), FontSize = 17, FontWeight = FontWeights.Black, Foreground = JT.Brush(JT.Lavender) }) };
+            pick.Checked += (_, _) => { store.Me.LyricFont = id; store.SavePersonal(); };
+            body.Children.Add(pick);
+        }
         Check("Edge light on every screen", store.Me.EdgeAll, v => { store.Me.EdgeAll = v; Dispatcher.BeginInvoke(DesktopWidgets.ReopenEdge); });
         Check("A different Player look for every song", store.Me.PlayerStyleAuto, v => store.Me.PlayerStyleAuto = v);
         Check("Lift quiet songs so the visuals still move", store.Me.VisualBoost, v => store.Me.VisualBoost = v);
@@ -181,6 +189,7 @@ public sealed class SettingsWindow : Window
 
         Section("Updates");
         Check("Check for a new version every day", store.Me.AutoUpdate, v => store.Me.AutoUpdate = v);
+        Check("Download new songs on their own when they have a file (keeps 2 GB free)", store.Me.AutoDownload, v => store.Me.AutoDownload = v);
         var check = UI.Button("Check for updates now", () => _ = Updater.Check(true)); check.HorizontalAlignment = HorizontalAlignment.Left; check.Margin = new Thickness(0, 8, 0, 0);
         body.Children.Add(check);
 

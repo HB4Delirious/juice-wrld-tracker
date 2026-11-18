@@ -1595,7 +1595,7 @@ private struct PlayerClock: View {
 }
 
 /// The line being sung, its words lighting up as the song gets to them. Shown live from the site, never saved.
-private struct KaraokeLine: View {
+struct KaraokeLine: View {
     let glow: Color
     var centered = false
     var size: CGFloat = 30
@@ -1603,6 +1603,9 @@ private struct KaraokeLine: View {
     /// "line": the line being sung, word by word, like a lyric video; "list": it among the lines around it.
     @AppStorage("lyricStyle") private var style = "line"
     @AppStorage("lyricBlur") private var blur = true
+    @AppStorage("lyricFont") private var fontId = "figtree"
+    /// Settings' previews: a font to show (not yours), always as one line.
+    var previewFont: String?
     var body: some View {
         let p = AmbientPlayer.shared
         Group {
@@ -1614,11 +1617,11 @@ private struct KaraokeLine: View {
                     line + Text((w.offset == 0 ? "" : " ") + w.element).foregroundColor(w.offset == lit - 1 && now.singing ? glow : w.offset < lit ? .white : .white.opacity(0.28))
                 })
                 .shadow(color: glow.opacity(0.55), radius: 14)
-                if style == "list" {
+                if style == "list" && previewFont == nil {
                     VStack(alignment: centered ? .center : .leading, spacing: size * 0.35) {
                         ForEach(max(0, n - 1)...min(x.synced.count - 1, n + 2), id: \.self) { k in
                             if k == n { sung } else {
-                                Text(x.synced[k].line).font(JT.body(size * 0.62, .bold)).foregroundColor(.white.opacity(0.38)).blur(radius: blur ? 2.5 : 0)
+                                Text(x.synced[k].line).font(LyricFont.font(fontId, size * 0.62, .bold)).foregroundColor(.white.opacity(0.38)).blur(radius: blur ? 2.5 : 0)
                             }
                         }
                     }
@@ -1630,13 +1633,53 @@ private struct KaraokeLine: View {
                 Text("Press play").foregroundColor(.white.opacity(0.5))
             }
         }
-        .font(JT.body(size, .heavy))
+        .font(LyricFont.font(previewFont ?? fontId, size, .heavy))
         .lineLimit(3)
         .multilineTextAlignment(centered ? .center : .leading)
         .shadow(color: .black.opacity(0.7), radius: 8)
         .frame(maxWidth: .infinity, alignment: centered ? .center : .leading)
         .animation(.easeOut(duration: 0.3), value: now.lineIndex)
         .allowsHitTesting(false)
+    }
+}
+
+/// The Player's lyrics font (Settings > Look).
+enum LyricFont {
+    static let all: [(id: String, name: String)] = [("figtree", "Clean"), ("marker", "Marker"), ("rounded", "Rounded"), ("serif", "Serif"), ("mono", "Typewriter")]
+    static func font(_ id: String, _ size: CGFloat, _ weight: Font.Weight) -> Font {
+        switch id {
+        case "marker": return JT.marker(size)
+        case "rounded": return .system(size: size, weight: weight, design: .rounded)
+        case "serif": return .system(size: size, weight: weight, design: .serif)
+        case "mono": return .system(size: size, weight: weight == .heavy ? .bold : weight, design: .monospaced)
+        default: return JT.body(size, weight)
+        }
+    }
+}
+
+/// Every lyrics font, singing the line playing now (or a sample); click one to use it.
+struct LyricFontPicker: View {
+    @AppStorage("lyricFont") private var fontId = "figtree"
+    @ObservedObject private var now = NowPlaying.shared
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("Player lyrics font").font(.callout)
+            ForEach(LyricFont.all, id: \.id) { f in
+                Button { fontId = f.id } label: {
+                    HStack(spacing: 10) {
+                        Image(systemName: fontId == f.id ? "largecircle.fill.circle" : "circle").foregroundColor(fontId == f.id ? JT.lavender : .secondary)
+                        Text(f.name).frame(width: 80, alignment: .leading)
+                        Group {
+                            if now.currentLine != nil { KaraokeLine(glow: JT.lavender, size: 16, previewFont: f.id) }
+                            else { Text("Juice WRLD forever").font(LyricFont.font(f.id, 16, .heavy)).frame(maxWidth: .infinity, alignment: .leading) }
+                        }
+                        .frame(height: 24).clipped()
+                    }
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+            }
+        }
     }
 }
 

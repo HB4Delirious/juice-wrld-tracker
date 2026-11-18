@@ -241,6 +241,9 @@ foreach (var c in fx["csvCases"]!.AsArray())
     Expect(Engine.M3u([("/m/a.mp3", "Lucid Dreams", 239.6), ("/m/b.flac", "Two\nLines", null)]) == "#EXTM3U\n#EXTINF:239,Juice WRLD - Lucid Dreams\n/m/a.mp3\n#EXTINF:-1,Juice WRLD - Two Lines\n/m/b.flac\n", () => "m3u: length, title on one line, path");
     Expect(Engine.Boosted(0.2, 0.25) == (0.8, 0.25) && Engine.Boosted(0.05, 0) == (0.2, 0.25), () => "boost: a quiet song is lifted, near-silence only so far");
     Expect(Engine.Boosted(0.9, 0.4) == (1, 0.9) && Engine.Boosted(0.45, 0.9).Level == 0.45 / (0.9 * 0.995), () => "boost: a loud song sets the peak, which falls back slowly");
+    var cuts = new[] { "3:00", "4:10", "" }.Select((l, k) => new EngineSong { Id = $"{k}", Name = "Same", Era = "DRFL", Length = l }).ToList();
+    Expect(Engine.ClosestByLength([0, 1, 2], cuts, 245) == 1 && Engine.ClosestByLength([0, 1, 2], cuts, null) == 0 && Engine.ClosestByLength([2], cuts, 10) == 2,
+           () => "identify: of the versions, the one closest in length");
     Expect(Engine.EqPreset([-2, 4, 2]) == "Vocals" && Engine.EqPreset([0, 4, 2]) == "Custom", () => "equalizer: bands name their preset, or Custom");
     Expect(Engine.EqHeadroom([6, 0, 1]) == -3 && Engine.EqHeadroom([-4, 1, -3]) == -0.5 && Engine.EqHeadroom([-4, -1, -3]) == 0, () => "equalizer: turned down by half the biggest boost");
     var lrc = Engine.ParseLrc("[ar:Juice WRLD]\n[00:12.50]second line\n[00:03.00]<00:03.00>first <00:03.60>line <00:04.20>here\n[00:20.00]<00:20.00>wrong count");
