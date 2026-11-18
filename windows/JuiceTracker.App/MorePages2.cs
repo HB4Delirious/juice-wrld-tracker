@@ -18,6 +18,8 @@ public static partial class MorePages
         Extra[Page.Timeline] = () => new TimelinePage();
         Extra[Page.Badges] = () => new BadgesPage();
         Extra[Page.Trivia] = () => new TriviaPage();
+        Extra[Page.Wordle] = () => new WordlePage();
+        Extra[Page.Tiers] = () => new TierListPage();
     }
     /// A name on a song card opens Credits on that person.
     public static (string Role, string Name)? CreditsFocus;

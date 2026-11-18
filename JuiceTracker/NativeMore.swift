@@ -596,6 +596,7 @@ struct PlayerScreen: View {
     var stream = false
     @State private var version = 0 // bumps when the player or the song changes; the small parts redraw from it
     @State private var browsing = false
+    @State private var lyricsCard = false
     @State private var query = ""
     @State private var era = ""
     @State private var palette = CoverPalette.fallback
@@ -641,6 +642,11 @@ struct PlayerScreen: View {
                             .background(Circle().fill(Color.white.opacity(0.1))).overlay(Circle().stroke(Color.white.opacity(0.2)))
                     }
                     .buttonStyle(.plain).help(browsing ? "Close your songs" : "Your songs").accessibilityLabel(browsing ? "Close your songs" : "Your songs")
+                    Button { lyricsCard = true } label: {
+                        Image(systemName: "text.quote").frame(width: 30, height: 30)
+                            .background(Circle().fill(Color.white.opacity(0.1))).overlay(Circle().stroke(Color.white.opacity(0.2)))
+                    }
+                    .buttonStyle(.plain).help("Lyrics card: save a line as a picture").accessibilityLabel("Lyrics card")
                     Menu {
                         if live.isOn {
                             Button("Stop the live stream") { live.stop() }
@@ -676,6 +682,7 @@ struct PlayerScreen: View {
             .animation(.easeOut(duration: 0.25), value: browsing)
         }
         .background(SpaceField(palette: palette).ignoresSafeArea())
+        .sheet(isPresented: $lyricsCard) { LyricsCardSheet { lyricsCard = false } }
         .onReceive(changed) { _ in version += 1; updatePalette(); rollWave() }
         .onReceive(NowPlaying.shared.$song) { _ in version += 1 }
         .onAppear { updatePalette() }

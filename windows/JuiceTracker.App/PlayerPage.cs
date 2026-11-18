@@ -142,6 +142,10 @@ public sealed class PlayerPage : Grid, IRefresh
         var searchRing = new Border { Width = 32, Height = 32, CornerRadius = new CornerRadius(16), Background = JT.Brush(Color.FromArgb(26, 255, 255, 255)),
                                       BorderBrush = JT.Brush(Color.FromArgb(51, 255, 255, 255)), BorderThickness = new Thickness(1), Child = search, Tag = "search" };
         stage.Children.Add(searchRing);
+        var cardButton = UI.IconButton("\uE8E2", "Lyrics card: save a line as a picture", () => LyricsCardWindow.Open(cover.Source), 14);
+        cardButton.ToolTip = "Lyrics card: save a line as a picture";
+        stage.Children.Add(new Border { Width = 32, Height = 32, CornerRadius = new CornerRadius(16), Background = JT.Brush(Color.FromArgb(26, 255, 255, 255)),
+                                        BorderBrush = JT.Brush(Color.FromArgb(51, 255, 255, 255)), BorderThickness = new Thickness(1), Child = cardButton, Tag = "card" });
         // the stream button: a clean window of the player to capture in TikTok LIVE Studio or OBS
         Button? streamButton = null;
         streamButton = UI.IconButton("\uE93E", "Stream windows", () =>
@@ -185,7 +189,7 @@ public sealed class PlayerPage : Grid, IRefresh
         }
         if (stream)
         {
-            foreach (var b in stage.Children.OfType<Border>().Where(b => b == queueBox || b == bar || b == songsPanel || b.Tag is "search" or "stream").ToList()) b.Visibility = Visibility.Collapsed;
+            foreach (var b in stage.Children.OfType<Border>().Where(b => b == queueBox || b == bar || b == songsPanel || b.Tag is "search" or "stream" or "card").ToList()) b.Visibility = Visibility.Collapsed;
             mark.Text = "Juice Tracker"; stage.Children.Add(mark);
         }
 
@@ -408,6 +412,7 @@ public sealed class PlayerPage : Grid, IRefresh
         var ring = stage.Children.OfType<Border>().First(b => "search".Equals(b.Tag));
         At(ring, cx + bar.Width / 2 - 34, h - 126);
         At(stage.Children.OfType<Border>().First(b => "stream".Equals(b.Tag)), cx + bar.Width / 2 - 74, h - 126);
+        At(stage.Children.OfType<Border>().First(b => "card".Equals(b.Tag)), cx + bar.Width / 2 - 114, h - 126);
         songsPanel.Width = Math.Min(460, w - 40); songsPanel.Height = Math.Max(240, h - 170); At(songsPanel, w - songsPanel.Width - 20, 20);
         empty.Width = 420; empty.TextAlignment = TextAlignment.Center; At(empty, cx - 210, cy - 10);
         Spin(IsLoaded);

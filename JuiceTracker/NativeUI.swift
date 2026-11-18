@@ -478,15 +478,15 @@ struct ScreenTitle: View {
 // MARK: - Window
 
 enum NativePage: String, CaseIterable, Identifiable {
-    case collection, player, hunt, playlists, fixer, dups, health, organize, people, stats, timeline, badges, trivia, export
+    case collection, player, hunt, playlists, fixer, dups, health, organize, people, stats, timeline, badges, trivia, wordle, tiers, export
     var id: String { rawValue }
     var title: String {
         ["collection": "Collection", "player": "Player", "hunt": "Hunt", "playlists": "Playlists", "organize": "Organize", "fixer": "Tag fixer", "dups": "Duplicates", "health": "File health", "people": "Credits",
-         "stats": "Stats", "timeline": "Timeline", "badges": "Badges", "trivia": "Trivia", "export": "Export & backup"][rawValue] ?? rawValue
+         "stats": "Stats", "timeline": "Timeline", "badges": "Badges", "trivia": "Trivia", "wordle": "Wordle", "tiers": "Tier list", "export": "Export & backup"][rawValue] ?? rawValue
     }
     var icon: String {
         ["collection": "smallcircle.filled.circle", "player": "play.circle", "hunt": "scope", "playlists": "music.note.list", "organize": "folder.badge.gearshape", "fixer": "tag", "dups": "square.on.square", "health": "waveform.path.ecg", "people": "person.2",
-         "stats": "chart.bar", "timeline": "point.3.connected.trianglepath.dotted", "badges": "rosette", "trivia": "questionmark.circle", "export": "archivebox"][rawValue] ?? "circle"
+         "stats": "chart.bar", "timeline": "point.3.connected.trianglepath.dotted", "badges": "rosette", "trivia": "questionmark.circle", "wordle": "textformat.abc", "tiers": "list.bullet.rectangle", "export": "archivebox"][rawValue] ?? "circle"
     }
 }
 
@@ -516,6 +516,8 @@ struct NativeRoot: View {
                         case .health: HealthScreen()
                         case .fixer: TagFixerScreen()
                         case .trivia: TriviaScreen()
+                        case .wordle: WordleScreen()
+                        case .tiers: TierListScreen()
                         case .export: ExportScreen()
                         case .badges: BadgesScreen(state: s, songs: store.songs)
                         default: CollectionScreen(state: s, songs: store.songs)

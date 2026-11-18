@@ -322,6 +322,28 @@ public static partial class Engine
     /// unreleased with no file on the site (yet). Released songs and ones the site has a file for are null (common).
     public static string? Rarity(EngineSong s, bool owned) => IsReleased(s) || s.FilePath.Length > 0 ? null : owned ? "Grail" : "Rare";
 
+    /// A song title as a Wordle answer: bracketed parts ("(feat. …)", "[v2]") dropped, letters and digits upper-cased,
+    /// spaces kept between words; null when it isn't 4 to 14 letters long.
+    public static string? WordleWord(string title)
+    {
+        var bare = System.Text.RegularExpressions.Regex.Replace(title, @"\s*[\(\[][^\)\]]*[\)\]]", "");
+        var plain = new string(bare.Normalize(System.Text.NormalizationForm.FormD).Where(c => System.Globalization.CharUnicodeInfo.GetUnicodeCategory(c) != System.Globalization.UnicodeCategory.NonSpacingMark).ToArray()).ToUpperInvariant();
+        var words = System.Text.RegularExpressions.Regex.Split(plain.Replace("'", "").Replace("’", ""), @"[^A-Z0-9]+").Where(w => w.Length > 0).ToList();
+        int letters = words.Sum(w => w.Length);
+        return letters is >= 4 and <= 14 ? string.Join(' ', words) : null;
+    }
+    /// A Wordle guess against the answer, letter by letter (spaces ignored): 2 right place, 1 in the word elsewhere, 0
+    /// not in it. A repeated letter is only yellow as many times as the answer still has it.
+    public static int[] WordleScore(string guess, string answer)
+    {
+        var g = guess.Replace(" ", ""); var a = answer.Replace(" ", "");
+        if (g.Length != a.Length) return [];
+        var output = new int[g.Length]; var left = new Dictionary<char, int>();
+        for (int k = 0; k < g.Length; k++) { if (g[k] == a[k]) output[k] = 2; else left[a[k]] = left.GetValueOrDefault(a[k]) + 1; }
+        for (int k = 0; k < g.Length; k++) if (output[k] == 0 && left.GetValueOrDefault(g[k]) > 0) { output[k] = 1; left[g[k]]--; }
+        return output;
+    }
+
     /// The eras a spoken name fits, best first: the short name, then the full name, then names containing the words.
     public static List<string> ErasNamed(string spoken, IEnumerable<(string Name, string Full)> eras)
     {
