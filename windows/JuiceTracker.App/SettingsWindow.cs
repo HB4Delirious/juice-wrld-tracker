@@ -99,6 +99,8 @@ public sealed class SettingsWindow : Window
         Check("Compact (smaller text and spacing, for small screens)", store.Me.Compact, v => { store.Me.Compact = v; MainWindow.Current?.Restyle(); });
         Check("Play a chime when songs land in your library", store.Me.Chime, v => { store.Me.Chime = v; if (v) Chime.Play(); });
         Check("Show download progress on the taskbar button", store.Me.TaskbarProgress, v => store.Me.TaskbarProgress = v);
+        body.Children.Add(UI.Muted("Desktop widgets (drag to move, right-click to close)", 12).Also(t => t.Margin = new Thickness(0, 10, 0, 0)));
+        foreach (var (key, name) in DesktopWidgets.Kinds) Check(name, store.Me.Widgets.Contains(key), v => DesktopWidgets.Set(key, v));
 
         Section("Updates");
         Check("Check for a new version every day", store.Me.AutoUpdate, v => store.Me.AutoUpdate = v);

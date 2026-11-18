@@ -82,7 +82,7 @@ cache, download queue).
 - **Upgrades:** File health also lists songs where the site has a lossless or higher-bitrate copy, with an Upgrade button.
 - **Lyrics and artwork:** song cards show the lyrics from juicewrldapi.com (timed lyrics follow the music while the song plays), the era's artwork, and instrumental notes. The sidebar player shows the line being sung, and songs without their own cover use the era art in Now Playing.
 - **Mini player** (Window > Mini Player, ⌘3): a small window that stays on top, with a visualizer that moves with the music (the sky glows along with it).
-- **Listening (Stats):** your top songs this week and all time from the app's own plays, owned songs you've never played, and Plex play counts.
+- **Listening (Stats):** your top songs this week and all time from the app's own plays (with a button to play your most played), your most played eras, what you played recently, owned songs you've never played, and Plex play counts.
 - **Spotlight and Shortcuts:** songs you have show up in ⌘Space search; Shortcuts and Siri can play an era, pause, skip, say what's playing, and download your wishlist.
 - **Desktop widget:** your collection count, what's playing and "On this day" (right-click the desktop > Edit Widgets > Juice Tracker; macOS 14 or later).
 - **Juice touches** (original art): era cards wear stickers that fit the era (a race car for DRFL, a halo for LND, a demon for FD, balloons for the party eras, 999 flash, a globe for WOD), a second tattoo-flash layer drifts through the sky, loading shows a spinning 999, and **Badges** collects milestones (999 club and more) and completed eras.
@@ -104,6 +104,9 @@ cache, download queue).
   - Windows: in TikTok LIVE Studio add a Window Capture of "Juice Tracker Stream (portrait)" (or landscape, matching the orientation you pick in LIVE Studio).
   - Mac: in OBS add a macOS Screen Capture of the stream window (canvas 1080x1920 for portrait, 1920x1080 for landscape) and stream to TikTok with your LIVE stream key.
   - A TikTok LIVE is one shape at a time: portrait fills phones held upright; landscape lives fill the screen when viewers rotate their phone. To offer both, capture both windows (for example OBS with a vertical canvas plugin) or switch scenes. TikTok may mute or end lives that play copyrighted music.
+- **Heardle:** name the song from a clip of your own files: one second at first, more after each wrong guess or skip (up to 16), six tries. Daily (same song all day, with streaks) or unlimited, from the intro or a spot inside the song, from all eras or one.
+- **Desktop widgets:** a clock, what's playing (play/pause, next), up next, and an edge light that makes the screen's edges glow with the music in the song's colours. Turn each on in Settings; drag to move, right-click to close.
+- **Share picture:** the song card's Share picture button saves or copies a 1080x1350 picture of the song: its art, era, dates, producers, and whether you have it.
 - **Wordle:** guess a Juice WRLD song title letter by letter (green right place, yellow elsewhere in the title), six tries; one title a day (with played, won and streak counts) or unlimited, from all eras or one.
 - **Tier list:** drag your songs into S to D rows (right-click works too), keep several lists, limit one to an era, and save it as a picture.
 - **Lyrics card:** the Player tab's quote button turns up to four lines of the song playing into a 1080x1350 picture with its cover and title, to save or copy. The lyrics come live from the site and aren't kept.

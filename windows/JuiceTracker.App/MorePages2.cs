@@ -18,6 +18,7 @@ public static partial class MorePages
         Extra[Page.Timeline] = () => new TimelinePage();
         Extra[Page.Badges] = () => new BadgesPage();
         Extra[Page.Trivia] = () => new TriviaPage();
+        Extra[Page.Heardle] = () => new HeardlePage();
         Extra[Page.Wordle] = () => new WordlePage();
         Extra[Page.Tiers] = () => new TierListPage();
     }

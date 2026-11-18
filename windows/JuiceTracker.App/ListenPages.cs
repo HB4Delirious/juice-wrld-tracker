@@ -240,6 +240,23 @@ public sealed class StatsPage : ToolPage
         listening.Children.Add(week); listening.Children.Add(all);
         var lp = new StackPanel(); lp.Children.Add(UI.Text("Your listening in Juice Tracker", 16, weight: FontWeights.SemiBold));
         lp.Children.Add(UI.Muted(log.Count == 0 ? "Nothing played yet." : $"{log.Count:N0} plays so far.", 13)); lp.Children.Add(listening);
+        if (log.Count > 0)
+        {
+            var mostPlayed = log.Select(e => songFor.GetValueOrDefault(e.File, -1)).Where(i => i >= 0).GroupBy(i => i).OrderByDescending(g => g.Count()).Take(25).Select(g => g.Key).ToList();
+            lp.Children.Add(UI.Button("Play your most played", () => Listen.PlayInOrder(mostPlayed)).Also(b => { b.HorizontalAlignment = HorizontalAlignment.Left; b.Margin = new Thickness(0, 12, 0, 0); }));
+            var eraPlays = log.Select(e => songFor.GetValueOrDefault(e.File, -1)).Where(i => i >= 0).GroupBy(i => Engine.EraName(store.Catalog[i])).OrderByDescending(g => g.Count()).Take(8).Select(g => (g.Key, g.Count())).ToList();
+            var recent = log.AsEnumerable().Reverse().Where(e => songFor.GetValueOrDefault(e.File, -1) >= 0).Take(10)
+                .Select(e => (store.Catalog[songFor[e.File]].Name, Ago(e.At))).ToList();
+            var more = new Grid(); more.ColumnDefinitions.Add(new ColumnDefinition()); more.ColumnDefinitions.Add(new ColumnDefinition());
+            var eraCol = new StackPanel { Margin = new Thickness(0, 10, 20, 0) }; eraCol.Children.Add(UI.Text("Most played eras", 13.5, weight: FontWeights.Bold));
+            foreach (var (name, n) in eraPlays)
+                eraCol.Children.Add(UI.Row(8, UI.Text(name, 13.5).Also(t => { t.Width = 150; t.TextTrimming = TextTrimming.CharacterEllipsis; }),
+                    new Rectangle { Width = Math.Max(4, 140.0 * n / eraPlays[0].Item2), Height = 8, RadiusX = 4, RadiusY = 4, Fill = JT.Brush(JT.Lavender), VerticalAlignment = VerticalAlignment.Center }, UI.Text($"{n}", 13, JT.Muted)));
+            var recentCol = new StackPanel { Margin = new Thickness(0, 10, 20, 0) }; recentCol.Children.Add(UI.Text("Recently played", 13.5, weight: FontWeights.Bold));
+            foreach (var (name, when) in recent) recentCol.Children.Add(UI.Row(8, UI.Text(name, 13.5), UI.Text(when, 13, JT.Muted)));
+            Grid.SetColumn(recentCol, 1); more.Children.Add(eraCol); more.Children.Add(recentCol);
+            lp.Children.Add(more);
+        }
         Add(UI.Panel(lp, 1, 16), 22);
 
         // the year so far
@@ -262,6 +279,11 @@ public sealed class StatsPage : ToolPage
         Add(Gaps(), 16);
     }
 
+    static string Ago(DateTime at)
+    {
+        var d = DateTime.Now - at;
+        return d.TotalMinutes < 1 ? "just now" : d.TotalHours < 1 ? $"{(int)d.TotalMinutes} min ago" : d.TotalDays < 1 ? $"{(int)d.TotalHours} h ago" : d.TotalDays < 2 ? "yesterday" : $"{(int)d.TotalDays} days ago";
+    }
     static FrameworkElement TopList(string title, List<(string Name, int Plays)> items)
     {
         var col = new StackPanel { Margin = new Thickness(0, 10, 20, 0) }; col.Children.Add(UI.Text(title, 13.5, weight: FontWeights.Bold));

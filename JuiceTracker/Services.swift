@@ -499,6 +499,13 @@ struct SettingsView: View {
                 Toggle("Compact mode (denser, for smaller windows)", isOn: $compactMode)
                 Toggle("Dock icon glows with the music and shows download progress", isOn: $animatedDock)
                 Toggle("Play a chime when songs land", isOn: $landedChime)
+                Text("Desktop widgets (drag to move, right-click to close)").font(.caption).foregroundColor(.secondary).padding(.top, 4)
+                HStack {
+                    ForEach(DesktopWidgets.kinds, id: \.key) { w in
+                        Toggle(w.name, isOn: Binding(get: { UserDefaults.standard.bool(forKey: "widget.\(w.key)") },
+                                                     set: { UserDefaults.standard.set($0, forKey: "widget.\(w.key)"); DesktopWidgets.apply() }))
+                    }
+                }
                 Text("Recolors the app's accents and sky after an era's mood.").font(.caption).foregroundColor(.secondary)
             } header: { Text("Look").bold() }
 

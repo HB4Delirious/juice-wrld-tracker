@@ -478,15 +478,15 @@ struct ScreenTitle: View {
 // MARK: - Window
 
 enum NativePage: String, CaseIterable, Identifiable {
-    case collection, player, hunt, playlists, fixer, dups, health, organize, people, stats, timeline, badges, trivia, wordle, tiers, export
+    case collection, player, hunt, playlists, fixer, dups, health, organize, people, stats, timeline, badges, trivia, heardle, wordle, tiers, export
     var id: String { rawValue }
     var title: String {
         ["collection": "Collection", "player": "Player", "hunt": "Hunt", "playlists": "Playlists", "organize": "Organize", "fixer": "Tag fixer", "dups": "Duplicates", "health": "File health", "people": "Credits",
-         "stats": "Stats", "timeline": "Timeline", "badges": "Badges", "trivia": "Trivia", "wordle": "Wordle", "tiers": "Tier list", "export": "Export & backup"][rawValue] ?? rawValue
+         "stats": "Stats", "timeline": "Timeline", "badges": "Badges", "trivia": "Trivia", "heardle": "Heardle", "wordle": "Wordle", "tiers": "Tier list", "export": "Export & backup"][rawValue] ?? rawValue
     }
     var icon: String {
         ["collection": "smallcircle.filled.circle", "player": "play.circle", "hunt": "scope", "playlists": "music.note.list", "organize": "folder.badge.gearshape", "fixer": "tag", "dups": "square.on.square", "health": "waveform.path.ecg", "people": "person.2",
-         "stats": "chart.bar", "timeline": "point.3.connected.trianglepath.dotted", "badges": "rosette", "trivia": "questionmark.circle", "wordle": "textformat.abc", "tiers": "list.bullet.rectangle", "export": "archivebox"][rawValue] ?? "circle"
+         "stats": "chart.bar", "timeline": "point.3.connected.trianglepath.dotted", "badges": "rosette", "trivia": "questionmark.circle", "heardle": "ear", "wordle": "textformat.abc", "tiers": "list.bullet.rectangle", "export": "archivebox"][rawValue] ?? "circle"
     }
 }
 
@@ -516,6 +516,7 @@ struct NativeRoot: View {
                         case .health: HealthScreen()
                         case .fixer: TagFixerScreen()
                         case .trivia: TriviaScreen()
+                        case .heardle: HeardleScreen()
                         case .wordle: WordleScreen()
                         case .tiers: TierListScreen()
                         case .export: ExportScreen()
@@ -1192,6 +1193,11 @@ struct SongCard: View {
                     }
                     if !song.o && song.f { Button { EngineDownloads.shared.add([song.s.id]) } label: { Label("Download", systemImage: "arrow.down.circle") } }
                     AddToPlaylistMenu(ids: [song.s.id]).fixedSize()
+                    Menu {
+                        Button("Save picture…") { Task { if let png = await songSharePicture(song, details: d) { _ = Files.save(png, name: "\(Engine.safeName(song.n)).png", type: .png) } } }
+                        Button("Copy picture") { Task { if let png = await songSharePicture(song, details: d), let img = NSImage(data: png) { NSPasteboard.general.clearContents(); NSPasteboard.general.writeObjects([img]) } } }
+                    } label: { Label("Share picture", systemImage: "square.and.arrow.up") }
+                    .fixedSize()
                     Spacer()
                     if let url = URL(string: d.siteUrl), !d.siteUrl.isEmpty { Link("Open the file on the site", destination: url) }
                 }

@@ -85,7 +85,7 @@ struct SongExtras {
         NotificationCenter.default.addObserver(forName: AmbientPlayer.changed, object: nil, queue: .main) { [weak self] _ in
             Task { @MainActor in await self?.refresh() }
         }
-        for name in [NSApplication.didBecomeActiveNotification, NSApplication.didResignActiveNotification, StreamWindows.changed] {
+        for name in [NSApplication.didBecomeActiveNotification, NSApplication.didResignActiveNotification, StreamWindows.changed, DesktopWidgets.changed] {
             NotificationCenter.default.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in Task { @MainActor in self?.tickWhenNeeded() } }
         }
     }
@@ -115,7 +115,7 @@ struct SongExtras {
 
     /// Ticks (lyrics line, loudness) only while music plays and the app is in front: nothing to see otherwise.
     private func tickWhenNeeded() {
-        let needed = AmbientPlayer.shared.isPlaying && (NSApp.isActive || StreamWindows.open) // a stream shows the lyrics and the beat
+        let needed = AmbientPlayer.shared.isPlaying && (NSApp.isActive || StreamWindows.open || DesktopWidgets.wantsLevel) // a stream shows the lyrics and the beat
         if needed, timer == nil {
             timer = Timer.scheduledTimer(withTimeInterval: 1.0 / 15, repeats: true) { [weak self] _ in Task { @MainActor in self?.tick() } }
         } else if !needed {
@@ -341,6 +341,8 @@ struct ListeningSection: View {
     @State private var allTime: [(Song, Int)] = []
     @State private var never: [Song] = []
     @State private var plays = 0
+    @State private var eras: [(String, Int)] = []
+    @State private var recent: [(Song, Date)] = []
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -348,10 +350,39 @@ struct ListeningSection: View {
             if plays == 0 {
                 Text("Songs the app plays (background music, the player, trivia clips aside) are counted here.").font(.caption).foregroundColor(JT.muted)
             } else {
-                Text("\(plays) plays so far.").foregroundColor(JT.muted)
+                HStack {
+                    Text("\(plays) plays so far.").foregroundColor(JT.muted)
+                    Spacer()
+                    if !allTime.isEmpty { Button("Play your most played") { playInOrder(allTime.prefix(25).map(\.0.i)) } }
+                }
                 HStack(alignment: .top, spacing: 18) {
                     list("This week", week)
                     list("All time", allTime)
+                }
+                HStack(alignment: .top, spacing: 18) {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("Most played eras").font(.subheadline.bold())
+                        let top = eras.first?.1 ?? 1
+                        ForEach(eras.prefix(8), id: \.0) { name, n in
+                            HStack {
+                                Text(name).lineLimit(1).frame(width: 150, alignment: .leading)
+                                Capsule().fill(JT.lavender.opacity(0.7)).frame(width: max(4, 140 * CGFloat(n) / CGFloat(top)), height: 8)
+                                Text("\(n)").foregroundColor(JT.muted)
+                            }
+                            .font(.callout)
+                        }
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("Recently played").font(.subheadline.bold())
+                        ForEach(Array(recent.prefix(10).enumerated()), id: \.offset) { _, item in
+                            Button { store.openSong = item.0 } label: {
+                                HStack { Text(item.0.n).lineLimit(1); Spacer(); (Text(item.1, style: .relative) + Text(" ago")).foregroundColor(JT.muted) }.font(.callout).contentShape(Rectangle())
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 }
                 if !never.isEmpty {
                     Text("Owned but never played here (\(never.count))").font(.subheadline.bold())
@@ -418,6 +449,8 @@ struct ListeningSection: View {
         let weekAgo = Date().addingTimeInterval(-7 * 86400)
         week = ranked(log.filter { $0.at > weekAgo })
         allTime = ranked(log)
+        eras = allTime.reduce(into: [String: Int]()) { $0[$1.0.e, default: 0] += $1.1 }.sorted { $0.value > $1.value }.map { ($0.key, $0.value) }
+        recent = log.suffix(40).reversed().compactMap { e in songFor[e.path].flatMap { store.songs.indices.contains($0) ? (store.songs[$0], e.at) : nil } }
         let neverRaw = await store.act("neverPlayed", -1, ["paths": paths])
         never = ((try? JSONDecoder().decode([Int].self, from: Data(neverRaw.utf8))) ?? []).compactMap { store.songs.indices.contains($0) ? store.songs[$0] : nil }
     }

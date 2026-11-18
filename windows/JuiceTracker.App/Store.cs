@@ -99,6 +99,14 @@ public sealed partial class Store
         public string WordleCounted { get; set; } = "";   // the last daily round counted in the stats
         public List<TierList> TierLists { get; set; } = [];
         public string TierListPick { get; set; } = "";
+        public bool HeardleDaily { get; set; } = true;
+        public string HeardleEra { get; set; } = "";
+        public bool HeardleIntro { get; set; } = true;
+        public string HeardleSaved { get; set; } = "";     // today's daily round: "date|era|intro|id,id,-" (- is a skip)
+        public string HeardleStats { get; set; } = "0,0,0,0"; // daily rounds: played, won, streak, best
+        public string HeardleCounted { get; set; } = "";
+        public List<string> Widgets { get; set; } = [];    // desktop widgets that are on: clock, playing, upnext, edge
+        public Dictionary<string, double[]> WidgetSpots { get; set; } = []; // where each widget was left (left, top)
     }
     public sealed record Playlist(string Id, string Name, List<string> Songs);
     public Personal Me { get; private set; } = new();
@@ -166,6 +174,7 @@ public sealed partial class Store
         });
         Me = me;
         Themes.Apply(); MainWindow.Current?.Restyle();
+        DesktopWidgets.Apply(); // the widgets you had on
         saved = sv;
         if (cf is not null) { Catalog = cf.Songs; Eras = cf.Eras; FetchedAt = cf.FetchedAt; }
         cache = tags; queue = q;

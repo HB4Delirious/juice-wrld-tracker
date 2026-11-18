@@ -50,6 +50,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUs
         AppDelegate.shared = self
         JTFonts.register()
         _ = NowPlaying.shared // follows the player for lyrics, artwork and the visualizer
+        DesktopWidgets.apply() // the widgets you had on
         // macOS would otherwise quietly quit the app once its window is closed, defeating "Keep running".
         ProcessInfo.processInfo.automaticTerminationSupportEnabled = false
         Task { await EngineState.shared.start() } // the catalog, your data and your library
