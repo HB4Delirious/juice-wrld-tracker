@@ -227,6 +227,15 @@ public static partial class Engine
     public static string M3u(IEnumerable<(string Path, string Title, double? Seconds)> entries) =>
         "#EXTM3U\n" + string.Concat(entries.Select(e => $"#EXTINF:{(e.Seconds is { } s ? (int)s : -1)},Juice WRLD - {string.Join(' ', e.Title.Split('\n', '\r'))}\n{e.Path}\n"));
 
+    /// Of the songs a file could be (versions share a title), the one whose listed length is closest to the file's.
+    public static int? ClosestByLength(IReadOnlyList<int> candidates, IReadOnlyList<EngineSong> catalog, double? seconds)
+    {
+        if (candidates.Count == 0) return null;
+        if (seconds is not { } s || candidates.Count == 1) return candidates[0];
+        double Off(int i) => LengthSeconds(catalog[i].Length) is { } l ? Math.Abs(l - s) : double.PositiveInfinity;
+        return candidates.MinBy(Off);
+    }
+
     /// The equalizer's presets: bass, mids and treble in dB.
     public static readonly (string Name, double[] Bands)[] EqPresets = [("Flat", [0, 0, 0]), ("Bass boost", [6, 0, 1]), ("Vocals", [-2, 4, 2]), ("Bright", [0, 1, 5]), ("Late night", [-4, 1, -3])];
     /// The preset these bands match, or "Custom".

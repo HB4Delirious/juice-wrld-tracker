@@ -1,4 +1,5 @@
 import AppKit
+import AVFoundation
 import QuartzCore
 import SwiftUI
 
@@ -495,6 +496,7 @@ struct NativeRoot: View {
     @ObservedObject private var theme = ThemeWatcher.shared
     @State private var searching = false
     @State private var toast: String?
+    @State private var identified: IdentifyResult?
     private var page: NativePage { store.page }
 
     var body: some View {
@@ -538,12 +540,28 @@ struct NativeRoot: View {
         .overlay(alignment: .top) {
             if let toast { LandedToast(text: toast).padding(.top, 16).transition(.move(edge: .top).combined(with: .opacity)) }
         }
+        // drop an audio file anywhere: which song it is
+        .onDrop(of: [.fileURL], isTargeted: nil) { providers in
+            guard let provider = providers.first else { return false }
+            _ = provider.loadObject(ofClass: URL.self) { url, _ in
+                guard let url, Identify.kinds.contains(url.pathExtension.lowercased()) else { return }
+                Task { @MainActor in
+                    let catalog = EngineState.shared.catalog
+                    let found = await Task.detached { Identify.song(url, catalog: catalog) }.value
+                    identified = IdentifyResult(file: url.lastPathComponent, song: found.song, how: found.how)
+                }
+            }
+            return true
+        }
+        .sheet(item: $identified) { r in IdentifySheet(result: r) { identified = nil } }
         .onChange(of: store.state?.have ?? 0) { n in if String(n).contains("999") { NotificationCenter.default.post(name: Confetti.fire999, object: nil) } }
         .onChange(of: store.landed) { ids in
             guard !ids.isEmpty else { return }
             NotificationCenter.default.post(name: Confetti.fire, object: nil)
             Chime.play()
             let text = ids.count == 1 && store.songs.indices.contains(ids[0]) ? "\u{201C}\(store.songs[ids[0]].n)\u{201D} landed in your library" : "\(ids.count) songs landed in your library"
+            Inbox.add(text, ids.compactMap { store.songs.indices.contains($0) ? store.songs[$0].n : nil }.prefix(6).joined(separator: ", "),
+                      ids: ids.compactMap { store.songs.indices.contains($0) ? store.songs[$0].s.id : nil })
             withAnimation(.spring(response: 0.42, dampingFraction: 0.7)) { toast = text }
             DispatchQueue.main.asyncAfter(deadline: .now() + 3.8) { withAnimation(.easeIn(duration: 0.3)) { if toast == text { toast = nil } } }
         }
@@ -579,6 +597,8 @@ struct Sidebar: View {
             .buttonStyle(.plain)
             .onHover { logoHover = $0 }
             .padding(.top, 38).padding(.horizontal, 8).padding(.bottom, 22)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .overlay(alignment: .topTrailing) { InboxBell().padding(.top, 40) }
 
             Button { searching = true } label: {
                 HStack(spacing: 10) {
@@ -1238,5 +1258,56 @@ struct SongCard: View {
          ("Surfaced", [d.leakDate, d.leakType].filter { !$0.isEmpty }.joined(separator: ", ")), ("Sessions", d.sessions), ("Artists", d.artists),
          ("Producers", d.producers), ("Engineers", d.engineers), ("Studios", d.locations)]
             .map { ($0.0, $0.1.trimmingCharacters(in: .whitespacesAndNewlines)) }.filter { !$0.1.isEmpty }
+    }
+}
+
+// MARK: - Identify a song
+
+/// Which catalog song an audio file is: read like a library file (its tags, else its name), matched the same way,
+/// and of versions sharing a title, the one closest to the file's length.
+enum Identify {
+    static let kinds: Set<String> = ["mp3", "m4a", "m4b", "aac", "alac", "flac", "wav", "aif", "aiff", "ogg", "opus", "wma"]
+    /// Off the main thread: it reads the file.
+    static func song(_ url: URL, catalog: [EngineSong]) -> (song: Int?, how: String) {
+        let ext = Engine.extOf(url.path), tags = TagReader.read(url, ext: ext)
+        let fromTags = !(tags["title"] ?? "").isEmpty
+        let title = fromTags ? tags["title"]! : Engine.titleFromFilename(url.path)
+        let path = "dropped/" + url.lastPathComponent
+        let file = LibraryFile(path: path, ext: ext, tags: tags, title: title, key: Engine.normalize(title), stem: Engine.stemOf(path), fromTags: fromTags, size: 0)
+        let m = Engine.match(catalog: catalog, files: [file], overrides: [:])
+        let seconds = (try? AVAudioFile(forReading: url)).map { Double($0.length) / $0.processingFormat.sampleRate }
+        let pick = Engine.closestByLength(m.songsFor[path] ?? [], catalog: catalog, seconds: seconds)
+        let how = ["title": fromTags ? "by its title tag" : "by its file name", "file": "by the site's file name", "close": "by a close title"][m.how[path] ?? ""] ?? ""
+        return (pick, how)
+    }
+}
+
+struct IdentifyResult: Identifiable { let id = UUID(); let file: String; let song: Int?; let how: String }
+
+private struct IdentifySheet: View {
+    let result: IdentifyResult
+    let close: () -> Void
+    @ObservedObject private var store = NativeStore.shared
+    var body: some View {
+        let song = result.song.flatMap { i in store.songs.indices.contains(i) ? store.songs[i] : nil }
+        VStack(alignment: .leading, spacing: 12) {
+            Text("What song is this?").font(JT.marker(24))
+            Text(result.file).foregroundColor(JT.muted).lineLimit(2)
+            if let song {
+                Text(song.n).font(JT.body(22, .bold))
+                Text("\(song.e) · \(song.c)\(result.how.isEmpty ? "" : " · matched \(result.how)")").foregroundColor(JT.muted)
+                Label(song.o ? "You have it" : "You don't have it yet", systemImage: song.o ? "checkmark.circle.fill" : "circle.dashed")
+                    .foregroundColor(song.o ? JT.have : JT.missing)
+            } else {
+                Text("No song in the catalog matches this file.").font(JT.body(16, .semibold))
+                Text("It may not be Juice WRLD, or its title and file name are too different from the site's.").foregroundColor(JT.muted).fixedSize(horizontal: false, vertical: true)
+            }
+            HStack {
+                Spacer()
+                if let song { Button("Open the song card") { close(); store.openSong = song }.keyboardShortcut(.defaultAction) }
+                Button("Close", action: close).keyboardShortcut(.cancelAction)
+            }
+        }
+        .padding(24).frame(width: 440)
     }
 }

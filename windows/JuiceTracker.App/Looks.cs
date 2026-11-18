@@ -7,6 +7,16 @@ using System.Windows.Shapes;
 
 namespace JuiceTracker.App;
 
+/// The Player's lyrics font (Settings).
+static class LyricFonts
+{
+    public static readonly (string Id, string Name)[] All = [("figtree", "Clean"), ("marker", "Marker"), ("rounded", "Rounded"), ("serif", "Serif"), ("mono", "Typewriter")];
+    public static FontFamily Family(string id) => id switch
+    {
+        "marker" => JT.Marker, "rounded" => new FontFamily("Bahnschrift"), "serif" => new FontFamily("Georgia"), "mono" => new FontFamily("Consolas"), _ => JT.Body,
+    };
+}
+
 /// A video of the song in its folder (an .mp4, .mov or .m4v with the file's name or the song's title).
 static class MusicVideo
 {

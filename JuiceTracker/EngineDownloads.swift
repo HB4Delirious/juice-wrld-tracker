@@ -47,6 +47,30 @@ import AppKit
 
     func stop() { if job != nil { stopping = true } }
 
+    /// Bytes free on the music drive, or nil when it can't be told (or there's no music folder). Asks the drive, so
+    /// off the main thread where it can be slow (a network drive waking up).
+    nonisolated static func freeSpace(_ root: URL?) -> Int64? {
+        guard let root,
+              let v = try? root.resourceValues(forKeys: [.volumeAvailableCapacityForImportantUsageKey, .volumeAvailableCapacityKey]) else { return nil }
+        if let important = v.volumeAvailableCapacityForImportantUsage, important > 0 { return important }
+        return v.volumeAvailableCapacity.map(Int64.init)
+    }
+
+    /// Settings > Downloads: new songs with a file download on their own when the daily check finds them, as many as
+    /// fit with room to spare (2 GB, at about 12 MB a song). Returns how many were queued.
+    @discardableResult func autoDownload(_ ids: [String]) -> Int {
+        let engine = EngineState.shared, owned = EngineLibrary.shared.owned
+        let wanted = ids.filter { id in engine.catalog.firstIndex { $0.id == id }.map { !owned.contains($0) && !engine.catalog[$0].filePath.isEmpty } ?? false }
+        guard !wanted.isEmpty else { return 0 }
+        let room = Self.freeSpace(EngineLibrary.shared.root).map { Int(max(0, $0 - 2_000_000_000) / 12_000_000) } ?? wanted.count
+        let fits = Array(wanted.prefix(room))
+        if fits.count < wanted.count { Inbox.add("Not everything fits on the music drive", "\(wanted.count - fits.count) new song\(wanted.count - fits.count == 1 ? "" : "s") weren't downloaded, to keep 2 GB free.") }
+        guard !fits.isEmpty else { return 0 }
+        let names = fits.compactMap { id in engine.catalog.first { $0.id == id }?.name }
+        Inbox.add("Downloading \(fits.count) new song\(fits.count == 1 ? "" : "s")", names.prefix(6).joined(separator: ", ") + (names.count > 6 ? " and \(names.count - 6) more" : ""), ids: fits)
+        return add(fits)
+    }
+
     /// The songs on your wishlist that you don't have and that have a file on the site. Returns how many.
     func downloadWishlist() -> Int {
         let engine = EngineState.shared, owned = EngineLibrary.shared.owned, wish = engine.wish
@@ -66,6 +90,12 @@ import AppKit
         job = Job(total: queue.count)
         NativeStore.shared.rebuild()
         while !stopping, let item = queue.first {
+            // never fill the drive: stop with 1 GB left, and say so in the notifications
+            let root = EngineLibrary.shared.root
+            if let free = await Task.detached(operation: { Self.freeSpace(root) }).value, free < 1_000_000_000 {
+                Inbox.add("Downloads stopped: the music drive is almost full", "\(queue.count) song\(queue.count == 1 ? "" : "s") still to download. Free up some space, then download them again.")
+                stopping = true; break
+            }
             let catalog = EngineState.shared.catalog
             guard let i = catalog.firstIndex(where: { $0.id == item.id }), !catalog[i].filePath.isEmpty else {
                 queue.removeFirst(); save(); job!.done += 1; continue

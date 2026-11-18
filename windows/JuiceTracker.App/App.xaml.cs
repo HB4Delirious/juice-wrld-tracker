@@ -58,6 +58,9 @@ public partial class App : Application
             var store = Store.Shared; var wished = store.WishedReleasedNames; var fresh = store.NewSongNames;
             if (wished.Count > 0) Tray.Notify("From your wishlist", $"{string.Join(", ", wished.Take(3))}{(wished.Count > 3 ? $" and {wished.Count - 3} more" : "")} can be downloaded now.");
             else if (fresh.Count > 0) Tray.Notify(fresh.Count == 1 ? "A new song" : $"{fresh.Count:N0} new songs", string.Join(", ", fresh.Take(4)));
+            if (wished.Count > 0) Inbox.Add("From your wishlist", $"{string.Join(", ", wished.Take(6))} can be downloaded now.");
+            if (fresh.Count > 0) Inbox.Add(fresh.Count == 1 ? "A new song in the catalog" : $"{fresh.Count:N0} new songs in the catalog", string.Join(", ", fresh.Take(6)) + (fresh.Count > 6 ? $" and {fresh.Count - 6} more" : ""), store.NewSongIds);
+            if (store.Me.AutoDownload && store.NewSongIds.Count > 0) store.AutoDownload(store.NewSongIds);
         };
         // hourly: if the daily check is on and the catalog is over 12 hours old, load it again (and alert)
         var hourly = new DispatcherTimer { Interval = TimeSpan.FromHours(1) };
@@ -125,6 +128,11 @@ public partial class App : Application
                     var samples = new float[4096];
                     if (eq.Read(samples, 0, samples.Length) != samples.Length || samples.Any(float.IsNaN)) throw new Exception("The equalizer's filters came out wrong.");
                     Equalizer.Set(false, [0, 0, 0]);
+                    // a notice goes in the list, and a dropped file is identified (a second of silence: it reads, matches, and doesn't crash)
+                    Inbox.Add("Smoke test", "A notice", []);
+                    var wav = Path.Combine(Path.GetTempPath(), "jt-identify.wav");
+                    using (var w = new NAudio.Wave.WaveFileWriter(wav, new NAudio.Wave.WaveFormat(44100, 16, 2))) w.Write(new byte[44100 * 4], 0, 44100 * 4);
+                    Identify.Find(wav, Store.Shared.Catalog);
                     // the lyrics windows open
                     LyricsMakerWindow.Open(); LyricsCardWindow.Open(null);
                     // every desktop widget opens and closes

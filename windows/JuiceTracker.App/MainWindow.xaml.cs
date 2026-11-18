@@ -24,12 +24,19 @@ public partial class MainWindow : Window
         Store.Shared.Changed += Refresh;
         Player.Shared.Changed += () => sidebar?.UpdatePlayer();
         KeyDown += OnKey;
+        // drop an audio file anywhere: which song it is
+        AllowDrop = true;
+        Drop += (_, e) =>
+        {
+            if (e.Data.GetData(DataFormats.FileDrop) is string[] { Length: > 0 } files && Identify.Kinds.Contains(Engine.ExtOf(files[0]))) Identify.Show(files[0]);
+        };
         PreviewTextInput += (_, e) => { typed = (typed + e.Text)[^Math.Min(3, (typed + e.Text).Length)..]; if (typed == "999") { typed = ""; Fx.Shower999(); } };
         Fx.Attach(FxLayer);
         Store.Shared.Landed += n =>
         {
             Fx.Confetti();
             Toast(n == 1 ? "1 song landed in your library" : $"{n:N0} songs landed in your library");
+            Inbox.Add(n == 1 ? "1 song landed in your library" : $"{n:N0} songs landed in your library", "");
             if (Store.Shared.Owned.Count.ToString().Contains("999")) Fx.Shower999();
         };
         // with "keep running" on, closing hides the window; the notification-area icon brings it back or quits
@@ -172,11 +179,13 @@ public sealed class Sidebar : Grid
         var logo = new Image { Source = JT.Image("jt-logo"), Width = 44, Height = 44, RenderTransformOrigin = new Point(0.5, 0.5) };
         var brand = UI.Marker("Juice\nTracker", 23); brand.LineHeight = 23; brand.LineStackingStrategy = LineStackingStrategy.BlockLineHeight;
         var head = UI.Row(10, logo, brand);
-        head.Margin = new Thickness(8, 38, 8, 22); head.Cursor = Cursors.Hand; head.Background = Brushes.Transparent;
+        head.Cursor = Cursors.Hand; head.Background = Brushes.Transparent;
         var rt = new TransformGroup { Children = { new RotateTransform(), new ScaleTransform(1, 1) } }; logo.RenderTransform = rt;
         head.MouseEnter += (_, _) => Wiggle(rt, true); head.MouseLeave += (_, _) => Wiggle(rt, false);
         head.MouseLeftButtonUp += (_, _) => window.Show(Page.Collection);
-        top.Children.Add(head);
+        var headRow = new DockPanel { Margin = new Thickness(8, 38, 4, 22) };
+        var bell = Inbox.Bell(); DockPanel.SetDock(bell, Dock.Right); headRow.Children.Add(bell); headRow.Children.Add(head);
+        top.Children.Add(headRow);
 
         // search: Ctrl+K
         var searchText = UI.Row(10, UI.Icon("", 13, JT.Muted), UI.Text("Search", 15, JT.Muted));

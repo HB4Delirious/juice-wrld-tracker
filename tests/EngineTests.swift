@@ -250,6 +250,9 @@ import Foundation
             expect(Engine.m3u([("/m/a.mp3", "Lucid Dreams", 239.6), ("/m/b.flac", "Two\nLines", nil)]) == "#EXTM3U\n#EXTINF:239,Juice WRLD - Lucid Dreams\n/m/a.mp3\n#EXTINF:-1,Juice WRLD - Two Lines\n/m/b.flac\n", "m3u: length, title on one line, path")
             expect(Engine.boosted(0.2, peak: 0.25) == (0.8, 0.25) && Engine.boosted(0.05, peak: 0) == (0.2, 0.25), "boost: a quiet song is lifted, near-silence only so far")
             expect(Engine.boosted(0.9, peak: 0.4) == (1, 0.9) && Engine.boosted(0.45, peak: 0.9).level == 0.45 / (0.9 * 0.995), "boost: a loud song sets the peak, which falls back slowly")
+            let cuts = ["3:00", "4:10", ""].enumerated().map { k, l -> EngineSong in var s = song("\(k)", "Same", "DRFL"); s.length = l; return s }
+            expect(Engine.closestByLength([0, 1, 2], catalog: cuts, seconds: 245) == 1 && Engine.closestByLength([0, 1, 2], catalog: cuts, seconds: nil) == 0
+                   && Engine.closestByLength([2], catalog: cuts, seconds: 10) == 2, "identify: of the versions, the one closest in length")
             expect(Engine.eqPreset([-2, 4, 2]) == "Vocals" && Engine.eqPreset([0, 4, 2]) == "Custom", "equalizer: bands name their preset, or Custom")
             expect(Engine.eqHeadroom([6, 0, 1]) == -3 && Engine.eqHeadroom([-4, 1, -3]) == -0.5 && Engine.eqHeadroom([-4, -1, -3]) == 0, "equalizer: turned down by half the biggest boost")
             let lrc = Engine.parseLrc("[ar:Juice WRLD]\n[00:12.50]second line\n[00:03.00]<00:03.00>first <00:03.60>line <00:04.20>here\n[00:20.00]<00:20.00>wrong count")
