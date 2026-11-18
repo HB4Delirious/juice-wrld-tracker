@@ -640,7 +640,7 @@ struct HeardleScreen: View {
 /// close it). They stay where you put them.
 @MainActor enum DesktopWidgets {
     static let changed = Notification.Name("DesktopWidgetsChanged")
-    static let kinds: [(key: String, name: String)] = [("clock", "Clock"), ("playing", "What's playing"), ("upnext", "Up next"), ("playlist", "Playlist"), ("edge", "Edge light")]
+    static let kinds: [(key: String, name: String)] = [("clock", "Clock"), ("playing", "What's playing"), ("upnext", "Up next"), ("playlist", "Playlist"), ("player", "Desktop player"), ("edge", "Edge light")]
     private static var windows: [String: NSWindow] = [:]
     static func isOn(_ key: String) -> Bool { UserDefaults.standard.bool(forKey: "widget.\(key)") }
     /// The edge light follows the music's loudness, so the meter keeps ticking while the app is in the background.
@@ -671,6 +671,13 @@ struct HeardleScreen: View {
         windows[key]?.isMovableByWindowBackground = !locked
     }
 
+    /// A widget that changes size (the desktop player folding), keeping its top edge where it was.
+    static func resize(_ key: String, _ size: NSSize) {
+        guard let w = windows[key] else { return }
+        let f = w.frame
+        w.setFrame(NSRect(x: f.minX, y: f.maxY - size.height, width: size.width, height: size.height), display: true, animate: true)
+    }
+
     private static func open(_ key: String) {
         if key == "edge" { openEdge(); return }
         let view: AnyView
@@ -679,6 +686,7 @@ struct HeardleScreen: View {
         case "clock": view = AnyView(ClockWidget()); size = NSSize(width: 260, height: 130)
         case "playing": view = AnyView(PlayingWidget()); size = NSSize(width: 340, height: 96)
         case "playlist": view = AnyView(PlaylistWidget()); size = NSSize(width: 290, height: 300)
+        case "player": view = AnyView(DesktopPlayerWidget()); size = Pref.bool("widget.playerFolded", default: false) ? DesktopPlayerWidget.small : DesktopPlayerWidget.size
         default: view = AnyView(UpNextWidget()); size = NSSize(width: 280, height: 220)
         }
         let p = NSPanel(contentRect: NSRect(origin: .zero, size: size), styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
@@ -712,7 +720,7 @@ struct HeardleScreen: View {
             let w = NSWindow(contentRect: screen.frame, styleMask: .borderless, backing: .buffered, defer: false, screen: screen)
             w.level = .floating; w.backgroundColor = .clear; w.isOpaque = false; w.hasShadow = false
             w.ignoresMouseEvents = true // clicks go through to whatever is underneath
-            w.collectionBehavior = [.canJoinAllSpaces, .stationary, .fullScreenAuxiliary, .ignoresCycle]
+            w.collectionBehavior = [.canJoinAllSpaces, .stationary, .ignoresCycle] // not over another app's full screen
             w.isReleasedWhenClosed = false
             w.contentView = EdgeLightView(frame: NSRect(origin: .zero, size: screen.frame.size))
             w.setFrame(screen.frame, display: true)
@@ -793,6 +801,55 @@ private struct PlayingWidget: View {
         }
         .onReceive(changed) { _ in version += 1 }
         .id(version)
+    }
+}
+
+/// What's playing and what's next as glass cards with a control bar; folds down to a capsule.
+private struct DesktopPlayerWidget: View {
+    static let size = NSSize(width: 320, height: 330), small = NSSize(width: 320, height: 76)
+    @AppStorage("widget.playerFolded") private var folded = false
+    @State private var version = 0
+    private let changed = NotificationCenter.default.publisher(for: AmbientPlayer.changed)
+    var body: some View {
+        let p = AmbientPlayer.shared
+        WidgetBox {
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(spacing: 10) {
+                    Group { if let img = p.coverImage { Image(nsImage: img).resizable().scaledToFill() } else { Image("jt-logo").resizable().scaledToFit().padding(6) } }
+                        .frame(width: folded ? 40 : 56, height: folded ? 40 : 56).clipShape(RoundedRectangle(cornerRadius: 10))
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(p.title ?? "Nothing playing").font(JT.body(14, .bold)).lineLimit(1)
+                        if !folded { Text(NowPlaying.shared.song?.e ?? "Juice Tracker").foregroundColor(JT.muted).lineLimit(1) }
+                    }
+                    Spacer(minLength: 4)
+                    if folded { controls }
+                    Button { folded.toggle() } label: { Image(systemName: folded ? "chevron.down" : "chevron.up") }.buttonStyle(.plain).foregroundColor(JT.muted)
+                        .help(folded ? "Show the queue" : "Fold into a capsule").accessibilityLabel(folded ? "Show the queue" : "Fold")
+                }
+                if !folded {
+                    ForEach(Array(p.upNext.prefix(4).enumerated()), id: \.offset) { k, item in
+                        Text("\(k + 1). \(item.title)").lineLimit(1).padding(.horizontal, 10).padding(.vertical, 7).frame(maxWidth: .infinity, alignment: .leading)
+                            .background(RoundedRectangle(cornerRadius: 10).fill(Color.white.opacity(0.07)))
+                            .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.white.opacity(0.1)))
+                    }
+                    if p.upNext.isEmpty { Text(EngineAmbient.era.isEmpty ? "Shuffle after this" : "\(EngineAmbient.era) after this").foregroundColor(JT.muted) }
+                    Spacer(minLength: 0)
+                    HStack { Spacer(); controls; Spacer() }
+                }
+            }
+        }
+        .onReceive(changed) { _ in version += 1 }
+        .onChange(of: folded) { f in DesktopWidgets.resize("player", f ? Self.small : Self.size) }
+        .id(version)
+    }
+    private var controls: some View {
+        let p = AmbientPlayer.shared
+        return HStack(spacing: 16) {
+            Button { p.seek(to: 0) } label: { Image(systemName: "backward.end.fill") }.help("Start the song again")
+            Button { if p.title == nil { EngineAmbient.setOn(true); p.resume() } else { p.togglePause() } } label: { Image(systemName: p.isPlaying ? "pause.fill" : "play.fill") }
+            Button { p.skip() } label: { Image(systemName: "forward.fill") }.help("Next song")
+        }
+        .buttonStyle(.plain).font(.system(size: 16))
     }
 }
 
@@ -882,6 +939,10 @@ final class EdgeLightView: NSView {
     override func layout() { super.layout(); glow.frame = bounds; glow.path = CGPath(rect: bounds.insetBy(dx: 2, dy: 2), transform: nil) }
     /// The cover's two strongest colors, or your own color (Settings > Look).
     private func recolor() {
+        // Settings > Look: how thick the line is and how far it glows
+        let d = UserDefaults.standard
+        glow.lineWidth = CGFloat(d.object(forKey: "widget.edgeWidth") as? Double ?? 6)
+        glow.shadowRadius = CGFloat(d.object(forKey: "widget.edgeGlow") as? Double ?? 34)
         if let own = EraTheme.color(UserDefaults.standard.string(forKey: "widget.edgeColor")) {
             glow.strokeColor = own.cgColor; glow.shadowColor = own.cgColor; return
         }

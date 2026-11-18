@@ -53,6 +53,8 @@ static class PlayerLooks
     public static readonly (string Id, string Name)[] All = [("hole", "Black hole"), ("rings", "Rings"), ("bars", "Bars"), ("disc", "Record")];
     public static event Action? Changed;
     public static void Pick(string id) { Store.Shared.Me.PlayerStyle = id; Store.Shared.SavePersonal(); Changed?.Invoke(); }
+    /// Another Player setting changed (lighter visuals): the open Player page redraws.
+    public static void Refresh() => Changed?.Invoke();
 }
 
 /// Rings (circles in the song's colors turning at their own speeds, swelling with the beat), Bars (bars round a dark

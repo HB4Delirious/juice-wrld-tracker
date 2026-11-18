@@ -41,6 +41,8 @@ public partial class MainWindow : Window
         };
         // with "keep running" on, closing hides the window; the notification-area icon brings it back or quits
         Shortcuts.Start(this); // your keyboard shortcuts
+        // Settings: minimizing hides the window to the notification-area icon (it brings it back)
+        StateChanged += (_, _) => { if (WindowState == WindowState.Minimized && Store.Shared.Me.MinimizeToTray) Hide(); };
         Closing += (_, e) =>
         {
             if (Store.Shared.Me.KeepRunning && !Tray.Quitting) { e.Cancel = true; Hide(); }

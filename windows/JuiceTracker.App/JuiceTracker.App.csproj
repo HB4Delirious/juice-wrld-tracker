@@ -2,7 +2,7 @@
   <!-- The Windows app (WPF). Builds on any OS (EnableWindowsTargeting), runs on Windows 10/11. -->
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
-    <TargetFramework>net10.0-windows</TargetFramework>
+    <TargetFramework>net10.0-windows10.0.19041.0</TargetFramework>
     <UseWPF>true</UseWPF>
     <!-- for the notification-area icon (new-song alerts) only; its names stay out of the global usings -->
     <UseWindowsForms>true</UseWindowsForms>

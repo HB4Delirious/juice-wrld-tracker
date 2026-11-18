@@ -128,6 +128,12 @@ public sealed partial class Store
         public DateTime NoticesSeen { get; set; }           // when the list was last opened
         public bool AutoDownload { get; set; }             // new songs with a file download on their own
         public string LyricFont { get; set; } = "figtree"; // the Player's lyrics font
+        public bool PlayerFolded { get; set; }             // the desktop player folded into a capsule
+        public double EdgeWidth { get; set; } = 46;        // how thick the edge light is
+        public double EdgeGlow { get; set; } = 1;          // how bright it glows
+        public bool VisualsLow { get; set; }               // lighter Player visuals for slower computers
+        public bool MinimizeToTray { get; set; }           // minimizing hides the window to the notification-area icon
+        public bool MediaKeys { get; set; } = true;        // media keys, and Windows' volume/media pop-up with the song
     }
     public sealed record Playlist(string Id, string Name, List<string> Songs);
     public Personal Me { get; private set; } = new();
