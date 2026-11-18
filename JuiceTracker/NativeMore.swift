@@ -683,6 +683,7 @@ struct PlayerScreen: View {
     @State private var looks = false
     @AppStorage("playerStyle") private var look = "hole"
     @AppStorage("musicVideos") private var videosOn = true
+    @AppStorage("visualsLow") private var low = false // Settings > Look: lighter visuals for slower computers
     @State private var video: URL? // the song's music video, when your folder has one
     @State private var query = ""
     @State private var era = ""
@@ -703,7 +704,7 @@ struct PlayerScreen: View {
             let hole = portrait ? min(w * 0.6, h * 0.32) : stream ? min(w * 0.3, h * 0.46) : max(160, min(w * 0.34, h * 0.4, 360))
             let cx = w / 2, cy = portrait ? h * 0.36 : h * 0.44
             ZStack {
-                SpaceMotion()
+                if !low { SpaceMotion() }
                 Circle().stroke(AngularGradient(colors: [palette.a, palette.b, palette.c, palette.a], center: .center), lineWidth: 3)
                     .frame(width: hole, height: hole).padding(4).drawingGroup().scaleEffect(wave.scale).opacity(wave.alpha).blur(radius: 1.5)
                     .position(x: cx, y: cy).allowsHitTesting(false)
@@ -717,7 +718,7 @@ struct PlayerScreen: View {
                     PlayerLook(style: look, palette: palette, size: hole, cover: AmbientPlayer.shared.coverImage)
                         .frame(width: hole * 2.6, height: hole * 2.6).position(x: cx, y: cy)
                 }
-                IconSwirl(size: hole).frame(width: hole * 3.4, height: hole * 3.4).position(x: cx, y: cy)
+                if !low { IconSwirl(size: hole).frame(width: hole * 3.4, height: hole * 3.4).position(x: cx, y: cy) }
                 PlayerClock(size: hole * 0.34, glow: palette.a).position(x: cx, y: cy - hole * 0.62)
                 if portrait {
                     KaraokeLine(glow: palette.a, centered: true, size: max(22, w * 0.06)).frame(width: w * 0.86).position(x: cx, y: cy + hole * 0.84)

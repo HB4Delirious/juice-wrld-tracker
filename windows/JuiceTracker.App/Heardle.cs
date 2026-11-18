@@ -201,7 +201,7 @@ public sealed class HeardlePage : ToolPage
 /// screen's edges glow with the music. Each is on or off in Settings; drag one to move it, right-click to close it.
 static class DesktopWidgets
 {
-    public static readonly (string Key, string Name)[] Kinds = [("clock", "Clock"), ("playing", "What's playing"), ("upnext", "Up next"), ("playlist", "Playlist"), ("edge", "Edge light")];
+    public static readonly (string Key, string Name)[] Kinds = [("clock", "Clock"), ("playing", "What's playing"), ("upnext", "Up next"), ("playlist", "Playlist"), ("player", "Desktop player"), ("edge", "Edge light")];
     static readonly Dictionary<string, Window[]> open = [];
 
     public static void Apply()
@@ -230,7 +230,8 @@ static class DesktopWidgets
 
     static Window Widget(string key)
     {
-        var (content, w, h) = key switch { "clock" => (Clock(), 260.0, 130.0), "playing" => (Playing(), 340.0, 96.0), "playlist" => (PlaylistList(), 290.0, 300.0), _ => (UpNext(), 280.0, 220.0) };
+        var (content, w, h) = key switch { "clock" => (Clock(), 260.0, 130.0), "playing" => (Playing(), 340.0, 96.0), "playlist" => (PlaylistList(), 290.0, 300.0),
+                                            "player" => (DesktopPlayer(), 320.0, Store.Shared.Me.PlayerFolded ? 76.0 : 330.0), _ => (UpNext(), 280.0, 220.0) };
         var box = new Border { CornerRadius = new CornerRadius(18), Padding = new Thickness(14), Background = JT.Brush(Color.FromArgb(200, 15, 8, 33)),
                                BorderBrush = JT.Brush(Color.FromArgb(36, 255, 255, 255)), BorderThickness = new Thickness(1), Child = content };
         var win = new Window
@@ -349,6 +350,62 @@ static class DesktopWidgets
         return col;
     }
 
+    /// What's playing and what's next as glass cards with a control bar; folds down to a capsule.
+    static FrameworkElement DesktopPlayer()
+    {
+        var p = Player.Shared; var me = Store.Shared.Me;
+        var col = new StackPanel();
+        var img = new Image { Stretch = Stretch.UniformToFill };
+        string? shown = null;
+        async void Art()
+        {
+            if (p.CurrentFile == shown) return;
+            shown = p.CurrentFile; img.Source = JT.Image("jt-logo");
+            var i = shown is null ? -1 : Store.Shared.SongForFile(shown);
+            if (i >= 0 && await JuiceTracker.App.Art.For(Store.Shared.Catalog[i]) is { } pic && shown == p.CurrentFile) img.Source = pic;
+        }
+        Button Icon(string glyph, string name, Action click) => UI.IconButton(glyph, name, click, 16);
+        StackPanel Controls() => UI.Row(16, Icon("\uE892", "Start the song again", () => p.Seek(TimeSpan.Zero)),
+                                        Icon(p.IsPlaying ? "\uE769" : "\uE768", "Play or pause", () => { if (p.CurrentFile is null) { p.SetOn(true); p.Resume(); } else p.TogglePause(); }),
+                                        Icon("\uE893", "Next song", () => p.Skip()));
+        void Draw()
+        {
+            Art(); col.Children.Clear();
+            bool folded = me.PlayerFolded;
+            var art = new Border { Width = folded ? 40 : 56, Height = folded ? 40 : 56, CornerRadius = new CornerRadius(10), ClipToBounds = true, Child = img };
+            var text = UI.Column(2, UI.Text(p.Title ?? "Nothing playing", 14, weight: FontWeights.Bold).Also(t => t.TextTrimming = TextTrimming.CharacterEllipsis));
+            if (!folded) text.Children.Add(UI.Muted(p.CurrentFile is { } f && Store.Shared.SongForFile(f) is var k and >= 0 ? Engine.EraName(Store.Shared.Catalog[k]) : "Juice Tracker", 13));
+            text.Margin = new Thickness(10, 0, 6, 0); text.VerticalAlignment = VerticalAlignment.Center;
+            var fold = Icon(folded ? "\uE70D" : "\uE70E", folded ? "Show the queue" : "Fold into a capsule", () =>
+            {
+                me.PlayerFolded = !me.PlayerFolded; Store.Shared.SavePersonal();
+                if (Window.GetWindow(col) is { } w) w.Height = me.PlayerFolded ? 76 : 330;
+                Draw();
+            });
+            var head = new DockPanel(); DockPanel.SetDock(art, Dock.Left); DockPanel.SetDock(fold, Dock.Right); head.Children.Add(art); head.Children.Add(fold);
+            if (folded) { var c = Controls(); DockPanel.SetDock(c, Dock.Right); c.Margin = new Thickness(0, 0, 10, 0); head.Children.Add(c); }
+            head.Children.Add(text);
+            col.Children.Add(head);
+            if (folded) return;
+            for (int n = 0; n < Math.Min(4, p.UpNext.Count); n++)
+                col.Children.Add(new Border { Margin = new Thickness(0, 8, 0, 0), Padding = new Thickness(10, 7, 10, 7), CornerRadius = new CornerRadius(10),
+                                              Background = JT.Brush(Color.FromArgb(18, 255, 255, 255)), BorderBrush = JT.Brush(Color.FromArgb(26, 255, 255, 255)), BorderThickness = new Thickness(1),
+                                              Child = UI.Text($"{n + 1}. {p.UpNext[n].Title}", 13).Also(t => t.TextTrimming = TextTrimming.CharacterEllipsis) });
+            if (p.UpNext.Count == 0) col.Children.Add(UI.Muted(me.AmbientEra.Length == 0 ? "Shuffle after this" : $"{me.AmbientEra} after this", 13).Also(t => t.Margin = new Thickness(0, 8, 0, 0)));
+            var bar = Controls(); bar.HorizontalAlignment = HorizontalAlignment.Center; bar.Margin = new Thickness(0, 14, 0, 0);
+            col.Children.Add(bar);
+        }
+        string key = "";
+        void Changed() => col.Dispatcher.BeginInvoke(() =>
+        {
+            var k = $"{p.CurrentFile}|{p.IsPlaying}|{string.Join("|", p.UpNext.Take(4).Select(x => x.Title))}"; // the player ticks 4 times a second: redraw only on a change
+            if (k != key) { key = k; Draw(); }
+        });
+        col.Loaded += (_, _) => { p.Changed += Changed; Draw(); };
+        col.Unloaded += (_, _) => p.Changed -= Changed;
+        return col;
+    }
+
     static FrameworkElement UpNext()
     {
         var p = Player.Shared; var col = new StackPanel();
@@ -372,7 +429,7 @@ static class DesktopWidgets
 /// (not one full-screen see-through window, which Windows would redraw whole on every change).
 static class EdgeLight
 {
-    const int Thick = 46;
+    static double Thick => Store.Shared.Me.EdgeWidth;
     public static Window[] Open()
     {
         var glow = new SolidColorBrush(JT.Lavender);
@@ -419,12 +476,30 @@ static class EdgeLight
             if (!p.IsPlaying || p.CurrentFile is not { } f) { foreach (var s in strips) s.Opacity = Math.Max(0, s.Opacity - 0.05); return; }
             measuring = true; var at = p.Position;
             var level = boost.Apply(await Task.Run(() => meter.Level(f, at))); measuring = false;
-            foreach (var s in strips) s.Opacity = 0.2 + level * 0.8;
+            // hidden while another app is full screen; Settings' glow sets how bright
+            double bright = FullScreenApp() ? 0 : Math.Clamp((0.2 + level * 0.8) * Store.Shared.Me.EdgeGlow, 0, 1);
+            foreach (var s in strips) s.Opacity = bright;
         }, Dispatcher.CurrentDispatcher);
         timer.Start();
         strips[0].Closed += (_, _) => timer.Stop();
         return strips;
     }
+    /// Another app's window in front, covering its whole screen (a game, a video, a presentation).
+    static bool FullScreenApp()
+    {
+        var hwnd = GetForegroundWindow();
+        if (hwnd == IntPtr.Zero || hwnd == GetShellWindow() || hwnd == GetDesktopWindow()) return false;
+        GetWindowThreadProcessId(hwnd, out var pid);
+        if (pid == Environment.ProcessId || !GetWindowRect(hwnd, out var r)) return false;
+        var screen = System.Windows.Forms.Screen.FromHandle(hwnd).Bounds;
+        return r.Left <= screen.Left && r.Top <= screen.Top && r.Right >= screen.Right && r.Bottom >= screen.Bottom;
+    }
+    [StructLayout(LayoutKind.Sequential)] struct Rect { public int Left, Top, Right, Bottom; }
+    [DllImport("user32.dll")] static extern IntPtr GetForegroundWindow();
+    [DllImport("user32.dll")] static extern IntPtr GetShellWindow();
+    [DllImport("user32.dll")] static extern IntPtr GetDesktopWindow();
+    [DllImport("user32.dll")] static extern bool GetWindowRect(IntPtr hwnd, out Rect r);
+    [DllImport("user32.dll")] static extern uint GetWindowThreadProcessId(IntPtr hwnd, out uint pid);
     [DllImport("user32.dll")] static extern int GetWindowLong(IntPtr hwnd, int index);
     [DllImport("user32.dll")] static extern int SetWindowLong(IntPtr hwnd, int index, int value);
 }

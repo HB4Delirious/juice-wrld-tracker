@@ -452,6 +452,9 @@ struct SettingsView: View {
     @AppStorage("lyricBlur") private var lyricBlur = true
     @AppStorage("widget.edgeColor") private var edgeColor = ""
     @AppStorage("widget.edgeAll") private var edgeAll = true
+    @AppStorage("widget.edgeWidth") private var edgeWidth = 6.0
+    @AppStorage("widget.edgeGlow") private var edgeGlow = 34.0
+    @AppStorage("visualsLow") private var visualsLow = false
     @AppStorage("playerStyleAuto") private var lookAuto = false
     @AppStorage("visualBoost") private var visualBoost = true
     @AppStorage("musicVideos") private var musicVideos = true
@@ -542,6 +545,12 @@ struct SettingsView: View {
                 }
                 .onChange(of: edgeColor) { _ in DesktopWidgets.apply() }
                 Toggle("Edge light on every screen", isOn: $edgeAll).onChange(of: edgeAll) { _ in DesktopWidgets.reopenEdge() }
+                HStack {
+                    Text("Edge light: line"); Slider(value: $edgeWidth, in: 2...16, step: 1).frame(width: 120)
+                    Text("glow"); Slider(value: $edgeGlow, in: 8...70, step: 2).frame(width: 120)
+                }
+                .onChange(of: edgeWidth) { _ in DesktopWidgets.apply() }.onChange(of: edgeGlow) { _ in DesktopWidgets.apply() }
+                Toggle("Lighter Player visuals (fewer stars and icons, for slower computers)", isOn: $visualsLow)
                 Toggle("A different Player look for every song", isOn: $lookAuto)
                 Toggle("Lift quiet songs so the visuals still move", isOn: $visualBoost)
                 Toggle("Play a song's music video on the Player tab (a video with its name in its folder)", isOn: $musicVideos)

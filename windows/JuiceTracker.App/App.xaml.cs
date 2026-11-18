@@ -67,6 +67,7 @@ public partial class App : Application
         hourly.Tick += (_, _) => { var s = Store.Shared; if (s.Me.DailyCheck && s.FetchedAt is { } f && (DateTime.UtcNow - f).TotalHours > 12) _ = s.ReloadCatalogAsync(); };
         hourly.Start();
         Updater.StartDailyChecks();
+        MediaKeys.Apply();
         Discord.Start();
         Task.Delay(TimeSpan.FromSeconds(20)).ContinueWith(_ => Current.Dispatcher.Invoke(() => _ = Plex.LoadCounts()));
     }
@@ -133,6 +134,8 @@ public partial class App : Application
                     var wav = Path.Combine(Path.GetTempPath(), "jt-identify.wav");
                     using (var w = new NAudio.Wave.WaveFileWriter(wav, new NAudio.Wave.WaveFormat(44100, 16, 2))) w.Write(new byte[44100 * 4], 0, 44100 * 4);
                     Identify.Find(wav, Store.Shared.Catalog);
+                    // Windows' media controls take the song (or, without them, nothing breaks)
+                    MediaKeys.Apply();
                     // the lyrics windows open
                     LyricsMakerWindow.Open(); LyricsCardWindow.Open(null);
                     // every desktop widget opens and closes

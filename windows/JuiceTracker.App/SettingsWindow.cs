@@ -102,6 +102,8 @@ public sealed class SettingsWindow : Window
         Check("Fade the music when pausing and resuming", store.Me.FadePause, v => store.Me.FadePause = v);
         Check("Ask before quitting while a song plays", store.Me.AskQuitPlaying, v => store.Me.AskQuitPlaying = v);
         Check("Show download progress on the taskbar button", store.Me.TaskbarProgress, v => store.Me.TaskbarProgress = v);
+        Check("Minimize to the notification area (the icon by the clock) instead of the taskbar", store.Me.MinimizeToTray, v => store.Me.MinimizeToTray = v);
+        Check("Media keys play, pause and skip, with Windows' volume/media pop-up showing the song", store.Me.MediaKeys, v => { store.Me.MediaKeys = v; Dispatcher.BeginInvoke(MediaKeys.Apply); });
         body.Children.Add(UI.Muted("Desktop widgets (drag to move, right-click to close)", 12).Also(t => t.Margin = new Thickness(0, 10, 0, 0)));
         foreach (var (key, name) in DesktopWidgets.Kinds) Check(name, store.Me.Widgets.Contains(key), v => DesktopWidgets.Set(key, v));
         var edgeSwatch = new Border { Width = 22, Height = 22, CornerRadius = new CornerRadius(11), BorderBrush = JT.Brush(JT.Line2), BorderThickness = new Thickness(1),
@@ -129,6 +131,14 @@ public sealed class SettingsWindow : Window
             body.Children.Add(pick);
         }
         Check("Edge light on every screen", store.Me.EdgeAll, v => { store.Me.EdgeAll = v; Dispatcher.BeginInvoke(DesktopWidgets.ReopenEdge); });
+        var width = new Slider { Minimum = 16, Maximum = 120, Value = store.Me.EdgeWidth, Width = 140, VerticalAlignment = VerticalAlignment.Center };
+        var glow = new Slider { Minimum = 0.4, Maximum = 1.6, Value = store.Me.EdgeGlow, Width = 140, VerticalAlignment = VerticalAlignment.Center };
+        width.ValueChanged += (_, _) => { store.Me.EdgeWidth = width.Value; store.SavePersonal(); };
+        width.PreviewMouseUp += (_, _) => DesktopWidgets.ReopenEdge(); // the strips are rebuilt once you let go
+        glow.ValueChanged += (_, _) => { store.Me.EdgeGlow = glow.Value; store.SavePersonal(); };
+        UI.AutomationName(width, "Edge light thickness"); UI.AutomationName(glow, "Edge light glow");
+        body.Children.Add(UI.Row(10, UI.Text("Edge light: thickness", 14, JT.Muted), width, UI.Text("glow", 14, JT.Muted), glow).Also(r => r.Margin = new Thickness(0, 8, 0, 0)));
+        Check("Lighter Player visuals (fewer stars and icons, for slower computers)", store.Me.VisualsLow, v => { store.Me.VisualsLow = v; PlayerLooks.Refresh(); });
         Check("A different Player look for every song", store.Me.PlayerStyleAuto, v => store.Me.PlayerStyleAuto = v);
         Check("Lift quiet songs so the visuals still move", store.Me.VisualBoost, v => store.Me.VisualBoost = v);
         Check("Play a song's music video on the Player tab (a video with its name in its folder)", store.Me.MusicVideos, v => store.Me.MusicVideos = v);

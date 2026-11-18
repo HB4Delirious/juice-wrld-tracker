@@ -26,6 +26,7 @@ public sealed class PlayerPage : Grid, IRefresh
     readonly Grid hole = new(), clock = new(), backDisc = new(), frontDisc = new();
     readonly PlayerLook look = new(); // the other looks, in place of the hole
     readonly LevelBoost boost = new();
+    bool? lowShown;
     // the song's music video, when its folder has one: muted, in time with the song, in place of the look
     readonly MediaElement video = new() { IsMuted = true, LoadedBehavior = MediaState.Manual, UnloadedBehavior = MediaState.Manual, Stretch = Stretch.UniformToFill, IsHitTestVisible = false };
     readonly Border videoBox = new() { CornerRadius = new CornerRadius(18), ClipToBounds = true, Visibility = Visibility.Collapsed, IsHitTestVisible = false };
@@ -334,7 +335,7 @@ public sealed class PlayerPage : Grid, IRefresh
         double w = sky.ActualWidth, h = sky.ActualHeight;
         if (w == 0) return;
         var rng = new Random(2018);
-        for (int k = 0; k < 16; k++)
+        for (int k = 0; k < (Store.Shared.Me.VisualsLow ? 0 : 16); k++) // Settings: lighter visuals for slower computers
         {
             double side = 7 + rng.NextDouble() * 10, c = side / 2, q = side * 0.12;
             var shape = Geometry.Parse(FormattableString.Invariant($"M {c},0 Q {c + q},{c - q} {side},{c} Q {c + q},{c + q} {c},{side} Q {c - q},{c + q} 0,{c} Q {c - q},{c - q} {c},0 Z"));
@@ -802,6 +803,8 @@ public sealed class PlayerPage : Grid, IRefresh
     void Restyle(double size)
     {
         var style = Store.Shared.Me.PlayerStyle;
+        swirl.Visibility = Store.Shared.Me.VisualsLow ? Visibility.Collapsed : Visibility.Visible;
+        if (lowShown != Store.Shared.Me.VisualsLow) { lowShown = Store.Shared.Me.VisualsLow; Twinkles(); }
         bool other = style != "hole" && PlayerLooks.All.Any(l => l.Id == style), film = videoFile is not null && Store.Shared.Me.MusicVideos;
         videoBox.Visibility = film ? Visibility.Visible : Visibility.Collapsed;
         hole.Visibility = other || film ? Visibility.Collapsed : Visibility.Visible;
@@ -834,7 +837,7 @@ public sealed class PlayerPage : Grid, IRefresh
     {
         foreach (var old in sky.Children.OfType<Image>().Where(i => "doodle".Equals(i.Tag)).ToList()) sky.Children.Remove(old);
         double w = sky.ActualWidth, h = sky.ActualHeight;
-        if (w == 0) return;
+        if (w == 0 || Store.Shared.Me.VisualsLow) return;
         var rng = new Random(2019);
         string[] art = ["jt-heart", "jt-fly", "jt-sparkles", "jt-sticker1", "jt-sticker2", "jt-sticker3", "jt-sticker4", "jt-sticker5",
                         "jt-sticker6", "jt-era-999", "jt-planet", "jt-era-vinyl", "jt-era-mic", "jt-era-party", "jt-fly", "jt-heart", "jt-sparkles", "jt-era-globe"];
