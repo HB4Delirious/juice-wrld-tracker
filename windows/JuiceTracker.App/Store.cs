@@ -107,6 +107,11 @@ public sealed partial class Store
         public string HeardleCounted { get; set; } = "";
         public List<string> Widgets { get; set; } = [];    // desktop widgets that are on: clock, playing, upnext, edge
         public Dictionary<string, double[]> WidgetSpots { get; set; } = []; // where each widget was left (left, top)
+        public List<string> WidgetLocked { get; set; } = []; // widgets that stay put when dragged
+        public string WidgetPlaylist { get; set; } = "";   // the playlist widget's playlist id, or "" for liked songs
+        public string EdgeColor { get; set; } = "";        // the edge light's color as hex, or "" for the cover's
+        public string LyricStyle { get; set; } = "line";   // the Player's lyrics: "line" (word by word) or "list" (scrolling)
+        public bool LyricBlur { get; set; } = true;        // blur the lines not being sung (list style)
     }
     public sealed record Playlist(string Id, string Name, List<string> Songs);
     public Personal Me { get; private set; } = new();

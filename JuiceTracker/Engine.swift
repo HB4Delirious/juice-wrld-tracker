@@ -1286,6 +1286,49 @@ extension Engine {
         return (changes, skipped, same)
     }
 
+    /// A line of timed lyrics (LRC): when it starts, its text, and when each word starts (empty when only the line is timed).
+    struct LrcLine: Equatable { var at: Double; var line: String; var words: [Double] = [] }
+
+    /// "[01:23.45] line" lines, with word times written "<01:23.80>word"; lines without a time (tags like [ar:…]) are
+    /// skipped. Word times are kept only when there is one for every word.
+    static func parseLrc(_ text: String) -> [LrcLine] {
+        func seconds(_ m: String, _ s: String) -> Double? { guard let m = Double(m), let s = Double(s) else { return nil }; return m * 60 + s }
+        return text.split(whereSeparator: \.isNewline).compactMap { raw -> LrcLine? in
+            guard let g = groups(#"^\s*\[(\d+):(\d+(?:\.\d+)?)\](.*)$"#, String(raw)).first, let at = seconds(g[1]!, g[2]!) else { return nil }
+            let rest = g[3]!
+            let words = groups(#"<(\d+):(\d+(?:\.\d+)?)>"#, rest).compactMap { seconds($0[1]!, $0[2]!) }
+            let line = rest.replacingOccurrences(of: #"<\d+:\d+(?:\.\d+)?>"#, with: " ", options: .regularExpression)
+                .split(separator: " ").joined(separator: " ")
+            return LrcLine(at: at, line: line, words: words.count == line.split(separator: " ").count ? words : [])
+        }
+        .sorted { $0.at < $1.at }
+    }
+    /// 83.456 → "01:23.46".
+    static func lrcStamp(_ t: Double) -> String {
+        let cs = Int((max(0, t) * 100).rounded())
+        return String(format: "%02d:%02d.%02d", cs / 6000, cs % 6000 / 100, cs % 100)
+    }
+    static func formatLrc(_ lines: [LrcLine]) -> String {
+        lines.map { l in
+            let words = l.line.split(separator: " ").map(String.init)
+            let text = l.words.count == words.count && !words.isEmpty ? zip(l.words, words).map { "<\(lrcStamp($0))>\($1)" }.joined(separator: " ") : l.line
+            return "[\(lrcStamp(l.at))]\(text)"
+        }
+        .joined(separator: "\n")
+    }
+    /// How many words of line n are sung at `time`, and whether the last of them is still being sung. With word times
+    /// it follows them; without, the line's time is spread over its words.
+    static func litWords(_ lines: [LrcLine], _ n: Int, at time: Double) -> (words: Int, singing: Bool) {
+        let l = lines[n], end = n + 1 < lines.count ? lines[n + 1].at : l.at + 4
+        if !l.words.isEmpty {
+            let on = l.words.filter { $0 <= time + 0.05 }.count
+            return (on, on > 0 && time < (on < l.words.count ? l.words[on] : end))
+        }
+        let count = l.line.split(separator: " ").count
+        let progress = min(1, max(0, (time - l.at) / max(0.5, (end - l.at) * 0.85)))
+        return (Int((Double(count) * progress).rounded(.up)), progress < 1)
+    }
+
     /// "4:26" or "1:02:03" to seconds.
     static func lengthSeconds(_ text: String) -> Double? {
         guard let g = groups(#"^\s*(?:(\d+):)?(\d{1,2}):(\d{2})\s*$"#, text).first else { return nil }

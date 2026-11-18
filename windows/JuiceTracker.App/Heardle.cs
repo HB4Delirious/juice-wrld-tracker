@@ -201,7 +201,7 @@ public sealed class HeardlePage : ToolPage
 /// screen's edges glow with the music. Each is on or off in Settings; drag one to move it, right-click to close it.
 static class DesktopWidgets
 {
-    public static readonly (string Key, string Name)[] Kinds = [("clock", "Clock"), ("playing", "What's playing"), ("upnext", "Up next"), ("edge", "Edge light")];
+    public static readonly (string Key, string Name)[] Kinds = [("clock", "Clock"), ("playing", "What's playing"), ("upnext", "Up next"), ("playlist", "Playlist"), ("edge", "Edge light")];
     static readonly Dictionary<string, Window[]> open = [];
 
     public static void Apply()
@@ -221,7 +221,7 @@ static class DesktopWidgets
 
     static Window Widget(string key)
     {
-        var (content, w, h) = key switch { "clock" => (Clock(), 260.0, 130.0), "playing" => (Playing(), 340.0, 96.0), _ => (UpNext(), 280.0, 220.0) };
+        var (content, w, h) = key switch { "clock" => (Clock(), 260.0, 130.0), "playing" => (Playing(), 340.0, 96.0), "playlist" => (PlaylistList(), 290.0, 300.0), _ => (UpNext(), 280.0, 220.0) };
         var box = new Border { CornerRadius = new CornerRadius(18), Padding = new Thickness(14), Background = JT.Brush(Color.FromArgb(200, 15, 8, 33)),
                                BorderBrush = JT.Brush(Color.FromArgb(36, 255, 255, 255)), BorderThickness = new Thickness(1), Child = content };
         var win = new Window
@@ -232,12 +232,17 @@ static class DesktopWidgets
         System.Windows.Documents.TextElement.SetFontFamily(win, JT.Body);
         var spots = Store.Shared.Me.WidgetSpots;
         var screen = SystemParameters.WorkArea; int k = Array.FindIndex(Kinds, x => x.Key == key);
-        var at = spots.TryGetValue(key, out var p) && p.Length == 2 ? p : [screen.Right - w - 30, screen.Top + 30 + k * 150];
+        var at = spots.TryGetValue(key, out var p) && p.Length == 2 ? p : [screen.Right - w - 30, Math.Min(screen.Bottom - h - 20, screen.Top + 30 + k * 150)];
         win.Left = Math.Clamp(at[0], SystemParameters.VirtualScreenLeft, SystemParameters.VirtualScreenLeft + SystemParameters.VirtualScreenWidth - w);
         win.Top = Math.Clamp(at[1], SystemParameters.VirtualScreenTop, SystemParameters.VirtualScreenTop + SystemParameters.VirtualScreenHeight - h);
         // DragMove returns when the mouse is let go: save the spot once, not on every pixel
-        win.MouseLeftButtonDown += (_, _) => { try { win.DragMove(); } catch (InvalidOperationException) { return; } spots[key] = [win.Left, win.Top]; Store.Shared.SavePersonal(); };
-        var menu = new ContextMenu(); var close = new MenuItem { Header = "Close this widget" }; close.Click += (_, _) => Set(key, false); menu.Items.Add(close);
+        var locked = Store.Shared.Me.WidgetLocked;
+        win.MouseLeftButtonDown += (_, _) => { if (locked.Contains(key)) return; try { win.DragMove(); } catch (InvalidOperationException) { return; } spots[key] = [win.Left, win.Top]; Store.Shared.SavePersonal(); };
+        var menu = new ContextMenu();
+        var lockItem = new MenuItem(); menu.Opened += (_, _) => lockItem.Header = locked.Contains(key) ? "Unlock position" : "Lock position";
+        lockItem.Click += (_, _) => { if (!locked.Remove(key)) locked.Add(key); Store.Shared.SavePersonal(); };
+        var close = new MenuItem { Header = "Close this widget" }; close.Click += (_, _) => Set(key, false);
+        menu.Items.Add(lockItem); menu.Items.Add(close);
         box.ContextMenu = menu;
         win.Show();
         return win;
@@ -251,7 +256,22 @@ static class DesktopWidgets
         Tick();
         var timer = new DispatcherTimer(TimeSpan.FromSeconds(10), DispatcherPriority.Background, (_, _) => Tick(), Dispatcher.CurrentDispatcher);
         var col = UI.Column(0, date, time);
-        col.Unloaded += (_, _) => timer.Stop();
+        // takes the cover's color while a song plays
+        var tint = new SolidColorBrush(JT.Lavender); date.Foreground = tint;
+        string? tintFor = "\0";
+        async void Tint()
+        {
+            var p = Player.Shared; var f = p.IsPlaying ? p.CurrentFile : null;
+            if (f == tintFor) return; tintFor = f;
+            var c = JT.Lavender; var i = f is null ? -1 : Store.Shared.SongForFile(f);
+            if (i >= 0 && await Art.For(Store.Shared.Catalog[i]) is { } pic) try { if (PlayerPage.Hues(pic) is [var hue, ..]) c = hue; } catch (Exception) { }
+            if (tintFor != f) return;
+            var fade = new System.Windows.Media.Animation.ColorAnimation(c, TimeSpan.FromSeconds(1.2));
+            tint.BeginAnimation(SolidColorBrush.ColorProperty, fade); time.Effect?.BeginAnimation(DropShadowEffect.ColorProperty, fade);
+        }
+        void Changed() => col.Dispatcher.BeginInvoke(Tint);
+        col.Loaded += (_, _) => { Player.Shared.Changed += Changed; Tint(); };
+        col.Unloaded += (_, _) => { timer.Stop(); Player.Shared.Changed -= Changed; };
         return col;
     }
 
@@ -283,6 +303,41 @@ static class DesktopWidgets
         row.Loaded += (_, _) => { p.Changed += Changed; Draw(); };
         row.Unloaded += (_, _) => p.Changed -= Changed;
         return row;
+    }
+
+    /// A playlist (or the songs you rated 4 or 5 hearts) on the desktop; click a song to play from it.
+    static FrameworkElement PlaylistList()
+    {
+        var store = Store.Shared; var col = new StackPanel();
+        var pick = new ComboBox { MinWidth = 160, HorizontalAlignment = HorizontalAlignment.Left, Margin = new Thickness(0, 0, 0, 6) };
+        var rows = new StackPanel();
+        void Draw()
+        {
+            var me = store.Me; var list = me.Playlists.FirstOrDefault(p => p.Id == me.WidgetPlaylist);
+            var ids = list?.Songs ?? me.Ratings.Where(r => r.Value >= 4).Select(r => r.Key).ToList();
+            var byId = store.Songs.GroupBy(s => s.S.Id).ToDictionary(g => g.Key, g => g.First());
+            var songs = ids.Select(id => byId.GetValueOrDefault(id)).OfType<Song>().Where(s => s.Owned).ToList();
+            rows.Children.Clear();
+            if (songs.Count == 0) rows.Children.Add(UI.Muted(list is null ? "Rate songs 4 or 5 hearts to see them here." : "No songs you have in this playlist.", 13).Also(t => t.TextWrapping = TextWrapping.Wrap));
+            for (int k = 0; k < songs.Count; k++)
+            {
+                int from = k;
+                var t = UI.Text($"{k + 1}. {songs[k].Name}", 13, Player.Shared.Title == songs[k].Name ? JT.Lavender : JT.Mist).Also(x => { x.TextTrimming = TextTrimming.CharacterEllipsis; x.Margin = new Thickness(0, 2, 0, 0); x.Cursor = Cursors.Hand; });
+                // on the press: a press the widget doesn't take starts dragging it, and the release never comes
+                t.MouseLeftButtonDown += (_, e) => { Listen.PlayInOrder(songs.Skip(from).Select(s => s.I)); e.Handled = true; };
+                rows.Children.Add(t);
+            }
+        }
+        var names = new List<(string Id, string Name)> { ("", "Liked songs") }; names.AddRange(store.Me.Playlists.Select(p => (p.Id, p.Name)));
+        pick.ItemsSource = names.Select(n => n.Name).ToList();
+        pick.SelectedIndex = Math.Max(0, names.FindIndex(n => n.Id == store.Me.WidgetPlaylist));
+        pick.SelectionChanged += (_, _) => { if (pick.SelectedIndex >= 0) { store.Me.WidgetPlaylist = names[pick.SelectedIndex].Id; store.SavePersonal(); Draw(); } };
+        UI.AutomationName(pick, "Which playlist");
+        col.Children.Add(pick); col.Children.Add(new ScrollViewer { Content = rows, VerticalScrollBarVisibility = ScrollBarVisibility.Auto, MaxHeight = 220 });
+        void Changed() => col.Dispatcher.BeginInvoke(Draw);
+        col.Loaded += (_, _) => { Player.Shared.Changed += Changed; Draw(); };
+        col.Unloaded += (_, _) => Player.Shared.Changed -= Changed;
+        return col;
     }
 
     static FrameworkElement UpNext()
@@ -319,7 +374,7 @@ static class EdgeLight
             brush.GradientStops.Add(new GradientStop(Colors.White, 0)); brush.GradientStops.Add(new GradientStop(Colors.Transparent, 1));
             var fill = new Border { Background = glow, OpacityMask = brush };
             var win = new Window { Left = x, Top = y, Width = w, Height = h, WindowStyle = WindowStyle.None, AllowsTransparency = true, Background = Brushes.Transparent,
-                                   Topmost = true, ShowInTaskbar = false, ResizeMode = ResizeMode.NoResize, ShowActivated = false, Focusable = false, IsHitTestVisible = false, Content = fill, Opacity = 0.25 };
+                                   Topmost = true, ShowInTaskbar = false, ResizeMode = ResizeMode.NoResize, ShowActivated = false, Focusable = false, IsHitTestVisible = false, Content = fill, Opacity = 0 };
             win.SourceInitialized += (_, _) => { var h2 = new WindowInteropHelper(win).Handle; SetWindowLong(h2, -20, GetWindowLong(h2, -20) | 0x20 | 0x80000 | 0x80); }; // click-through, layered, no Alt+Tab
             win.Show();
             return win;
@@ -334,16 +389,19 @@ static class EdgeLight
         var timer = new DispatcherTimer(TimeSpan.FromMilliseconds(66), DispatcherPriority.Background, async (_, _) =>
         {
             var p = Player.Shared;
-            if (p.CurrentFile != colourFor)
+            // the cover's strongest color, or your own (Settings)
+            var own = Themes.Hex(Store.Shared.Me.EdgeColor);
+            if ($"{p.CurrentFile}|{own}" != colourFor)
             {
-                colourFor = p.CurrentFile;
-                var i = colourFor is null ? -1 : Store.Shared.SongForFile(colourFor);
-                var c = JT.Lavender;
-                if (i >= 0 && await Art.For(Store.Shared.Catalog[i]) is { } pic) try { var hues = PlayerPage.Hues(pic); if (hues.Length > 0) c = hues[0]; } catch (Exception) { }
+                colourFor = $"{p.CurrentFile}|{own}";
+                var i = p.CurrentFile is null ? -1 : Store.Shared.SongForFile(p.CurrentFile);
+                var c = own ?? JT.Lavender;
+                if (own is null && i >= 0 && await Art.For(Store.Shared.Catalog[i]) is { } pic) try { var hues = PlayerPage.Hues(pic); if (hues.Length > 0) c = hues[0]; } catch (Exception) { }
                 glow.BeginAnimation(SolidColorBrush.ColorProperty, new System.Windows.Media.Animation.ColorAnimation(c, TimeSpan.FromSeconds(1.2)));
             }
             if (measuring) return;
-            if (!p.IsPlaying || p.CurrentFile is not { } f) { foreach (var s in strips) s.Opacity = 0.2; return; }
+            // fades out when the music stops
+            if (!p.IsPlaying || p.CurrentFile is not { } f) { foreach (var s in strips) s.Opacity = Math.Max(0, s.Opacity - 0.05); return; }
             measuring = true; var at = p.Position;
             var level = await Task.Run(() => meter.Level(f, at)); measuring = false;
             foreach (var s in strips) s.Opacity = 0.2 + level * 0.8;

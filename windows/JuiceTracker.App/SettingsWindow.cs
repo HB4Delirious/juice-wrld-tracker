@@ -101,6 +101,22 @@ public sealed class SettingsWindow : Window
         Check("Show download progress on the taskbar button", store.Me.TaskbarProgress, v => store.Me.TaskbarProgress = v);
         body.Children.Add(UI.Muted("Desktop widgets (drag to move, right-click to close)", 12).Also(t => t.Margin = new Thickness(0, 10, 0, 0)));
         foreach (var (key, name) in DesktopWidgets.Kinds) Check(name, store.Me.Widgets.Contains(key), v => DesktopWidgets.Set(key, v));
+        var edgeSwatch = new Border { Width = 22, Height = 22, CornerRadius = new CornerRadius(11), BorderBrush = JT.Brush(JT.Line2), BorderThickness = new Thickness(1),
+                                      Background = JT.Brush(Themes.Hex(store.Me.EdgeColor) ?? JT.Lavender), VerticalAlignment = VerticalAlignment.Center };
+        var edgePick = UI.Button("Edge light color…", () =>
+        {
+            var c0 = Themes.Hex(store.Me.EdgeColor) ?? JT.Lavender;
+            var d = new System.Windows.Forms.ColorDialog { FullOpen = true, Color = System.Drawing.Color.FromArgb(c0.R, c0.G, c0.B) };
+            if (d.ShowDialog() != System.Windows.Forms.DialogResult.OK) return;
+            store.Me.EdgeColor = $"{d.Color.R:x2}{d.Color.G:x2}{d.Color.B:x2}"; store.SavePersonal(); edgeSwatch.Background = JT.Brush(Color.FromRgb(d.Color.R, d.Color.G, d.Color.B));
+        });
+        var edgeCover = UI.Link("Use the cover's colors", () => { store.Me.EdgeColor = ""; store.SavePersonal(); edgeSwatch.Background = JT.Brush(JT.Lavender); }, 13);
+        body.Children.Add(UI.Row(10, edgePick, edgeSwatch, edgeCover).Also(r => r.Margin = new Thickness(0, 8, 0, 0)));
+        var style = new ComboBox { Width = 260, ItemsSource = new[] { "The line being sung, word by word", "The scrolling list" }, SelectedIndex = store.Me.LyricStyle == "list" ? 1 : 0 };
+        style.SelectionChanged += (_, _) => { store.Me.LyricStyle = style.SelectedIndex == 1 ? "list" : "line"; store.SavePersonal(); };
+        UI.AutomationName(style, "Player lyrics");
+        body.Children.Add(UI.Row(12, UI.Text("Player lyrics", 14, JT.Muted), style).Also(r => r.Margin = new Thickness(0, 10, 0, 0)));
+        Check("Blur the lines not being sung (scrolling list)", store.Me.LyricBlur, v => store.Me.LyricBlur = v);
 
         Section("Updates");
         Check("Check for a new version every day", store.Me.AutoUpdate, v => store.Me.AutoUpdate = v);
