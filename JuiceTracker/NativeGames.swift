@@ -1,4 +1,5 @@
 import AppKit
+import Combine
 import SwiftUI
 import UniformTypeIdentifiers
 
@@ -446,6 +447,374 @@ private struct LyricsCard: View {
                 }
             }
             .padding(.vertical, 90)
+            VStack { Spacer(); Text("Juice Tracker").font(JT.marker(22)).foregroundColor(.white.opacity(0.35)).padding(.bottom, 36) }
+        }
+        .frame(width: 1080, height: 1350).clipped()
+    }
+}
+
+// MARK: - Heardle
+
+/// Name the song from a clip of your own files: one second, then more with each wrong guess or skip (1, 2, 4, 7, 11,
+/// 16 seconds). Daily (the same song all day, with stats) or unlimited; from the intro or a spot inside the song.
+struct HeardleScreen: View {
+    @ObservedObject private var store = NativeStore.shared
+    @AppStorage("heardleDaily") private var daily = true
+    @AppStorage("heardleEra") private var era = ""
+    @AppStorage("heardleIntro") private var fromIntro = true
+    @AppStorage("heardleSaved") private var saved = ""      // today's daily round: "date|era|intro|id,id,-" (- is a skip)
+    @AppStorage("heardleStats") private var stats = "0,0,0,0" // daily rounds: played, won, streak, best
+    @AppStorage("heardleCounted") private var counted = ""
+    @State private var unlimitedPick = Int.random(in: 0..<10_000)
+    @State private var unlimitedGuesses: [String] = []
+    @State private var query = ""
+    static let steps: [Double] = [1, 2, 4, 7, 11, 16]
+
+    /// Songs you have that can play, one per title (versions count as the same song), in a fixed order.
+    private var pool: [Song] {
+        var seen = Set<String>()
+        return store.songs.filter { $0.o && (era.isEmpty || $0.e == era) && EngineLibrary.shared.playableURL($0.i) != nil }
+            .filter { seen.insert(Engine.normalize($0.n)).inserted }
+            .sorted { Engine.normalize($0.n) < Engine.normalize($1.n) }
+    }
+    private static let day: DateFormatter = { let f = DateFormatter(); f.dateFormat = "yyyy-MM-dd"; return f }()
+    private var today: String { Self.day.string(from: Date()) }
+    private var key: String { "\(today)|\(era)|\(fromIntro)" }
+
+    var body: some View {
+        let pool = self.pool
+        VStack(alignment: .leading, spacing: 16) {
+            ScreenTitle(text: "Heardle")
+            Text("Name the song from a clip of your own files. You hear one second; each wrong guess or skip plays more. Six tries.")
+                .foregroundColor(JT.muted).fixedSize(horizontal: false, vertical: true)
+            HStack(spacing: 14) {
+                Picker("", selection: $daily) { Text("Daily").tag(true); Text("Unlimited").tag(false) }.pickerStyle(.segmented).labelsHidden().frame(width: 200)
+                Picker("", selection: $fromIntro) { Text("From the intro").tag(true); Text("From inside").tag(false) }.pickerStyle(.segmented).labelsHidden().frame(width: 230)
+                Menu(era.isEmpty ? "All eras" : era) {
+                    Button("All eras") { era = ""; restart() }
+                    Divider()
+                    ForEach(store.songs.filter(\.o).reduce(into: [String]()) { if !$0.contains($1.e) { $0.append($1.e) } }, id: \.self) { e in Button(e) { era = e; restart() } }
+                }
+                .fixedSize()
+                Spacer()
+                let st = stats.split(separator: ",").map { Int($0) ?? 0 } + [0, 0, 0, 0]
+                Text("Daily: played \(st[0]) · won \(st[1]) · streak \(st[2]) · best \(st[3])").font(JT.body(13)).foregroundColor(JT.muted)
+            }
+            if pool.isEmpty {
+                Text("No songs you have to play in this era.").foregroundColor(JT.muted)
+            } else {
+                let day = Int(Date().timeIntervalSince1970 / 86400)
+                game(daily ? pool[(day * 7919) % pool.count] : pool[unlimitedPick % pool.count], seed: daily ? day : unlimitedPick)
+            }
+        }
+        .padding(.horizontal, JT.compact ? 18 : 34).padding(.top, JT.compact ? 20 : 40).padding(.bottom, 30)
+        .frame(maxWidth: 1080, maxHeight: .infinity, alignment: .topLeading)
+        .onDisappear { AmbientPlayer.shared.stopClip() }
+        .onChange(of: daily) { _ in query = "" }
+    }
+
+    private var guesses: [String] {
+        guard daily else { return unlimitedGuesses }
+        let parts = saved.split(separator: "|", omittingEmptySubsequences: false).map(String.init)
+        guard parts.count == 4, parts.prefix(3).joined(separator: "|") == key else { return [] }
+        return parts[3].split(separator: ",").map(String.init)
+    }
+    private func add(_ guess: String) {
+        let list = guesses + [guess]
+        if daily { saved = "\(key)|\(list.joined(separator: ","))" } else { unlimitedGuesses = list }
+        query = ""
+    }
+    private func restart() { unlimitedGuesses = []; query = ""; AmbientPlayer.shared.stopClip() }
+
+    /// Where the clip starts: the intro, or a spot 20–70% into the song picked by the round.
+    private func start(_ song: Song, seed: Int) -> Double {
+        guard !fromIntro else { return 0 }
+        let length = Engine.lengthSeconds(song.l) ?? 180
+        return length * (0.2 + 0.5 * Double((seed &* 2654435761) % 1000) / 1000)
+    }
+
+    @ViewBuilder private func game(_ answer: Song, seed: Int) -> some View {
+        let list = guesses, target = Engine.normalize(answer.n)
+        let won = list.last.flatMap { id in store.songs.first { $0.s.id == id } }.map { Engine.normalize($0.n) == target } ?? false
+        let done = won || list.count >= 6
+        let seconds = done ? 16 : Self.steps[min(list.count, 5)]
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(spacing: 12) {
+                Button {
+                    if let url = EngineLibrary.shared.playableURL(answer.i) { AmbientPlayer.shared.playClip(url, from: start(answer, seed: seed), seconds: seconds) }
+                } label: { Label("Play \(Int(seconds)) second\(seconds == 1 ? "" : "s")", systemImage: "play.fill").font(JT.body(15, .semibold)) }
+                .keyboardShortcut(.space, modifiers: [])
+                // how much is unlocked
+                HStack(spacing: 3) {
+                    ForEach(0..<6, id: \.self) { k in
+                        Capsule().fill(k <= min(list.count, 5) || done ? JT.lavender : Color.white.opacity(0.15)).frame(width: CGFloat(Self.steps[k] * 6 + 8), height: 6)
+                    }
+                }
+            }
+            VStack(alignment: .leading, spacing: 5) {
+                ForEach(0..<6, id: \.self) { r in
+                    let id = r < list.count ? list[r] : nil
+                    let s = id.flatMap { id in store.songs.first { $0.s.id == id } }
+                    HStack(spacing: 8) {
+                        if id == "-" { Image(systemName: "forward.fill").foregroundColor(JT.muted); Text("Skipped").foregroundColor(JT.muted) }
+                        else if let s {
+                            let right = Engine.normalize(s.n) == target
+                            Image(systemName: right ? "checkmark.circle.fill" : "xmark.circle").foregroundColor(right ? JT.have : JT.missing)
+                            Text(s.n).lineLimit(1)
+                            if !right && s.e == answer.e { Text("right era").font(JT.body(11, .bold)).foregroundColor(.black).padding(.horizontal, 6).padding(.vertical, 2).background(Capsule().fill(tileYellow)) }
+                        } else { Text(" ") }
+                    }
+                    .font(JT.body(14)).padding(.horizontal, 10).frame(maxWidth: 520, minHeight: 32, alignment: .leading)
+                    .background(RoundedRectangle(cornerRadius: 8).fill(Color.white.opacity(r < list.count ? 0.08 : 0.04)))
+                }
+            }
+            if done {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text(won ? "Got it with \(Int(Self.steps[list.count - 1])) second\(list.count == 1 ? "" : "s")!" : "Out of tries. It was:").font(JT.body(18, .bold))
+                    Text(answer.n).font(JT.marker(28)).foregroundColor(JT.lavender)
+                    Text(answer.e).foregroundColor(JT.muted)
+                    HStack {
+                        Button("Open the song card") { store.openSong = answer }
+                        if daily { Text("A new song tomorrow.").foregroundColor(JT.muted) }
+                        else { Button("Next song") { unlimitedPick = Int.random(in: 0..<10_000); restart() } }
+                    }
+                }
+                .onAppear { count(won: won) }
+            } else {
+                HStack(spacing: 10) {
+                    TextField("Search for the song", text: $query).textFieldStyle(.roundedBorder).frame(width: 360)
+                    Button("Skip (+\(Int(Self.steps[min(list.count + 1, 5)] - Self.steps[min(list.count, 5)]))s)") { add("-") }
+                }
+                let q = Engine.normalize(query)
+                if q.count >= 2 {
+                    var seen = Set<String>()
+                    let matches = store.songs.filter { Engine.normalize($0.n).contains(q) && seen.insert(Engine.normalize($0.n)).inserted }.prefix(8)
+                    VStack(alignment: .leading, spacing: 2) {
+                        ForEach(Array(matches), id: \.i) { s in
+                            Button { add(s.s.id) } label: {
+                                HStack { Text(s.n); Spacer(); Text(s.e).foregroundColor(JT.muted) }.padding(.horizontal, 10).padding(.vertical, 6).contentShape(Rectangle())
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                    .frame(width: 360).background(RoundedRectangle(cornerRadius: 8).fill(Color.black.opacity(0.4)))
+                }
+            }
+        }
+    }
+
+    private func count(won: Bool) {
+        guard daily, counted != today else { return }
+        var st = stats.split(separator: ",").map { Int($0) ?? 0 } + [0, 0, 0, 0]
+        st[0] += 1
+        if won { st[1] += 1; st[2] = counted == Self.day.string(from: Date().addingTimeInterval(-86400)) ? st[2] + 1 : 1; st[3] = max(st[3], st[2]) } else { st[2] = 0 }
+        stats = st.prefix(4).map(String.init).joined(separator: ","); counted = today
+    }
+}
+
+// MARK: - Desktop widgets
+
+/// Small floating widgets: a clock, what's playing (play/pause, next), up next, and an edge light that makes the
+/// screen's edges glow with the music. Each is on or off in Settings > Look; drag one to move it (right-click to
+/// close it). They stay where you put them.
+@MainActor enum DesktopWidgets {
+    static let changed = Notification.Name("DesktopWidgetsChanged")
+    static let kinds: [(key: String, name: String)] = [("clock", "Clock"), ("playing", "What's playing"), ("upnext", "Up next"), ("edge", "Edge light")]
+    private static var windows: [String: NSWindow] = [:]
+    static func isOn(_ key: String) -> Bool { UserDefaults.standard.bool(forKey: "widget.\(key)") }
+    /// The edge light follows the music's loudness, so the meter keeps ticking while the app is in the background.
+    static var wantsLevel: Bool { windows["edge"] != nil }
+
+    static func apply() {
+        for (key, _) in kinds {
+            if isOn(key), windows[key] == nil { open(key) }
+            if !isOn(key), let w = windows.removeValue(forKey: key) { w.close() }
+        }
+        NotificationCenter.default.post(name: changed, object: nil)
+    }
+    static func close(_ key: String) { UserDefaults.standard.set(false, forKey: "widget.\(key)"); apply() }
+
+    private static func open(_ key: String) {
+        if key == "edge" { openEdge(); return }
+        let view: AnyView
+        let size: NSSize
+        switch key {
+        case "clock": view = AnyView(ClockWidget()); size = NSSize(width: 260, height: 130)
+        case "playing": view = AnyView(PlayingWidget()); size = NSSize(width: 340, height: 96)
+        default: view = AnyView(UpNextWidget()); size = NSSize(width: 280, height: 220)
+        }
+        let p = NSPanel(contentRect: NSRect(origin: .zero, size: size), styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
+        p.isFloatingPanel = true; p.level = .floating
+        p.backgroundColor = .clear; p.isOpaque = false; p.hasShadow = false
+        p.isMovableByWindowBackground = true
+        p.collectionBehavior = [.canJoinAllSpaces, .stationary, .fullScreenAuxiliary]
+        p.isReleasedWhenClosed = false
+        p.contentView = NSHostingView(rootView: view.contextMenu { Button("Close this widget") { close(key) } })
+        if !p.setFrameUsingName("widget.\(key)") {
+            let v = NSScreen.main?.visibleFrame ?? .zero, k = CGFloat(kinds.firstIndex { $0.key == key } ?? 0)
+            p.setFrameOrigin(NSPoint(x: v.maxX - size.width - 30, y: v.maxY - size.height - 30 - k * 150))
+        }
+        p.setFrameAutosaveName("widget.\(key)")
+        p.orderFrontRegardless()
+        windows[key] = p
+    }
+
+    private static func openEdge() {
+        guard let screen = NSScreen.main else { return }
+        let w = NSWindow(contentRect: screen.frame, styleMask: .borderless, backing: .buffered, defer: false, screen: screen)
+        w.level = .floating; w.backgroundColor = .clear; w.isOpaque = false; w.hasShadow = false
+        w.ignoresMouseEvents = true // clicks go through to whatever is underneath
+        w.collectionBehavior = [.canJoinAllSpaces, .stationary, .fullScreenAuxiliary, .ignoresCycle]
+        w.isReleasedWhenClosed = false
+        w.contentView = EdgeLightView(frame: NSRect(origin: .zero, size: screen.frame.size))
+        w.setFrame(screen.frame, display: true)
+        w.orderFrontRegardless()
+        windows["edge"] = w
+    }
+}
+
+private struct WidgetBox<Content: View>: View {
+    let content: Content
+    init(@ViewBuilder _ content: () -> Content) { self.content = content() }
+    var body: some View {
+        content.padding(14).frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            .background(RoundedRectangle(cornerRadius: 18).fill(Color(red: 0.06, green: 0.03, blue: 0.13).opacity(0.78)))
+            .overlay(RoundedRectangle(cornerRadius: 18).stroke(Color.white.opacity(0.14)))
+            .foregroundColor(JT.mist).font(JT.body(13)).preferredColorScheme(.dark)
+    }
+}
+
+private struct ClockWidget: View {
+    private static let time: DateFormatter = {
+        let f = DateFormatter(); f.setLocalizedDateFormatFromTemplate("jmm")
+        f.dateFormat = f.dateFormat.replacingOccurrences(of: "a", with: "").trimmingCharacters(in: .whitespaces); return f
+    }()
+    var body: some View {
+        WidgetBox {
+            TimelineView(.everyMinute) { ctx in
+                VStack(alignment: .leading, spacing: 0) {
+                    Text(ctx.date.formatted(.dateTime.weekday(.wide).month(.abbreviated).day())).font(JT.body(13, .semibold)).foregroundColor(JT.lavender)
+                    Text(Self.time.string(from: ctx.date)).font(.custom("HelveticaNeue-CondensedBold", size: 64)).shadow(color: JT.lavender.opacity(0.5), radius: 14)
+                }
+            }
+        }
+    }
+}
+
+private struct PlayingWidget: View {
+    @State private var version = 0
+    private let changed = NotificationCenter.default.publisher(for: AmbientPlayer.changed)
+    var body: some View {
+        let p = AmbientPlayer.shared
+        WidgetBox {
+            HStack(spacing: 12) {
+                Group { if let img = p.coverImage { Image(nsImage: img).resizable().scaledToFill() } else { Image("jt-logo").resizable().scaledToFit().padding(8) } }
+                    .frame(width: 60, height: 60).clipShape(RoundedRectangle(cornerRadius: 10))
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(p.title ?? "Nothing playing").font(JT.body(14, .bold)).lineLimit(1)
+                    Text(NowPlaying.shared.song?.e ?? "Juice Tracker").foregroundColor(JT.muted).lineLimit(1)
+                    HStack(spacing: 14) {
+                        Button { if p.title == nil { EngineAmbient.setOn(true); p.resume() } else { p.togglePause() } } label: { Image(systemName: p.isPlaying ? "pause.fill" : "play.fill") }
+                        Button { p.skip() } label: { Image(systemName: "forward.fill") }
+                    }
+                    .buttonStyle(.plain).font(.system(size: 15)).padding(.top, 2)
+                }
+            }
+        }
+        .onReceive(changed) { _ in version += 1 }
+        .id(version)
+    }
+}
+
+private struct UpNextWidget: View {
+    @State private var version = 0
+    private let changed = NotificationCenter.default.publisher(for: AmbientPlayer.changed)
+    var body: some View {
+        let p = AmbientPlayer.shared
+        WidgetBox {
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Up next").font(JT.marker(18)).foregroundColor(JT.lavender)
+                if let t = p.title { Text("♪ \(t)").font(JT.body(13, .bold)).lineLimit(1) }
+                if p.upNext.isEmpty { Text(EngineAmbient.era.isEmpty ? "Shuffle after this" : "\(EngineAmbient.era) after this").foregroundColor(JT.muted) }
+                ForEach(Array(p.upNext.prefix(6).enumerated()), id: \.offset) { k, item in
+                    Text("\(k + 1). \(item.title)").lineLimit(1).foregroundColor(JT.mist.opacity(0.85))
+                }
+            }
+        }
+        .onReceive(changed) { _ in version += 1 }
+        .id(version)
+    }
+}
+
+/// A glow around the screen's edges in the song's colours, brighter on the beat. Core Animation; clicks pass through.
+final class EdgeLightView: NSView {
+    private let glow = CAShapeLayer()
+    private var meter: AnyCancellable?
+    private var token: NSObjectProtocol?
+
+    override init(frame: NSRect) {
+        super.init(frame: frame)
+        wantsLayer = true
+        glow.fillColor = nil; glow.lineWidth = 6
+        glow.shadowRadius = 34; glow.shadowOpacity = 1; glow.shadowOffset = .zero
+        glow.opacity = 0.25
+        layer?.addSublayer(glow)
+        recolor()
+        token = NotificationCenter.default.addObserver(forName: AmbientPlayer.changed, object: nil, queue: .main) { [weak self] _ in MainActor.assumeIsolated { self?.recolor() } }
+        meter = LevelMeter.shared.$level.sink { [weak self] level in
+            CATransaction.begin(); CATransaction.setAnimationDuration(0.12)
+            self?.glow.opacity = Float(0.25 + CGFloat(level) * 0.75)
+            CATransaction.commit()
+        }
+    }
+    required init?(coder: NSCoder) { fatalError("init(coder:) is not used") }
+    deinit { if let token { NotificationCenter.default.removeObserver(token) } }
+    override func layout() { super.layout(); glow.frame = bounds; glow.path = CGPath(rect: bounds.insetBy(dx: 2, dy: 2), transform: nil) }
+    private func recolor() {
+        let palette = AmbientPlayer.shared.coverImage.map(CoverPalette.init(image:)) ?? .fallback
+        CATransaction.begin(); CATransaction.setAnimationDuration(1.2)
+        glow.strokeColor = NSColor(palette.a).cgColor; glow.shadowColor = NSColor(palette.b).cgColor
+        CATransaction.commit()
+    }
+}
+
+// MARK: - Song share picture
+
+/// A song as a picture (1080 × 1350): the era's art, the title, the era and dates, and whether you have it.
+@MainActor func songSharePicture(_ song: Song, details d: SongDetails?) async -> Data? {
+    var art: NSImage?
+    if let url = await Extras.shared.extras(for: song.s.id)?.image { art = await Extras.shared.image(url) }
+    let facts: [(String, String)] = [("Recorded", d?.recordDates ?? ""), ("Released", d?.release ?? ""), ("Surfaced", d?.leakDate ?? ""), ("Length", d?.length ?? ""),
+                                     ("Produced by", d?.producers ?? "")].filter { !$0.1.trimmingCharacters(in: .whitespaces).isEmpty }
+    let host = NSHostingView(rootView: SongPicture(song: song, art: art, facts: facts))
+    host.frame = NSRect(x: 0, y: 0, width: 1080, height: 1350)
+    return snapshot(host)
+}
+
+private struct SongPicture: View {
+    let song: Song
+    let art: NSImage?
+    let facts: [(String, String)]
+    var body: some View {
+        ZStack {
+            LinearGradient(colors: [Color(red: 7 / 255, green: 4 / 255, blue: 15 / 255), Color(red: 29 / 255, green: 11 / 255, blue: 64 / 255), Color(red: 74 / 255, green: 18 / 255, blue: 80 / 255)],
+                           startPoint: .topLeading, endPoint: .bottomTrailing)
+            if let art { Image(nsImage: art).resizable().scaledToFill().frame(width: 1080, height: 1350).clipped().opacity(0.18) }
+            VStack(spacing: 30) {
+                Group { if let art { Image(nsImage: art).resizable().scaledToFill() } else { Image(eraSticker(song.e, fallback: song.i)).resizable().scaledToFit().padding(40) } }
+                    .frame(width: 420, height: 420).clipShape(RoundedRectangle(cornerRadius: 30)).shadow(color: .black.opacity(0.6), radius: 30, y: 12)
+                Text(song.n).font(JT.marker(64)).foregroundColor(.white).multilineTextAlignment(.center)
+                Text("Juice WRLD · \(song.e) · \(song.c)").font(JT.body(28, .semibold)).foregroundColor(JT.lavender)
+                VStack(alignment: .leading, spacing: 10) {
+                    ForEach(facts, id: \.0) { k, v in
+                        HStack(alignment: .top) { Text(k).foregroundColor(.white.opacity(0.55)).frame(width: 220, alignment: .leading); Text(v).foregroundColor(.white).lineLimit(2) }
+                    }
+                }
+                .font(JT.body(26)).frame(width: 820)
+                Text(song.o ? "✓ In my library" : "Still hunting for this one").font(JT.body(28, .bold)).foregroundColor(song.o ? JT.have : JT.new)
+                    .padding(.horizontal, 26).padding(.vertical, 12).background(Capsule().fill(Color.white.opacity(0.08)))
+            }
+            .padding(.horizontal, 80).frame(width: 1080)
             VStack { Spacer(); Text("Juice Tracker").font(JT.marker(22)).foregroundColor(.white.opacity(0.35)).padding(.bottom, 36) }
         }
         .frame(width: 1080, height: 1350).clipped()

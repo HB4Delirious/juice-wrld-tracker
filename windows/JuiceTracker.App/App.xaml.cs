@@ -106,6 +106,9 @@ public partial class App : Application
                     window.ShowOverlay(new SongCard(song));
                     window.ShowOverlay(new SongCard(Store.Shared.Songs.First(s => !s.Owned && s.HasFile)));
                     SettingsWindow.Open();
+                    // every desktop widget opens and closes
+                    foreach (var (k, _) in DesktopWidgets.Kinds) DesktopWidgets.Set(k, true);
+                    foreach (var (k, _) in DesktopWidgets.Kinds) DesktopWidgets.Set(k, false);
                     // every theme and compact mode redraw the whole window; celebrations draw over it
                     foreach (var t in Themes.All.Select(t => t.Id).Append("custom")) { Store.Shared.Me.Theme = t; Themes.Apply(); window.Restyle(); }
                     Store.Shared.Me.Compact = true; window.Restyle(); Store.Shared.Me.Compact = false; window.Restyle();

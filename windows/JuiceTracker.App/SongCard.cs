@@ -49,6 +49,7 @@ public sealed class SongCard : Border
         }
         actions.Children.Add(Spaced(Listen.MenuButton("Add to playlist", () => Listen.PlaylistMenu([s.S.Id]), "\uE710")));
         if (!s.Owned && s.HasFile) actions.Children.Add(Spaced(UI.Button("Download", () => store.AddDownloads([s.S.Id]), "")));
+        actions.Children.Add(Spaced(Listen.MenuButton("Share picture", () => SongPicture.Menu(s), "\uE72D")));
         var site = $"https://juicewrldapi.com/juicewrld/songs/{s.S.Id}/";
 
         var scroll = new ScrollViewer { Content = details, VerticalScrollBarVisibility = ScrollBarVisibility.Auto, Margin = new Thickness(0, 14, 0, 0) };

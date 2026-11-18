@@ -7,7 +7,7 @@ using System.Windows.Shapes;
 
 namespace JuiceTracker.App;
 
-public enum Page { Collection, Player, Hunt, Playlists, Fixer, Duplicates, Health, Organize, Credits, Stats, Timeline, Badges, Trivia, Wordle, Tiers, Export }
+public enum Page { Collection, Player, Hunt, Playlists, Fixer, Duplicates, Health, Organize, Credits, Stats, Timeline, Badges, Trivia, Heardle, Wordle, Tiers, Export }
 
 public partial class MainWindow : Window
 {
@@ -202,7 +202,7 @@ public sealed class Sidebar : Grid
     [
         (Page.Collection, "Collection", "\uE8D6"), (Page.Player, "Player", "\uE768"), (Page.Hunt, "Hunt", "\uE7B3"), (Page.Playlists, "Playlists", "\uE90B"), (Page.Fixer, "Tag fixer", "\uE8EC"),
         (Page.Duplicates, "Duplicates", "\uE8C8"), (Page.Health, "File health", "\uE9D9"), (Page.Organize, "Organize", "\uE8B7"), (Page.Credits, "Credits", "\uE716"),
-        (Page.Stats, "Stats", "\uE9D2"), (Page.Timeline, "Timeline", "\uE81C"), (Page.Badges, "Badges", "\uE7C1"), (Page.Trivia, "Trivia", "\uE9CE"), (Page.Wordle, "Wordle", "\uE765"), (Page.Tiers, "Tier list", "\uE8FD"), (Page.Export, "Export & backup", "\uE7B8"),
+        (Page.Stats, "Stats", "\uE9D2"), (Page.Timeline, "Timeline", "\uE81C"), (Page.Badges, "Badges", "\uE7C1"), (Page.Trivia, "Trivia", "\uE9CE"), (Page.Heardle, "Heardle", "\uE7F6"), (Page.Wordle, "Wordle", "\uE765"), (Page.Tiers, "Tier list", "\uE8FD"), (Page.Export, "Export & backup", "\uE7B8"),
     ];
     public static IEnumerable<Page> Available => Pages.Select(p => p.Page);
     /// The pages this build has (each stage adds its own).
