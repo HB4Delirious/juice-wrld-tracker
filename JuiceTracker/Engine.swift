@@ -48,6 +48,25 @@ extension Engine {
         // A date in the future (a NAS whose clock runs ahead, bad metadata) says nothing about the copy; the size does.
         sizeNow > 0 && sizeNow == sizeBefore && (now.timeIntervalSince(modified) >= 10 || modified > now)
     }
+    /// A song title as a Wordle answer: bracketed parts ("(feat. …)", "[v2]") dropped, letters and digits upper-cased,
+    /// spaces kept between words; nil when it isn't 4 to 14 letters long.
+    static func wordleWord(_ title: String) -> String? {
+        let bare = title.replacingOccurrences(of: #"\s*[\(\[][^\)\]]*[\)\]]"#, with: "", options: .regularExpression)
+        let words = bare.uppercased().folding(options: .diacriticInsensitive, locale: nil)
+            .split(whereSeparator: { !$0.isLetter && !$0.isNumber && $0 != "'" }).map { $0.filter { $0 != "'" } }.filter { !$0.isEmpty }
+        let letters = words.joined().count
+        return (4...14).contains(letters) && words.joined().allSatisfy({ $0.isASCII }) ? words.joined(separator: " ") : nil
+    }
+    /// A Wordle guess against the answer, letter by letter (spaces ignored): 2 right place, 1 in the word elsewhere, 0
+    /// not in it. A repeated letter is only yellow as many times as the answer still has it.
+    static func wordleScore(_ guess: String, _ answer: String) -> [Int] {
+        let g = Array(guess.filter { $0 != " " }), a = Array(answer.filter { $0 != " " })
+        guard g.count == a.count else { return [] }
+        var out = [Int](repeating: 0, count: g.count), left: [Character: Int] = [:]
+        for k in g.indices { if g[k] == a[k] { out[k] = 2 } else { left[a[k], default: 0] += 1 } }
+        for k in g.indices where out[k] == 0 { if let n = left[g[k]], n > 0 { out[k] = 1; left[g[k]] = n - 1 } }
+        return out
+    }
     /// The eras a spoken name fits, best first: the short name ("drfl"), then the full name ("Death Race For Love"),
     /// then names containing the words ("party never ends" fits TPNE and TPNE 2.0). Case, "&" and punctuation don't matter.
     static func erasNamed(_ spoken: String, eras: [(name: String, full: String)]) -> [String] {

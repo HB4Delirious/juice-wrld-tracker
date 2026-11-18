@@ -237,6 +237,14 @@ import Foundation
             expect(Engine.erasNamed("goodbye and good riddance", eras: eras) == ["GB&GR"], "era names: & and and are the same")
             expect(Engine.erasNamed("party never ends", eras: eras) == ["TPNE", "TPNE 2.0"], "era names: several fits are all returned")
             expect(Engine.erasNamed("fighting demons", eras: eras).isEmpty, "era names: no fit, nothing")
+            expect(Engine.wordleWord("Lucid Dreams (Forget Me)") == "LUCID DREAMS", "wordle: brackets dropped, words kept")
+            expect(Engine.wordleWord("Bandit [v1]") == "BANDIT", "wordle: version marks dropped")
+            expect(Engine.wordleWord("Can't Die") == "CANT DIE", "wordle: apostrophes dropped")
+            expect(Engine.wordleWord("All Girls Are The Same") == nil && Engine.wordleWord("Hey") == nil, "wordle: too long or too short is skipped")
+            expect(Engine.wordleScore("CRANE", "CREAK") == [2, 2, 1, 0, 1], "wordle: green, yellow and grey")
+            expect(Engine.wordleScore("LLAMA", "HELLO") == [1, 1, 0, 0, 0], "wordle: a repeated letter is yellow as often as the answer has it")
+            expect(Engine.wordleScore("EERIE", "THREE") == [1, 0, 2, 0, 2], "wordle: greens first, then yellows from what's left")
+            expect(Engine.wordleScore("LUCIDDREAMS", "LUCID DREAMS") == Array(repeating: 2, count: 11), "wordle: spaces don't count")
         }
 
         // Cover art (beyond the page): added to each format, tags and audio untouched, and refused the second time.

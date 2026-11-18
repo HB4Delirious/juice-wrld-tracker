@@ -229,6 +229,14 @@ foreach (var c in fx["csvCases"]!.AsArray())
     Expect(Engine.ErasNamed("goodbye and good riddance", eraNames).SequenceEqual(["GB&GR"]), () => "era names: & and and are the same");
     Expect(Engine.ErasNamed("party never ends", eraNames).SequenceEqual(["TPNE", "TPNE 2.0"]), () => "era names: several fits are all returned");
     Expect(Engine.ErasNamed("fighting demons", eraNames).Count == 0, () => "era names: no fit, nothing");
+    Expect(Engine.WordleWord("Lucid Dreams (Forget Me)") == "LUCID DREAMS", () => "wordle: brackets dropped, words kept");
+    Expect(Engine.WordleWord("Bandit [v1]") == "BANDIT", () => "wordle: version marks dropped");
+    Expect(Engine.WordleWord("Can't Die") == "CANT DIE", () => "wordle: apostrophes dropped");
+    Expect(Engine.WordleWord("All Girls Are The Same") is null && Engine.WordleWord("Hey") is null, () => "wordle: too long or too short is skipped");
+    Expect(Engine.WordleScore("CRANE", "CREAK").SequenceEqual([2, 2, 1, 0, 1]), () => "wordle: green, yellow and grey");
+    Expect(Engine.WordleScore("LLAMA", "HELLO").SequenceEqual([1, 1, 0, 0, 0]), () => "wordle: a repeated letter is yellow as often as the answer has it");
+    Expect(Engine.WordleScore("EERIE", "THREE").SequenceEqual([1, 0, 2, 0, 2]), () => "wordle: greens first, then yellows from what's left");
+    Expect(Engine.WordleScore("LUCIDDREAMS", "LUCID DREAMS").SequenceEqual(Enumerable.Repeat(2, 11)), () => "wordle: spaces don't count");
 }
 
 // Cover art (beyond the page): added to each format, tags and audio untouched, and refused the second time.

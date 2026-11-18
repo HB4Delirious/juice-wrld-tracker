@@ -92,6 +92,13 @@ public sealed partial class Store
         public string? PlexServer { get; set; }
         public bool KeepRunning { get; set; }
         public string? LiveServer { get; set; }
+        public bool WordleDaily { get; set; } = true;
+        public string WordleEra { get; set; } = "";
+        public string WordleSaved { get; set; } = "";     // today's daily round: "date|era|GUESS,GUESS"
+        public string WordleStats { get; set; } = "0,0,0,0"; // daily rounds: played, won, streak, best
+        public string WordleCounted { get; set; } = "";   // the last daily round counted in the stats
+        public List<TierList> TierLists { get; set; } = [];
+        public string TierListPick { get; set; } = "";
     }
     public sealed record Playlist(string Id, string Name, List<string> Songs);
     public Personal Me { get; private set; } = new();
