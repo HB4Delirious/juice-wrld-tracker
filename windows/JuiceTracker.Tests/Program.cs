@@ -239,6 +239,10 @@ foreach (var c in fx["csvCases"]!.AsArray())
     Expect(Engine.PlayTimeline(plays, 7, 1, Day(10, 12)).SequenceEqual([0, 0, 0, 0, 0, 1, 1]), () => "timeline: plays by day, today last, older and future plays left out");
     Expect(Engine.PlayTimeline(plays, 2, 7, Day(10, 12)).SequenceEqual([2, 2]), () => "timeline: plays by week, the week ending today last");
     Expect(Engine.M3u([("/m/a.mp3", "Lucid Dreams", 239.6), ("/m/b.flac", "Two\nLines", null)]) == "#EXTM3U\n#EXTINF:239,Juice WRLD - Lucid Dreams\n/m/a.mp3\n#EXTINF:-1,Juice WRLD - Two Lines\n/m/b.flac\n", () => "m3u: length, title on one line, path");
+    Expect(Engine.Boosted(0.2, 0.25) == (0.8, 0.25) && Engine.Boosted(0.05, 0) == (0.2, 0.25), () => "boost: a quiet song is lifted, near-silence only so far");
+    Expect(Engine.Boosted(0.9, 0.4) == (1, 0.9) && Engine.Boosted(0.45, 0.9).Level == 0.45 / (0.9 * 0.995), () => "boost: a loud song sets the peak, which falls back slowly");
+    Expect(Engine.EqPreset([-2, 4, 2]) == "Vocals" && Engine.EqPreset([0, 4, 2]) == "Custom", () => "equalizer: bands name their preset, or Custom");
+    Expect(Engine.EqHeadroom([6, 0, 1]) == -3 && Engine.EqHeadroom([-4, 1, -3]) == -0.5 && Engine.EqHeadroom([-4, -1, -3]) == 0, () => "equalizer: turned down by half the biggest boost");
     var lrc = Engine.ParseLrc("[ar:Juice WRLD]\n[00:12.50]second line\n[00:03.00]<00:03.00>first <00:03.60>line <00:04.20>here\n[00:20.00]<00:20.00>wrong count");
     Expect(lrc.Select(l => l.At).SequenceEqual([3, 12.5, 20]) && lrc[0].Line == "first line here", () => "lrc: tags skipped, sorted by time, word times taken out of the text");
     Expect(lrc[0].Words.SequenceEqual([3, 3.6, 4.2]) && lrc[1].Words.Length == 0 && lrc[2].Words.Length == 0, () => "lrc: word times only when every word has one");

@@ -119,6 +119,12 @@ public partial class App : Application
                         look.Measure(new Size(400, 400)); look.Arrange(new Rect(0, 0, 400, 400)); look.Pulse(0.8); look.Pulse(0);
                     }
                     PlayerLooksWindow.Open([Colors.Red, Colors.Blue, Colors.Purple], null);
+                    // the equalizer's filters run over some audio (on and off), and turning it on and off is safe with nothing playing
+                    Equalizer.Set(true, [6, 0, 1]);
+                    var eq = new EqStage(new NAudio.Wave.SampleProviders.SignalGenerator(44100, 2) { Frequency = 440, Gain = 0.5 });
+                    var samples = new float[4096];
+                    if (eq.Read(samples, 0, samples.Length) != samples.Length || samples.Any(float.IsNaN)) throw new Exception("The equalizer's filters came out wrong.");
+                    Equalizer.Set(false, [0, 0, 0]);
                     // the lyrics windows open
                     LyricsMakerWindow.Open(); LyricsCardWindow.Open(null);
                     // every desktop widget opens and closes

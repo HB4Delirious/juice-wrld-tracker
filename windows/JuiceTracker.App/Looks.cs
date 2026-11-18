@@ -7,6 +7,36 @@ using System.Windows.Shapes;
 
 namespace JuiceTracker.App;
 
+/// A video of the song in its folder (an .mp4, .mov or .m4v with the file's name or the song's title).
+static class MusicVideo
+{
+    static readonly string[] Kinds = [".mp4", ".mov", ".m4v"];
+    /// Off the UI thread: it lists the song's folder, which can be slow on a network drive.
+    public static string? Find(string audio, string title)
+    {
+        try
+        {
+            var folder = System.IO.Path.GetDirectoryName(audio)!; var b = System.IO.Path.GetFileNameWithoutExtension(audio); var want = Engine.Normalize(title);
+            var videos = System.IO.Directory.EnumerateFiles(folder).Where(f => Kinds.Contains(System.IO.Path.GetExtension(f).ToLowerInvariant())).ToList();
+            return videos.FirstOrDefault(f => System.IO.Path.GetFileNameWithoutExtension(f) == b)
+                ?? videos.FirstOrDefault(f => want.Length > 0 && Engine.Normalize(System.IO.Path.GetFileNameWithoutExtension(f)) == want);
+        }
+        catch (Exception) { return null; }
+    }
+}
+
+/// Quiet songs still move the visuals (Settings): each listener keeps its own recent loudest.
+sealed class LevelBoost
+{
+    double peak;
+    public double Apply(double level)
+    {
+        if (!Store.Shared.Me.VisualBoost) return level;
+        (level, peak) = Engine.Boosted(level, peak);
+        return level;
+    }
+}
+
 /// The Player's looks: the ringed black hole (the default), and three more to pick from (Player looks).
 static class PlayerLooks
 {

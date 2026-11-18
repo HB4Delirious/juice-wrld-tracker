@@ -1,5 +1,6 @@
 import AppIntents
 import AppKit
+import AVFoundation
 import CoreSpotlight
 import SwiftUI
 import Combine
@@ -87,6 +88,7 @@ struct SongExtras {
     @Published var singing = false
     private var timer: Timer?
     private var path: String?
+    private var boostPeak = 0.0
 
     private init() {
         NotificationCenter.default.addObserver(forName: AmbientPlayer.changed, object: nil, queue: .main) { [weak self] _ in
@@ -133,7 +135,8 @@ struct SongExtras {
 
     private func tick() {
         let p = AmbientPlayer.shared
-        let level = p.level()
+        var level = p.level()
+        if Pref.bool("visualBoost", default: true) { let b = Engine.boosted(Double(level), peak: boostPeak); level = Float(b.level); boostPeak = b.peak }
         LevelMeter.shared.level = level
         SkyNSView.current?.setGlow(level)
         if let x = extras, !x.synced.isEmpty {
@@ -679,6 +682,8 @@ struct PlayerScreen: View {
     @State private var lyricsMaker = false
     @State private var looks = false
     @AppStorage("playerStyle") private var look = "hole"
+    @AppStorage("musicVideos") private var videosOn = true
+    @State private var video: URL? // the song's music video, when your folder has one
     @State private var query = ""
     @State private var era = ""
     @State private var palette = CoverPalette.fallback
@@ -702,7 +707,11 @@ struct PlayerScreen: View {
                 Circle().stroke(AngularGradient(colors: [palette.a, palette.b, palette.c, palette.a], center: .center), lineWidth: 3)
                     .frame(width: hole, height: hole).padding(4).drawingGroup().scaleEffect(wave.scale).opacity(wave.alpha).blur(radius: 1.5)
                     .position(x: cx, y: cy).allowsHitTesting(false)
-                if look == "hole" || !PlayerLooks.all.contains(where: { $0.id == look }) {
+                if let video, videosOn {
+                    MusicVideoView(url: video).frame(width: hole * 2.3, height: hole * 2.3 * 9 / 16)
+                        .clipShape(RoundedRectangle(cornerRadius: 18)).shadow(color: palette.a.opacity(0.6), radius: 30)
+                        .position(x: cx, y: cy)
+                } else if look == "hole" || !PlayerLooks.all.contains(where: { $0.id == look }) {
                     BlackHole(palette: palette, size: hole).frame(width: hole * 2.6, height: hole * 2.6).position(x: cx, y: cy)
                 } else {
                     PlayerLook(style: look, palette: palette, size: hole, cover: AmbientPlayer.shared.coverImage)
@@ -792,7 +801,15 @@ struct PlayerScreen: View {
         let path = AmbientPlayer.shared.currentPath
         guard path != lastPath else { return }
         lastPath = path
-        guard path != nil else { return }
+        video = nil
+        guard let path else { return }
+        let name = NowPlaying.shared.song?.n ?? AmbientPlayer.shared.title ?? ""
+        Task.detached(priority: .utility) {
+            let found = MusicVideo.find(audio: path, title: name)
+            await MainActor.run { if lastPath == path { video = found } }
+        }
+        // Settings > Look: a different look for every song
+        if Pref.bool("playerStyleAuto", default: false), let k = PlayerLooks.all.firstIndex(where: { $0.id == look }) { look = PlayerLooks.all[(k + 1) % PlayerLooks.all.count].id }
         var still = Transaction(); still.disablesAnimations = true
         withTransaction(still) { wave = (1, 0.9) }
         DispatchQueue.main.async { withAnimation(.easeOut(duration: 1.6)) { wave = (2.8, 0) } }
@@ -1167,6 +1184,69 @@ private struct LiveBadge: View {
     private func pill(_ text: some View, color: Color) -> some View {
         text.font(JT.body(12, .bold)).foregroundColor(.white).padding(.horizontal, 12).padding(.vertical, 6)
             .background(Capsule().fill(color.opacity(0.85)))
+    }
+}
+
+// MARK: - Music videos
+
+/// A video of the song in its folder (an .mp4, .mov or .m4v with the file's name or the song's title) plays muted in
+/// time with the song, in place of the look.
+enum MusicVideo {
+    static let kinds: Set<String> = ["mp4", "mov", "m4v"]
+    /// Off the main thread: it lists the song's folder, which can be slow on a network drive.
+    static func find(audio: String, title: String) -> URL? {
+        let file = URL(fileURLWithPath: audio), folder = file.deletingLastPathComponent()
+        let base = file.deletingPathExtension().lastPathComponent, want = Engine.normalize(title)
+        guard let names = try? FileManager.default.contentsOfDirectory(atPath: folder.path) else { return nil }
+        let videos = names.filter { kinds.contains(($0 as NSString).pathExtension.lowercased()) }
+        let hit = videos.first { ($0 as NSString).deletingPathExtension == base }
+            ?? videos.first { !want.isEmpty && Engine.normalize(($0 as NSString).deletingPathExtension) == want }
+        return hit.map { folder.appendingPathComponent($0) }
+    }
+}
+
+struct MusicVideoView: NSViewRepresentable {
+    let url: URL
+    func makeNSView(context: Context) -> MusicVideoNSView { MusicVideoNSView(url: url) }
+    func updateNSView(_ view: MusicVideoNSView, context: Context) { view.show(url) }
+}
+
+/// Muted, following the song: it plays and pauses with it and catches up when they drift apart.
+final class MusicVideoNSView: NSView {
+    private let player = AVPlayer()
+    private let shown = AVPlayerLayer()
+    private var url: URL?
+    private var timer: Timer?
+
+    init(url: URL) {
+        super.init(frame: .zero)
+        wantsLayer = true
+        player.isMuted = true
+        shown.player = player; shown.videoGravity = .resizeAspectFill
+        layer?.addSublayer(shown)
+        show(url)
+    }
+    required init?(coder: NSCoder) { fatalError("init(coder:) is not used") }
+    override func layout() { super.layout(); shown.frame = bounds }
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
+
+    func show(_ next: URL) {
+        guard next != url else { return }
+        url = next
+        player.replaceCurrentItem(with: AVPlayerItem(url: next))
+        follow()
+    }
+    override func viewDidMoveToWindow() {
+        timer?.invalidate(); timer = nil
+        guard window != nil else { player.pause(); return }
+        timer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in MainActor.assumeIsolated { self?.follow() } }
+    }
+    private func follow() {
+        let song = AmbientPlayer.shared
+        guard song.isPlaying else { player.pause(); return }
+        let want = song.currentTime, now = player.currentTime().seconds
+        if !now.isFinite || abs(now - want) > 0.3 { player.seek(to: CMTime(seconds: want, preferredTimescale: 600), toleranceBefore: .zero, toleranceAfter: .zero) }
+        if player.rate == 0 { player.play() }
     }
 }
 

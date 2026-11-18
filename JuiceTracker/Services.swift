@@ -442,6 +442,10 @@ struct SettingsView: View {
     @AppStorage("lyricStyle") private var lyricStyle = "line"
     @AppStorage("lyricBlur") private var lyricBlur = true
     @AppStorage("widget.edgeColor") private var edgeColor = ""
+    @AppStorage("widget.edgeAll") private var edgeAll = true
+    @AppStorage("playerStyleAuto") private var lookAuto = false
+    @AppStorage("visualBoost") private var visualBoost = true
+    @AppStorage("musicVideos") private var musicVideos = true
     @AppStorage("customAccent") private var customAccent = "ff6ad5"
     @AppStorage("customSky1") private var customSky1 = "d6308c"
     @AppStorage("customSky2") private var customSky2 = "5082ff"
@@ -495,6 +499,10 @@ struct SettingsView: View {
             } header: { Text("Playback").bold() }
 
             Section {
+                EqualizerSettings()
+            } header: { Text("Equalizer").bold() }
+
+            Section {
                 ShortcutsSettings()
             } header: { Text("Keyboard shortcuts").bold() }
 
@@ -523,6 +531,10 @@ struct SettingsView: View {
                     if !edgeColor.isEmpty { ColorPicker("", selection: hex($edgeColor)).labelsHidden() }
                 }
                 .onChange(of: edgeColor) { _ in DesktopWidgets.apply() }
+                Toggle("Edge light on every screen", isOn: $edgeAll).onChange(of: edgeAll) { _ in DesktopWidgets.reopenEdge() }
+                Toggle("A different Player look for every song", isOn: $lookAuto)
+                Toggle("Lift quiet songs so the visuals still move", isOn: $visualBoost)
+                Toggle("Play a song's music video on the Player tab (a video with its name in its folder)", isOn: $musicVideos)
                 Picker("Player lyrics", selection: $lyricStyle) {
                     Text("The line being sung, word by word").tag("line")
                     Text("The scrolling list").tag("list")
@@ -821,5 +833,41 @@ private struct ShortcutsSettings: View {
     private func stop() {
         if let monitor { NSEvent.removeMonitor(monitor) }
         monitor = nil; recording = nil; Shortcuts.recording = false; version += 1
+    }
+}
+
+private struct EqualizerSettings: View {
+    @AppStorage("eqOn") private var on = false
+    @AppStorage("eq.bass") private var bass = 0.0
+    @AppStorage("eq.mid") private var mid = 0.0
+    @AppStorage("eq.treble") private var treble = 0.0
+    var body: some View {
+        let preset = Engine.eqPreset([bass, mid, treble])
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Toggle("Equalizer", isOn: $on)
+                Spacer()
+                Picker("", selection: Binding(get: { preset }, set: { name in
+                    if let p = Engine.eqPresets.first(where: { $0.name == name }) { (bass, mid, treble) = (p.bands[0], p.bands[1], p.bands[2]) }
+                })) {
+                    ForEach(Engine.eqPresets, id: \.name) { Text($0.name).tag($0.name) }
+                    if preset == "Custom" { Text("Custom").tag("Custom") }
+                }
+                .labelsHidden().frame(width: 140).disabled(!on)
+            }
+            ForEach([("Bass", $bass), ("Mids", $mid), ("Treble", $treble)], id: \.0) { name, value in
+                HStack {
+                    Text(name).frame(width: 60, alignment: .leading)
+                    Slider(value: value, in: -12...12, step: 1)
+                    Text(String(format: "%+.0f dB", value.wrappedValue)).font(.system(.caption, design: .monospaced)).frame(width: 50, alignment: .trailing)
+                }
+                .disabled(!on)
+            }
+            Text("Shapes the music's sound. Your files don't change.").font(.caption).foregroundColor(.secondary)
+        }
+        .onChange(of: on) { _ in AmbientPlayer.shared.equalizerChanged() }
+        .onChange(of: bass) { _ in AmbientPlayer.shared.equalizerChanged() }
+        .onChange(of: mid) { _ in AmbientPlayer.shared.equalizerChanged() }
+        .onChange(of: treble) { _ in AmbientPlayer.shared.equalizerChanged() }
     }
 }

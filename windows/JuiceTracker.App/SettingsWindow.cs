@@ -120,6 +120,41 @@ public sealed class SettingsWindow : Window
         UI.AutomationName(style, "Player lyrics");
         body.Children.Add(UI.Row(12, UI.Text("Player lyrics", 14, JT.Muted), style).Also(r => r.Margin = new Thickness(0, 10, 0, 0)));
         Check("Blur the lines not being sung (scrolling list)", store.Me.LyricBlur, v => store.Me.LyricBlur = v);
+        Check("Edge light on every screen", store.Me.EdgeAll, v => { store.Me.EdgeAll = v; Dispatcher.BeginInvoke(DesktopWidgets.ReopenEdge); });
+        Check("A different Player look for every song", store.Me.PlayerStyleAuto, v => store.Me.PlayerStyleAuto = v);
+        Check("Lift quiet songs so the visuals still move", store.Me.VisualBoost, v => store.Me.VisualBoost = v);
+        Check("Play a song's music video on the Player tab (a video with its name in its folder)", store.Me.MusicVideos, v => store.Me.MusicVideos = v);
+
+        Section("Equalizer");
+        {
+            var me = store.Me; bool setting = false;
+            var on = new CheckBox { Content = "Equalizer", IsChecked = me.EqOn, Margin = new Thickness(0, 6, 0, 0) };
+            var preset = new ComboBox { Width = 150, ItemsSource = Engine.EqPresets.Select(p => p.Name).Append("Custom").ToList() };
+            var sliders = new List<(Slider S, TextBlock V)>();
+            void Show()
+            {
+                setting = true;
+                var b = Equalizer.Bands;
+                for (int k = 0; k < 3; k++) { sliders[k].S.Value = b[k]; sliders[k].V.Text = $"{b[k]:+0;-0;0} dB"; sliders[k].S.IsEnabled = me.EqOn; }
+                preset.SelectedItem = Engine.EqPreset(b); preset.IsEnabled = me.EqOn;
+                setting = false;
+            }
+            foreach (var name in new[] { "Bass", "Mids", "Treble" })
+            {
+                var s = new Slider { Minimum = -12, Maximum = 12, TickFrequency = 1, IsSnapToTickEnabled = true, Width = 260, VerticalAlignment = VerticalAlignment.Center };
+                var v = UI.Text("", 12, JT.Muted).Also(t => { t.Width = 50; t.VerticalAlignment = VerticalAlignment.Center; });
+                UI.AutomationName(s, name);
+                s.ValueChanged += (_, _) => { if (!setting) { Equalizer.Set(me.EqOn, [.. sliders.Select(x => x.S.Value)]); Show(); } };
+                sliders.Add((s, v));
+                body.Children.Add(UI.Row(10, UI.Text(name, 14).Also(t => { t.Width = 60; t.VerticalAlignment = VerticalAlignment.Center; }), s, v).Also(r => r.Margin = new Thickness(0, 6, 0, 0)));
+            }
+            on.Click += (_, _) => { Equalizer.Set(on.IsChecked == true, Equalizer.Bands); Show(); };
+            preset.SelectionChanged += (_, _) => { if (!setting && preset.SelectedItem is string n && Engine.EqPresets.FirstOrDefault(p => p.Name == n).Bands is { } b) { Equalizer.Set(me.EqOn, b); Show(); } };
+            UI.AutomationName(preset, "Equalizer preset");
+            body.Children.Insert(body.Children.Count - 3, UI.Row(14, on, preset));
+            body.Children.Add(UI.Muted("Shapes the music's sound. Your files don't change.", 12));
+            Show();
+        }
 
         Section("Keyboard shortcuts");
         foreach (var (id, name) in Shortcuts.Actions)

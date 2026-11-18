@@ -12,8 +12,8 @@ public sealed class Player
     public static Player Shared { get; } = new();
     public event Action? Changed;
 
-    MediaPlayer media = new();
-    MediaPlayer? fading;                       // the song fading out under a crossfade
+    ISong media = new MediaSong();
+    ISong? fading;                             // the song fading out under a crossfade
     readonly DispatcherTimer tick = new() { Interval = TimeSpan.FromMilliseconds(250) };
     List<(string File, string Title)> items = [];
     List<int> order = [];
@@ -28,7 +28,7 @@ public sealed class Player
 
     double gain = 1;                           // volume matching: this file's level brought to a typical one
     static readonly Dictionary<string, double> Levels = [];
-    (double From, double To, DateTime Start, double Seconds, MediaPlayer Who)? ramp, rampOut;
+    (double From, double To, DateTime Start, double Seconds, ISong Who)? ramp, rampOut;
     bool crossfading, sleepFading;
 
     Player()
@@ -37,11 +37,25 @@ public sealed class Player
         tick.Tick += (_, _) => Tick();
         tick.Start();
     }
-    void Hook(MediaPlayer m)
+    void Hook(ISong m)
     {
-        m.MediaEnded += (s, _) => { if (s == media) Ended(); };
-        m.MediaFailed += (s, _) => { if (s == media) Next(failures: 1); };
-        m.MediaOpened += (s, _) => { if (s == media) Changed?.Invoke(); };
+        m.Ended += () => { if (m == media) Ended(); };
+        m.Failed += () => { if (m == media) Next(failures: 1); };
+        m.Opened += () => { if (m == media) Changed?.Invoke(); };
+    }
+    /// The equalizer on (and not flat): songs go through NAudio with it; otherwise Windows' media player.
+    ISong NewSong() { ISong s = Equalizer.Active ? new EqSong() : new MediaSong(); Hook(s); return s; }
+
+    /// The equalizer changed: the song playing moves to (or off) the EQ where it is.
+    public void EqualizerChanged()
+    {
+        if (CurrentFile is not { } file || (media is EqSong) == Equalizer.Active) return;
+        var old = media; var at = old.Position;
+        media = NewSong();
+        media.Volume = old.Volume; media.Open(file); media.Position = at;
+        if (!IsPaused) media.Play();
+        if (ramp is { } r && r.Who == old) ramp = r with { Who = media };
+        old.Stop(); old.Close();
     }
 
     public double Volume
@@ -51,7 +65,7 @@ public sealed class Player
     }
     double Loud => Math.Min(1, Volume / 100 * gain);
     public TimeSpan Position => media.Position;
-    public TimeSpan Duration => media.NaturalDuration.HasTimeSpan ? media.NaturalDuration.TimeSpan : TimeSpan.Zero;
+    public TimeSpan Duration => media.Length ?? TimeSpan.Zero;
     public void Seek(TimeSpan t) { media.Position = t; Changed?.Invoke(); }
 
     /// The eras you have songs from (for the era menu).
@@ -131,7 +145,7 @@ public sealed class Player
     }
     DispatcherTimer? fader;
     /// A quick volume glide (a third of a second, in small steps: the main tick is too coarse for it).
-    void Fade(MediaPlayer who, double to, Action? done)
+    void Fade(ISong who, double to, Action? done)
     {
         fader?.Stop();
         double from = who.Volume; var start = DateTime.Now;
@@ -181,11 +195,15 @@ public sealed class Player
             // crossfade: the old song keeps playing, fading out, while the new one fades in
             fading?.Close();
             fading = media; rampOut = (fading.Volume, 0, DateTime.Now, fade, fading);
-            media = new MediaPlayer(); Hook(media);
+            media = NewSong();
         }
-        else { media.Stop(); fading?.Close(); fading = null; rampOut = null; }
+        else
+        {
+            media.Stop(); fading?.Close(); fading = null; rampOut = null;
+            if ((media is EqSong) != Equalizer.Active) { media.Close(); media = NewSong(); } // the equalizer was turned on or off
+        }
         gain = Levels.TryGetValue(file, out var l) ? GainFor(l) : 1;
-        media.Open(new Uri(file));
+        media.Open(file);
         media.Volume = 0;
         media.Play();
         ramp = (0, Loud, DateTime.Now, fade > 0 ? fade : 3, media);

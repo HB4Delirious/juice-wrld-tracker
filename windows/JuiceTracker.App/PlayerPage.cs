@@ -25,6 +25,11 @@ public sealed class PlayerPage : Grid, IRefresh
     readonly Canvas stage = new() { ClipToBounds = true };
     readonly Grid hole = new(), clock = new(), backDisc = new(), frontDisc = new();
     readonly PlayerLook look = new(); // the other looks, in place of the hole
+    readonly LevelBoost boost = new();
+    // the song's music video, when its folder has one: muted, in time with the song, in place of the look
+    readonly MediaElement video = new() { IsMuted = true, LoadedBehavior = MediaState.Manual, UnloadedBehavior = MediaState.Manual, Stretch = Stretch.UniformToFill, IsHitTestVisible = false };
+    readonly Border videoBox = new() { CornerRadius = new CornerRadius(18), ClipToBounds = true, Visibility = Visibility.Collapsed, IsHitTestVisible = false };
+    string? videoFile;
     readonly RotateTransform spinBack = new(), spinFront = new();
     readonly TextBlock date = new() { FontSize = 13, FontWeight = FontWeights.SemiBold, Foreground = JT.Brush(Color.FromArgb(217, 255, 246, 251)), HorizontalAlignment = HorizontalAlignment.Center };
     readonly TextBlock time = new() { FontFamily = new FontFamily("Bahnschrift Condensed, Bahnschrift, Segoe UI"), FontStretch = FontStretches.Condensed, FontWeight = FontWeights.Bold, HorizontalAlignment = HorizontalAlignment.Center,
@@ -83,6 +88,7 @@ public sealed class PlayerPage : Grid, IRefresh
         stage.Children.Add(Cached(wave));
         stage.Children.Add(BuildHole());
         stage.Children.Add(look);
+        videoBox.Child = video; stage.Children.Add(videoBox);
         stage.Children.Add(swirl);
         clock.Children.Add(UI.Column(0, date, time)); clock.IsHitTestVisible = false; stage.Children.Add(clock);
         lyrics.Children.Add(before); lyrics.Children.Add(karaoke); lyrics.Children.Add(after);
@@ -410,6 +416,7 @@ public sealed class PlayerPage : Grid, IRefresh
         foreach (var e in hole.Children.OfType<Ellipse>()) { e.Width = e.Height = size * (double)e.Tag; }
         At(hole, cx - span / 2, cy - span / 2);
         At(look, cx - span / 2, cy - span / 2);
+        videoBox.Width = size * 2.3; videoBox.Height = size * 2.3 * 9 / 16; At(videoBox, cx - videoBox.Width / 2, cy - videoBox.Height / 2);
         Restyle(size);
         Swirl(size, new Point(cx, cy));
         time.FontSize = size * 0.34;
@@ -626,7 +633,16 @@ public sealed class PlayerPage : Grid, IRefresh
         {
             file = p.CurrentFile; synced = []; line = -2; lit = -1; artFor = file;
             if (file is not null) Wave();
+            // Settings: a different look for every song
+            if (file is not null && store.Me.PlayerStyleAuto && Array.FindIndex(PlayerLooks.All, l => l.Id == store.Me.PlayerStyle) is var k and >= 0)
+            { store.Me.PlayerStyle = PlayerLooks.All[(k + 1) % PlayerLooks.All.Length].Id; store.SavePersonal(); Restyle(); }
             var i = file is null ? -1 : store.SongForFile(file);
+            ShowVideo(null);
+            if (file is not null && store.Me.MusicVideos) // looked for alongside the rest, not before it
+            {
+                var forFile = file; var title = i >= 0 ? store.Catalog[i].Name : p.Title ?? "";
+                _ = Task.Run(() => MusicVideo.Find(forFile, title)).ContinueWith(t => { if (file == forFile) ShowVideo(t.Result); }, TaskScheduler.FromCurrentSynchronizationContext());
+            }
             var era = i >= 0 ? Engine.EraName(store.Catalog[i]) : "Juice WRLD";
             cardTitle.Text = barTitle.Text = p.Title ?? "Nothing playing"; cardEra.Text = barEra.Text = era;
             ShowArt(null, file ?? "");
@@ -641,9 +657,27 @@ public sealed class PlayerPage : Grid, IRefresh
             line = -2;
         }
         Karaoke(p.Position.TotalSeconds);
+        FollowVideo();
     }
 
     /// The line being sung, its words lighting up as the song gets to them. Shown live from the site, never saved.
+    void ShowVideo(string? found)
+    {
+        if (found == videoFile) return;
+        videoFile = found; video.Stop();
+        video.Source = found is null ? null : new Uri(found);
+        Restyle();
+    }
+    /// Keeps the video with the song: playing and paused with it, and caught up when they drift apart.
+    void FollowVideo()
+    {
+        if (videoFile is null || videoBox.Visibility != Visibility.Visible) return;
+        var p = Player.Shared;
+        if (!p.IsPlaying) { video.Pause(); return; }
+        if (Math.Abs((video.Position - p.Position).TotalSeconds) > 0.4) video.Position = p.Position;
+        video.Play();
+    }
+
     /// Your own lyrics timing was saved or removed: look the song up again.
     void Relyric() { file = "\0"; Tick(); }
 
@@ -763,9 +797,10 @@ public sealed class PlayerPage : Grid, IRefresh
     void Restyle(double size)
     {
         var style = Store.Shared.Me.PlayerStyle;
-        bool other = style != "hole" && PlayerLooks.All.Any(l => l.Id == style);
-        hole.Visibility = other ? Visibility.Collapsed : Visibility.Visible;
-        look.Visibility = other ? Visibility.Visible : Visibility.Collapsed;
+        bool other = style != "hole" && PlayerLooks.All.Any(l => l.Id == style), film = videoFile is not null && Store.Shared.Me.MusicVideos;
+        videoBox.Visibility = film ? Visibility.Visible : Visibility.Collapsed;
+        hole.Visibility = other || film ? Visibility.Collapsed : Visibility.Visible;
+        look.Visibility = other && !film ? Visibility.Visible : Visibility.Collapsed;
         if (other) look.Build(style, size, palette, cover.Source == JT.Image("jt-logo") ? null : cover.Source);
     }
     void Restyle() => Restyle(holeSize);
@@ -786,7 +821,7 @@ public sealed class PlayerPage : Grid, IRefresh
         var p = Player.Shared;
         if (!p.IsPlaying || p.CurrentFile is not { } f) { Pace(0); return; }
         measuring = true; var at = p.Position;
-        Task.Run(() => meter.Level(f, at)).ContinueWith(t => { measuring = false; Pace(t.Result); }, TaskScheduler.FromCurrentSynchronizationContext());
+        Task.Run(() => meter.Level(f, at)).ContinueWith(t => { measuring = false; Pace(boost.Apply(t.Result)); }, TaskScheduler.FromCurrentSynchronizationContext());
     }
 
     /// Faint doodles drifting slowly across the sky: hearts, butterflies, stickers, 999s, a planet.

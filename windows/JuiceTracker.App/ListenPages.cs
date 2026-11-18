@@ -143,6 +143,12 @@ public sealed class PlaylistsPage : ToolPage
             if (!name.IsKeyboardFocused) name.Text = current.Name;
             var head = UI.Row(10, name, UI.Button("Play", () => Listen.PlayInOrder(songs.Where(s => s.Owned).Select(s => s.I)), ""),
                               UI.Button("Export M3U…", () => Listen.SaveM3U(songs.Select(s => s.I), current.Name)),
+                              songs.Where(s => !s.Owned && s.HasFile).ToList() is { Count: > 0 } missing ? UI.Button($"Download {missing.Count} missing", () =>
+                              {
+                                  if (MessageBox.Show(Window.GetWindow(this), "The songs in this playlist you don't have yet, one at a time, into the folders the tracker picks for each era.",
+                                                      $"Download {missing.Count} songs into your music folder?", MessageBoxButton.OKCancel, MessageBoxImage.Question) == MessageBoxResult.OK)
+                                      store.AddDownloads(missing.Select(s => s.S.Id));
+                              }) : new Border(),
                               Plex.Configured ? UI.Button("Send to Plex", async () =>
                               {
                                   try { var n = await Plex.MakePlaylist(current.Name, songs.Where(s => s.Owned).Select(s => s.I)); MessageBox.Show($"“{current.Name}” is in Plex with {n:N0} songs.", "Sent to Plex"); }

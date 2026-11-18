@@ -69,10 +69,170 @@ enum Downloader {
     // MARK: File operations (run off the main thread)
 }
 
+// MARK: - Playback (with the equalizer on, through an engine with an EQ)
+
+/// What plays a song: AVAudioPlayer, or with the equalizer on, an AVAudioEngine with an EQ on the way out.
+protocol Playback: AnyObject {
+    var currentTime: TimeInterval { get set }
+    var duration: TimeInterval { get }
+    var volume: Float { get set }
+    var isPlaying: Bool { get }
+    /// Called (on the main thread) when the song plays to its end, or a damaged file stops partway.
+    var finished: (() -> Void)? { get set }
+    @discardableResult func play() -> Bool
+    func pause()
+    func stop()
+    func setVolume(_ volume: Float, fadeDuration: TimeInterval)
+    /// Loudness right now, 0...1, for the visuals.
+    func level() -> Float
+}
+
+/// AVAudioPlayer, wrapped (not subclassed: its init calls an init a Swift subclass doesn't have, and traps).
+final class FilePlayback: NSObject, AVAudioPlayerDelegate, Playback {
+    private let p: AVAudioPlayer
+    var finished: (() -> Void)?
+    init(contentsOf url: URL) throws {
+        p = try AVAudioPlayer(contentsOf: url)
+        super.init()
+        p.delegate = self; p.isMeteringEnabled = true
+        p.prepareToPlay() // reads the first buffers now, off the main thread (slow network drives)
+    }
+    var currentTime: TimeInterval { get { p.currentTime } set { p.currentTime = newValue } }
+    var duration: TimeInterval { p.duration }
+    var volume: Float { get { p.volume } set { p.volume = newValue } }
+    var isPlaying: Bool { p.isPlaying }
+    @discardableResult func play() -> Bool { p.play() }
+    func pause() { p.pause() }
+    func stop() { p.stop() }
+    func setVolume(_ volume: Float, fadeDuration: TimeInterval) { p.setVolume(volume, fadeDuration: fadeDuration) }
+    func level() -> Float {
+        guard p.isPlaying else { return 0 }
+        p.updateMeters()
+        let db = (p.averagePower(forChannel: 0) + p.averagePower(forChannel: max(0, p.numberOfChannels - 1))) / 2
+        return max(0, min(1, (db + 50) / 50))
+    }
+    func audioPlayerDidFinishPlaying(_ player: AVAudioPlayer, successfully flag: Bool) { finished?() }
+    func audioPlayerDecodeErrorDidOccur(_ player: AVAudioPlayer, error: Error?) { finished?() }
+}
+
+/// Bass, mids and treble (Settings > Equalizer).
+enum Equalizer {
+    static let changed = Notification.Name("EqualizerChanged")
+    static let keys = ["eq.bass", "eq.mid", "eq.treble"]
+    static var on: Bool { UserDefaults.standard.bool(forKey: "eqOn") }
+    static var bands: [Double] { keys.map { UserDefaults.standard.double(forKey: $0) } }
+    /// Only then do songs go through the engine; otherwise they play as before.
+    static var active: Bool { on && bands.contains { $0 != 0 } }
+    static func configure(_ eq: AVAudioUnitEQ) {
+        let b = bands, shape: [(AVAudioUnitEQFilterType, Float)] = [(.lowShelf, 120), (.parametric, 1000), (.highShelf, 6000)]
+        for (k, band) in eq.bands.enumerated() where k < 3 {
+            band.filterType = shape[k].0; band.frequency = shape[k].1; band.bandwidth = 1.5
+            band.gain = Float(b[k]); band.bypass = !on
+        }
+        eq.globalGain = on ? Float(Engine.eqHeadroom(b)) : 0
+    }
+}
+
+final class EQPlayback: NSObject, Playback {
+    private let engine = AVAudioEngine()
+    private let node = AVAudioPlayerNode()
+    private let eq = AVAudioUnitEQ(numberOfBands: 3)
+    private let file: AVAudioFile
+    private let rate: Double
+    let duration: TimeInterval
+    private var startFrame: AVAudioFramePosition = 0 // where the playing stretch began
+    private var pausedAt: TimeInterval? = 0          // nil while playing
+    private var stretch = 0                          // bumps each time playing (re)starts; an old stretch's end is ignored
+    private var power: Float = -160                  // dB, from the audio on its way out (before the volume)
+    private var fader: Timer?
+    private var watch: NSObjectProtocol?
+    var finished: (() -> Void)?
+
+    init(contentsOf url: URL) throws {
+        file = try AVAudioFile(forReading: url)
+        rate = file.processingFormat.sampleRate
+        duration = Double(file.length) / rate
+        super.init()
+        engine.attach(node); engine.attach(eq)
+        engine.connect(node, to: eq, format: file.processingFormat)
+        engine.connect(eq, to: engine.mainMixerNode, format: file.processingFormat)
+        Equalizer.configure(eq)
+        eq.installTap(onBus: 0, bufferSize: 2048, format: nil) { [weak self] buffer, _ in
+            guard let d = buffer.floatChannelData?[0] else { return }
+            let n = Int(buffer.frameLength); var sum: Float = 0
+            for k in 0..<n { sum += d[k] * d[k] }
+            self?.power = 20 * log10(max((sum / Float(max(n, 1))).squareRoot(), 1e-6))
+        }
+        engine.prepare()
+        watch = NotificationCenter.default.addObserver(forName: Equalizer.changed, object: nil, queue: .main) { [weak self] _ in
+            if let eq = self?.eq { Equalizer.configure(eq) }
+        }
+    }
+    deinit { if let watch { NotificationCenter.default.removeObserver(watch) }; fader?.invalidate(); engine.stop() }
+
+    var isPlaying: Bool { pausedAt == nil }
+    var currentTime: TimeInterval {
+        get {
+            if let pausedAt { return pausedAt }
+            guard let t = node.lastRenderTime, let p = node.playerTime(forNodeTime: t) else { return Double(startFrame) / rate }
+            return min(duration, Double(startFrame + p.sampleTime) / rate)
+        }
+        set {
+            if pausedAt != nil { pausedAt = max(0, min(newValue, duration)) } else { begin(at: newValue) }
+        }
+    }
+    var volume: Float {
+        get { engine.mainMixerNode.outputVolume }
+        set { fader?.invalidate(); engine.mainMixerNode.outputVolume = newValue }
+    }
+
+    @discardableResult func play() -> Bool {
+        guard let at = pausedAt else { return true }
+        do { if !engine.isRunning { try engine.start() } } catch { return false }
+        begin(at: at)
+        return true
+    }
+    func pause() {
+        guard pausedAt == nil else { return }
+        pausedAt = currentTime
+        stretch += 1; node.stop(); engine.pause()
+    }
+    func stop() {
+        pausedAt = 0; stretch += 1; fader?.invalidate()
+        node.stop(); engine.stop()
+    }
+    /// Plays from `t` to the end of the file.
+    private func begin(at t: TimeInterval) {
+        node.stop()
+        stretch += 1
+        let mine = stretch
+        startFrame = AVAudioFramePosition(max(0, min(t, duration)) * rate)
+        let count = AVAudioFrameCount(max(0, file.length - startFrame))
+        pausedAt = nil
+        guard count > 0 else { DispatchQueue.main.async { [weak self] in self?.finished?() }; return }
+        node.scheduleSegment(file, startingFrame: startFrame, frameCount: count, at: nil, completionCallbackType: .dataPlayedBack) { [weak self] _ in
+            DispatchQueue.main.async { guard let self, self.stretch == mine, self.pausedAt == nil else { return }; self.pausedAt = self.duration; self.finished?() }
+        }
+        node.play()
+    }
+    func setVolume(_ target: Float, fadeDuration: TimeInterval) {
+        fader?.invalidate()
+        guard fadeDuration > 0 else { engine.mainMixerNode.outputVolume = target; return }
+        let from = engine.mainMixerNode.outputVolume, start = Date()
+        fader = Timer.scheduledTimer(withTimeInterval: 1.0 / 30, repeats: true) { [weak self] t in
+            guard let self else { t.invalidate(); return }
+            let p = min(1, Date().timeIntervalSince(start) / fadeDuration)
+            self.engine.mainMixerNode.outputVolume = from + (target - from) * Float(p)
+            if p >= 1 { t.invalidate() }
+        }
+    }
+    func level() -> Float { isPlaying ? max(0, min(1, (power + 50) / 50)) : 0 }
+}
+
 /// Plays the user's own matched songs, shuffled (quietly by default, as ambient music), with pause, skip,
 /// volume, and "play this song now" for the sidebar player and the song card. Shows in Now Playing (Control Center)
 /// and answers the keyboard's media keys and AirPods controls; the menu bar player uses it too.
-final class AmbientPlayer: NSObject, AVAudioPlayerDelegate {
+final class AmbientPlayer: NSObject {
     static let shared = AmbientPlayer()
     static let changed = Notification.Name("AmbientPlayerChanged")
 
@@ -131,11 +291,28 @@ final class AmbientPlayer: NSObject, AVAudioPlayerDelegate {
     private(set) var coverImage: NSImage?
 
     /// Loudness right now, 0...1, for the visualizer (0 when nothing plays).
-    func level() -> Float {
-        guard let player, player.isPlaying else { return 0 }
-        player.updateMeters()
-        let db = (player.averagePower(forChannel: 0) + player.averagePower(forChannel: max(0, player.numberOfChannels - 1))) / 2
-        return max(0, min(1, (db + 50) / 50))
+    func level() -> Float { player?.level() ?? 0 }
+
+    /// A file to play, through the equalizer when it's on. Off the main thread: opening reads the file.
+    private static func open(_ url: URL) -> Playback? {
+        Equalizer.active ? try? EQPlayback(contentsOf: url) : try? FilePlayback(contentsOf: url)
+    }
+    /// The equalizer changed: the song playing moves to (or off) the engine where it is, without a gap you'd notice.
+    func equalizerChanged() {
+        NotificationCenter.default.post(name: Equalizer.changed, object: nil)
+        guard let old = player, let path = currentPath, (old is EQPlayback) != Equalizer.active else { return }
+        let gen = generation
+        DispatchQueue.global(qos: .userInitiated).async {
+            let loaded = Self.open(URL(fileURLWithPath: path))
+            DispatchQueue.main.async { [weak self] in
+                guard let self, let loaded, gen == self.generation, self.player === old else { return }
+                loaded.finished = { [weak self, weak loaded] in if let self, let loaded { self.didFinish(loaded) } }
+                loaded.currentTime = old.currentTime; loaded.volume = old.volume
+                old.finished = nil; old.stop()
+                self.player = loaded
+                if !self.isPaused { loaded.play() }
+            }
+        }
     }
 
     /// Artwork for songs whose file has none (the era's art from juicewrldapi.com).
@@ -153,7 +330,7 @@ final class AmbientPlayer: NSObject, AVAudioPlayerDelegate {
     private var crossfading = false                      // the next song has started fading in over this one
     /// Seconds songs blend into each other (0: one after the other). Settings > Playback.
     static var crossfade: Double { UserDefaults.standard.object(forKey: "crossfadeSeconds") as? Double ?? 4 }
-    private var player: AVAudioPlayer?
+    private var player: Playback?
     private var artwork: MPMediaItemArtwork?
     private var generation = 0 // bumps on every start/stop so a slow load can't start after the user turned it off
     private var clip: AVAudioPlayer?
@@ -324,7 +501,7 @@ final class AmbientPlayer: NSObject, AVAudioPlayerDelegate {
 
     private func start(_ item: (url: URL, title: String), failures: Int = 0, fade: Double = 0) {
         if fade > 0, let old = player {
-            old.delegate = nil // its end isn't "the song finished" any more
+            old.finished = nil // its end isn't "the song finished" any more
             old.setVolume(0, fadeDuration: fade)
             DispatchQueue.main.asyncAfter(deadline: .now() + fade) { old.stop() }
         } else { player?.stop() }
@@ -332,8 +509,7 @@ final class AmbientPlayer: NSObject, AVAudioPlayerDelegate {
         let gen = generation
         // Opening a file on a network drive can take seconds; keep it off the main thread.
         DispatchQueue.global(qos: .utility).async {
-            let loaded = try? AVAudioPlayer(contentsOf: item.url)
-            loaded?.prepareToPlay() // reads the first buffers here, not on the main thread (slow network drives)
+            let loaded = Self.open(item.url)
             let cover = loaded == nil ? nil : Self.cover(of: item.url)
             // Only a level measured earlier: measuring reads the file, and on a network drive that would hold up the start
             // (a crossfade would dip to silence). A new file is measured once it plays.
@@ -341,8 +517,7 @@ final class AmbientPlayer: NSObject, AVAudioPlayerDelegate {
             DispatchQueue.main.async { [weak self] in
                 guard let self, gen == self.generation else { return }
                 guard let loaded else { self.next(failures: failures + 1); return }
-                loaded.delegate = self
-                loaded.isMeteringEnabled = true
+                loaded.finished = { [weak self, weak loaded] in if let self, let loaded { self.didFinish(loaded) } }
                 loaded.volume = 0
                 loaded.play()
                 self.gain = known ?? 1
@@ -399,15 +574,12 @@ final class AmbientPlayer: NSObject, AVAudioPlayerDelegate {
         NotificationCenter.default.post(name: Self.changed, object: self)
     }
 
-    func audioPlayerDidFinishPlaying(_ finished: AVAudioPlayer, successfully flag: Bool) {
+    /// The song played to its end (or a damaged file stopped partway): the next one, rather than going quiet.
+    private func didFinish(_ finished: Playback) {
         guard finished === player else { return }
         if sleepAtEnd { sleepAtEnd = false; isPaused = true; publish(); return } // paused; Play starts the song again
         player = nil
         if !items.isEmpty || !upNext.isEmpty { next() } else { title = nil; publish() }
     }
 
-    // A damaged file stops partway with this instead of "finished"; move on rather than go quiet.
-    func audioPlayerDecodeErrorDidOccur(_ failed: AVAudioPlayer, error: Error?) {
-        audioPlayerDidFinishPlaying(failed, successfully: false)
-    }
 }

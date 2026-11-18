@@ -1347,6 +1347,20 @@ extension Engine {
         }.joined()
     }
 
+    /// The equalizer's presets: bass, mids and treble in dB.
+    static let eqPresets: [(name: String, bands: [Double])] = [("Flat", [0, 0, 0]), ("Bass boost", [6, 0, 1]), ("Vocals", [-2, 4, 2]), ("Bright", [0, 1, 5]), ("Late night", [-4, 1, -3])]
+    /// The preset these bands match, or "Custom".
+    static func eqPreset(_ bands: [Double]) -> String { eqPresets.first { $0.bands == bands }?.name ?? "Custom" }
+    /// How far everything is turned down so boosted bands don't clip: half the biggest boost.
+    static func eqHeadroom(_ bands: [Double]) -> Double { -max(0, bands.max() ?? 0) / 2 }
+
+    /// Quiet songs still move the visuals: the level measured against the song's recent loudest, which falls back
+    /// slowly (about 7% a second at 15 readings a second), never below 0.25 so near-silence isn't blown up.
+    static func boosted(_ level: Double, peak: Double) -> (level: Double, peak: Double) {
+        let p = max(level, peak * 0.995, 0.25)
+        return (min(1, level / p), p)
+    }
+
     /// "4:26" or "1:02:03" to seconds.
     static func lengthSeconds(_ text: String) -> Double? {
         guard let g = groups(#"^\s*(?:(\d+):)?(\d{1,2}):(\d{2})\s*$"#, text).first else { return nil }

@@ -227,6 +227,21 @@ public static partial class Engine
     public static string M3u(IEnumerable<(string Path, string Title, double? Seconds)> entries) =>
         "#EXTM3U\n" + string.Concat(entries.Select(e => $"#EXTINF:{(e.Seconds is { } s ? (int)s : -1)},Juice WRLD - {string.Join(' ', e.Title.Split('\n', '\r'))}\n{e.Path}\n"));
 
+    /// The equalizer's presets: bass, mids and treble in dB.
+    public static readonly (string Name, double[] Bands)[] EqPresets = [("Flat", [0, 0, 0]), ("Bass boost", [6, 0, 1]), ("Vocals", [-2, 4, 2]), ("Bright", [0, 1, 5]), ("Late night", [-4, 1, -3])];
+    /// The preset these bands match, or "Custom".
+    public static string EqPreset(double[] bands) => EqPresets.FirstOrDefault(p => p.Bands.SequenceEqual(bands)).Name ?? "Custom";
+    /// How far everything is turned down so boosted bands don't clip: half the biggest boost.
+    public static double EqHeadroom(double[] bands) => -Math.Max(0, bands.DefaultIfEmpty(0).Max()) / 2;
+
+    /// Quiet songs still move the visuals: the level measured against the song's recent loudest, which falls back
+    /// slowly (about 7% a second at 15 readings a second), never below 0.25 so near-silence isn't blown up.
+    public static (double Level, double Peak) Boosted(double level, double peak)
+    {
+        double p = Math.Max(level, Math.Max(peak * 0.995, 0.25));
+        return (Math.Min(1, level / p), p);
+    }
+
     public static double? LengthSeconds(string text)
     {
         var g = Regex.Match(text, @"^\s*(?:(\d+):)?(\d{1,2}):(\d{2})\s*$");

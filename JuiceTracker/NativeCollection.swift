@@ -221,16 +221,19 @@ private struct PlaylistDetail: View {
     let playlist: EngineState.Playlist
     @ObservedObject private var store = NativeStore.shared
     @State private var name = ""
+    @State private var askDownload = false
 
     var body: some View {
         let byId = Dictionary(store.songs.map { ($0.s.id, $0) }, uniquingKeysWith: { a, _ in a })
         let songs = playlist.songs.compactMap { byId[$0] }
+        let missing = songs.filter { !$0.o && $0.f }
         VStack(alignment: .leading, spacing: 10) {
             HStack {
                 TextField("Name", text: $name).textFieldStyle(.roundedBorder).font(.title3).frame(maxWidth: 320)
                 Spacer()
                 Button { playInOrder(songs.filter(\.o).map(\.i)) } label: { Label("Play", systemImage: "play.fill") }.disabled(!songs.contains(where: \.o))
                 Button("Export M3U…") { saveM3U(songs.map(\.i), name: playlist.name) }.disabled(!songs.contains(where: \.o))
+                if !missing.isEmpty { Button("Download \(missing.count) missing") { askDownload = true } }
                 Button(role: .destructive) { EngineState.shared.setPlaylists(EngineState.shared.playlists.filter { $0.id != playlist.id }) } label: { Image(systemName: "trash") }
                     .help("Delete this playlist").accessibilityLabel("Delete this playlist")
             }
@@ -252,6 +255,10 @@ private struct PlaylistDetail: View {
         }
         .onAppear { name = playlist.name }
         .onChange(of: playlist.id) { _ in name = playlist.name }
+        .alert("Download \(missing.count) songs into your music folder?", isPresented: $askDownload) {
+            Button("Download") { EngineDownloads.shared.add(missing.map(\.s.id)) }
+            Button("Cancel", role: .cancel) {}
+        } message: { Text("The songs in this playlist you don't have yet, one at a time, into the folders the tracker picks for each era.") }
         .onChange(of: name) { typed in // saved on every keystroke, so switching playlists right away keeps it
             guard typed != playlist.name, !typed.trimmingCharacters(in: .whitespaces).isEmpty else { return }
             update { $0.name = typed }
