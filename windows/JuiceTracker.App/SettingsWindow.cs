@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Input;
 using System.Windows.Media;
 
 namespace JuiceTracker.App;
@@ -98,6 +99,8 @@ public sealed class SettingsWindow : Window
         }
         Check("Compact (smaller text and spacing, for small screens)", store.Me.Compact, v => { store.Me.Compact = v; MainWindow.Current?.Restyle(); });
         Check("Play a chime when songs land in your library", store.Me.Chime, v => { store.Me.Chime = v; if (v) Chime.Play(); });
+        Check("Fade the music when pausing and resuming", store.Me.FadePause, v => store.Me.FadePause = v);
+        Check("Ask before quitting while a song plays", store.Me.AskQuitPlaying, v => store.Me.AskQuitPlaying = v);
         Check("Show download progress on the taskbar button", store.Me.TaskbarProgress, v => store.Me.TaskbarProgress = v);
         body.Children.Add(UI.Muted("Desktop widgets (drag to move, right-click to close)", 12).Also(t => t.Margin = new Thickness(0, 10, 0, 0)));
         foreach (var (key, name) in DesktopWidgets.Kinds) Check(name, store.Me.Widgets.Contains(key), v => DesktopWidgets.Set(key, v));
@@ -117,6 +120,29 @@ public sealed class SettingsWindow : Window
         UI.AutomationName(style, "Player lyrics");
         body.Children.Add(UI.Row(12, UI.Text("Player lyrics", 14, JT.Muted), style).Also(r => r.Margin = new Thickness(0, 10, 0, 0)));
         Check("Blur the lines not being sung (scrolling list)", store.Me.LyricBlur, v => store.Me.LyricBlur = v);
+
+        Section("Keyboard shortcuts");
+        foreach (var (id, name) in Shortcuts.Actions)
+        {
+            var keyButton = UI.Button(Shortcuts.Label(Shortcuts.Get(id)), () => { });
+            keyButton.MinWidth = 150;
+            keyButton.Click += (_, _) => { Shortcuts.Recording = true; keyButton.Content = "Press the keys…"; keyButton.Tag = id; };
+            keyButton.PreviewKeyDown += (_, e) =>
+            {
+                if (!Shortcuts.Recording || !id.Equals(keyButton.Tag)) return;
+                e.Handled = true;
+                var key = e.Key == Key.System ? e.SystemKey : e.Key;
+                if (key == Key.Escape) { }
+                else if (key is Key.Back or Key.Delete) Shortcuts.Set(id, null);
+                else if (Shortcuts.From(e) is { } k) Shortcuts.Set(id, k);
+                else return; // a modifier on its own, or a plain key: keep listening
+                Shortcuts.Recording = false; keyButton.Tag = null; keyButton.Content = Shortcuts.Label(Shortcuts.Get(id));
+            };
+            keyButton.LostKeyboardFocus += (_, _) => { if (id.Equals(keyButton.Tag)) { Shortcuts.Recording = false; keyButton.Tag = null; keyButton.Content = Shortcuts.Label(Shortcuts.Get(id)); } };
+            body.Children.Add(UI.Row(12, UI.Text(name, 14).Also(t => { t.Width = 170; t.VerticalAlignment = VerticalAlignment.Center; }), keyButton).Also(r => r.Margin = new Thickness(0, 6, 0, 0)));
+        }
+        Check("Also when Juice Tracker is in the background (global)", store.Me.ShortcutsGlobal, v => { store.Me.ShortcutsGlobal = v; Dispatcher.BeginInvoke(Shortcuts.Apply); });
+        body.Children.Add(UI.Muted("Click a shortcut, then press the keys: they need Ctrl, Alt or Win, or a function key. Esc cancels, Backspace clears.", 12));
 
         Section("Updates");
         Check("Check for a new version every day", store.Me.AutoUpdate, v => store.Me.AutoUpdate = v);

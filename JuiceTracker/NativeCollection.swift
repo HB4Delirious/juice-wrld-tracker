@@ -21,12 +21,7 @@ import SwiftUI
 /// An M3U playlist of the songs you have (absolute paths, so Music, VLC and Plex on this Mac can open it).
 @MainActor func m3u(_ songs: [Int]) -> String {
     let library = EngineLibrary.shared, catalog = EngineState.shared.catalog
-    var out = "#EXTM3U\n"
-    for i in songs {
-        guard let url = library.playableURL(i) else { continue }
-        out += "#EXTINF:\(Int(Engine.lengthSeconds(catalog[i].length) ?? -1)),Juice WRLD - \(catalog[i].name)\n\(url.path)\n"
-    }
-    return out
+    return Engine.m3u(songs.compactMap { i in library.playableURL(i).map { ($0.path, catalog[i].name, Engine.lengthSeconds(catalog[i].length)) } })
 }
 
 @MainActor func saveM3U(_ songs: [Int], name: String) {

@@ -1329,6 +1329,24 @@ extension Engine {
         return (Int((Double(count) * progress).rounded(.up)), progress < 1)
     }
 
+    /// Plays per bucket of `bucketDays` days, oldest first, the last bucket ending today (the listening timeline).
+    static func playTimeline(_ times: [Date], buckets: Int, bucketDays: Int, now: Date, calendar: Calendar = .current) -> [Int] {
+        var out = Array(repeating: 0, count: buckets)
+        let today = calendar.startOfDay(for: now)
+        for t in times {
+            guard let days = calendar.dateComponents([.day], from: calendar.startOfDay(for: t), to: today).day, days >= 0 else { continue }
+            let b = buckets - 1 - days / bucketDays
+            if b >= 0 { out[b] += 1 }
+        }
+        return out
+    }
+    /// A playlist as an .m3u file other players open: each song's length, title and full path.
+    static func m3u(_ entries: [(path: String, title: String, seconds: Double?)]) -> String {
+        "#EXTM3U\n" + entries.map { e in
+            "#EXTINF:\(e.seconds.map { Int($0) } ?? -1),Juice WRLD - \(e.title.split(whereSeparator: \.isNewline).joined(separator: " "))\n\(e.path)\n"
+        }.joined()
+    }
+
     /// "4:26" or "1:02:03" to seconds.
     static func lengthSeconds(_ text: String) -> Double? {
         guard let g = groups(#"^\s*(?:(\d+):)?(\d{1,2}):(\d{2})\s*$"#, text).first else { return nil }

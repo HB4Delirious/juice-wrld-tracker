@@ -51,6 +51,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUs
         JTFonts.register()
         _ = NowPlaying.shared // follows the player for lyrics, artwork and the visualizer
         DesktopWidgets.apply() // the widgets you had on
+        Shortcuts.apply()      // your keyboard shortcuts
         // macOS would otherwise quietly quit the app once its window is closed, defeating "Keep running".
         ProcessInfo.processInfo.automaticTerminationSupportEnabled = false
         Task { await EngineState.shared.start() } // the catalog, your data and your library
@@ -111,6 +112,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUs
               let id = userActivity.userInfo?[CSSearchableItemActivityIdentifier] as? String else { return false }
         SpotlightIndex.open(id)
         return true
+    }
+
+    /// Settings > Playback: ask before quitting while a song plays.
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        guard Pref.bool("askQuitPlaying", default: false), AmbientPlayer.shared.isPlaying else { return .terminateNow }
+        let alert = NSAlert()
+        alert.messageText = "A song is playing"
+        alert.informativeText = "Quit Juice Tracker and stop the music?"
+        alert.addButton(withTitle: "Quit"); alert.addButton(withTitle: "Cancel")
+        return alert.runModal() == .alertFirstButtonReturn ? .terminateNow : .terminateCancel
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {

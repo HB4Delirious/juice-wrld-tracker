@@ -150,7 +150,7 @@ public static class Tray
         }
         m.Items.Add("Open Juice Tracker", null, (_, _) => Open());
         m.Items.Add("Settings…", null, (_, _) => App.Current.Dispatcher.Invoke(() => { Open(); SettingsWindow.Open(); }));
-        m.Items.Add("Quit Juice Tracker", null, (_, _) => App.Current.Dispatcher.Invoke(() => { Quitting = true; App.Current.Shutdown(); }));
+        m.Items.Add("Quit Juice Tracker", null, (_, _) => App.Current.Dispatcher.Invoke(() => { if (!App.ConfirmQuit()) return; Quitting = true; App.Current.Shutdown(); }));
     }
     public static void Open() => App.Current.Dispatcher.Invoke(() => { var w = MainWindow.Current; if (w is null) return; w.Show(); if (w.WindowState == WindowState.Minimized) w.WindowState = WindowState.Normal; w.Activate(); });
     public static void Notify(string title, string text) { if (icon is null) return; icon.BalloonTipTitle = title; icon.BalloonTipText = text; icon.ShowBalloonTip(8000); }

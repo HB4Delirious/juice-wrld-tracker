@@ -234,6 +234,11 @@ foreach (var c in fx["csvCases"]!.AsArray())
     Expect(Engine.WordleWord("Can't Die") == "CANT DIE", () => "wordle: apostrophes dropped");
     Expect(Engine.WordleWord("All Girls Are The Same") is null && Engine.WordleWord("Hey") is null, () => "wordle: too long or too short is skipped");
     Expect(Engine.WordleScore("CRANE", "CREAK").SequenceEqual([2, 2, 1, 0, 1]), () => "wordle: green, yellow and grey");
+    DateTime Day(int d, int h) => new(2026, 3, d, h, 0, 0);
+    DateTime[] plays = [Day(10, 9), Day(9, 23), Day(2, 12), Day(1, 0), Day(11, 8)];
+    Expect(Engine.PlayTimeline(plays, 7, 1, Day(10, 12)).SequenceEqual([0, 0, 0, 0, 0, 1, 1]), () => "timeline: plays by day, today last, older and future plays left out");
+    Expect(Engine.PlayTimeline(plays, 2, 7, Day(10, 12)).SequenceEqual([2, 2]), () => "timeline: plays by week, the week ending today last");
+    Expect(Engine.M3u([("/m/a.mp3", "Lucid Dreams", 239.6), ("/m/b.flac", "Two\nLines", null)]) == "#EXTM3U\n#EXTINF:239,Juice WRLD - Lucid Dreams\n/m/a.mp3\n#EXTINF:-1,Juice WRLD - Two Lines\n/m/b.flac\n", () => "m3u: length, title on one line, path");
     var lrc = Engine.ParseLrc("[ar:Juice WRLD]\n[00:12.50]second line\n[00:03.00]<00:03.00>first <00:03.60>line <00:04.20>here\n[00:20.00]<00:20.00>wrong count");
     Expect(lrc.Select(l => l.At).SequenceEqual([3, 12.5, 20]) && lrc[0].Line == "first line here", () => "lrc: tags skipped, sorted by time, word times taken out of the text");
     Expect(lrc[0].Words.SequenceEqual([3, 3.6, 4.2]) && lrc[1].Words.Length == 0 && lrc[2].Words.Length == 0, () => "lrc: word times only when every word has one");

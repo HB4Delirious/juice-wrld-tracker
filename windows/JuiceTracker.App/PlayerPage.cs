@@ -24,6 +24,7 @@ public sealed class PlayerPage : Grid, IRefresh
 
     readonly Canvas stage = new() { ClipToBounds = true };
     readonly Grid hole = new(), clock = new(), backDisc = new(), frontDisc = new();
+    readonly PlayerLook look = new(); // the other looks, in place of the hole
     readonly RotateTransform spinBack = new(), spinFront = new();
     readonly TextBlock date = new() { FontSize = 13, FontWeight = FontWeights.SemiBold, Foreground = JT.Brush(Color.FromArgb(217, 255, 246, 251)), HorizontalAlignment = HorizontalAlignment.Center };
     readonly TextBlock time = new() { FontFamily = new FontFamily("Bahnschrift Condensed, Bahnschrift, Segoe UI"), FontStretch = FontStretches.Condensed, FontWeight = FontWeights.Bold, HorizontalAlignment = HorizontalAlignment.Center,
@@ -81,6 +82,7 @@ public sealed class PlayerPage : Grid, IRefresh
         wave.Stroke = Ring((0, 1), (1, 1), (2, 1), (0, 1)); wave.Effect = new BlurEffect { Radius = 2 };
         stage.Children.Add(Cached(wave));
         stage.Children.Add(BuildHole());
+        stage.Children.Add(look);
         stage.Children.Add(swirl);
         clock.Children.Add(UI.Column(0, date, time)); clock.IsHitTestVisible = false; stage.Children.Add(clock);
         lyrics.Children.Add(before); lyrics.Children.Add(karaoke); lyrics.Children.Add(after);
@@ -152,6 +154,10 @@ public sealed class PlayerPage : Grid, IRefresh
         cardButton.ToolTip = "Lyrics card: save a line as a picture";
         stage.Children.Add(new Border { Width = 32, Height = 32, CornerRadius = new CornerRadius(16), Background = JT.Brush(Color.FromArgb(26, 255, 255, 255)),
                                         BorderBrush = JT.Brush(Color.FromArgb(51, 255, 255, 255)), BorderThickness = new Thickness(1), Child = cardButton, Tag = "card" });
+        var looksButton = UI.IconButton("\uE790", "Player looks: pick how the Player looks", () => PlayerLooksWindow.Open(palette, cover.Source), 14);
+        looksButton.ToolTip = "Player looks: pick how the Player looks";
+        stage.Children.Add(new Border { Width = 32, Height = 32, CornerRadius = new CornerRadius(16), Background = JT.Brush(Color.FromArgb(26, 255, 255, 255)),
+                                        BorderBrush = JT.Brush(Color.FromArgb(51, 255, 255, 255)), BorderThickness = new Thickness(1), Child = looksButton, Tag = "looks" });
         var timeButton = UI.IconButton("\uE916", "Time the lyrics: make the song's synced lyrics yourself", LyricsMakerWindow.Open, 14);
         timeButton.ToolTip = "Time the lyrics: make the song's synced lyrics yourself";
         stage.Children.Add(new Border { Width = 32, Height = 32, CornerRadius = new CornerRadius(16), Background = JT.Brush(Color.FromArgb(26, 255, 255, 255)),
@@ -199,7 +205,7 @@ public sealed class PlayerPage : Grid, IRefresh
         }
         if (stream)
         {
-            foreach (var b in stage.Children.OfType<Border>().Where(b => b == queueBox || b == bar || b == songsPanel || b.Tag is "search" or "stream" or "card" or "time").ToList()) b.Visibility = Visibility.Collapsed;
+            foreach (var b in stage.Children.OfType<Border>().Where(b => b == queueBox || b == bar || b == songsPanel || b.Tag is "search" or "stream" or "card" or "time" or "looks").ToList()) b.Visibility = Visibility.Collapsed;
             mark.Text = "Juice Tracker"; stage.Children.Add(mark);
         }
 
@@ -208,8 +214,8 @@ public sealed class PlayerPage : Grid, IRefresh
         shooter.Tick += (_, _) => Shoot();
         listen.Tick += (_, _) => Hear();
         sky.SizeChanged += (_, _) => Twinkles();
-        Loaded += (_, _) => { Player.Shared.Changed += Tick; MyLyrics.Changed += Relyric; minute.Start(); shooter.Start(); listen.Start(); Spin(true); Tick(); };
-        Unloaded += (_, _) => { Player.Shared.Changed -= Tick; MyLyrics.Changed -= Relyric; minute.Stop(); shooter.Stop(); listen.Stop(); Spin(false); };
+        Loaded += (_, _) => { Player.Shared.Changed += Tick; MyLyrics.Changed += Relyric; PlayerLooks.Changed += Restyle; minute.Start(); shooter.Start(); listen.Start(); Spin(true); Tick(); };
+        Unloaded += (_, _) => { Player.Shared.Changed -= Tick; MyLyrics.Changed -= Relyric; PlayerLooks.Changed -= Restyle; minute.Stop(); shooter.Stop(); listen.Stop(); Spin(false); };
         Clock();
         Refresh();
     }
@@ -403,6 +409,8 @@ public sealed class PlayerPage : Grid, IRefresh
         frontDisc.Clip = new RectangleGeometry(new Rect(0, span / 2, span, span / 2));
         foreach (var e in hole.Children.OfType<Ellipse>()) { e.Width = e.Height = size * (double)e.Tag; }
         At(hole, cx - span / 2, cy - span / 2);
+        At(look, cx - span / 2, cy - span / 2);
+        Restyle(size);
         Swirl(size, new Point(cx, cy));
         time.FontSize = size * 0.34;
         clock.Width = 400; At(clock, cx - 200, cy - size * 0.62 - size * 0.34 * 0.75);
@@ -425,6 +433,7 @@ public sealed class PlayerPage : Grid, IRefresh
         At(stage.Children.OfType<Border>().First(b => "stream".Equals(b.Tag)), cx + bar.Width / 2 - 74, h - 126);
         At(stage.Children.OfType<Border>().First(b => "card".Equals(b.Tag)), cx + bar.Width / 2 - 114, h - 126);
         At(stage.Children.OfType<Border>().First(b => "time".Equals(b.Tag)), cx + bar.Width / 2 - 154, h - 126);
+        At(stage.Children.OfType<Border>().First(b => "looks".Equals(b.Tag)), cx + bar.Width / 2 - 194, h - 126);
         songsPanel.Width = Math.Min(460, w - 40); songsPanel.Height = Math.Max(240, h - 170); At(songsPanel, w - songsPanel.Width - 20, 20);
         empty.Width = 420; empty.TextAlignment = TextAlignment.Center; At(empty, cx - 210, cy - 10);
         Spin(IsLoaded);
@@ -494,6 +503,7 @@ public sealed class PlayerPage : Grid, IRefresh
     void UsePalette(Color[] found)
     {
         palette = [found.Length > 0 ? found[0] : Fallback[0], found.Length > 1 ? found[1] : found.Length > 0 ? found[0] : Fallback[1], found.Length > 2 ? found[2] : Fallback[2]];
+        Restyle();
         playGlow.BeginAnimation(DropShadowEffect.ColorProperty, new ColorAnimation(palette[0], TimeSpan.FromSeconds(1.2)));
         foreach (var (stop, slot, alpha) in tinted)
         {
@@ -749,8 +759,20 @@ public sealed class PlayerPage : Grid, IRefresh
     }
 
     /// Louder means faster: the swirl runs up to four times as fast on a strong beat, easing back between.
+    /// The look you picked (Player looks): the hole, or one of the others in its place.
+    void Restyle(double size)
+    {
+        var style = Store.Shared.Me.PlayerStyle;
+        bool other = style != "hole" && PlayerLooks.All.Any(l => l.Id == style);
+        hole.Visibility = other ? Visibility.Collapsed : Visibility.Visible;
+        look.Visibility = other ? Visibility.Visible : Visibility.Collapsed;
+        if (other) look.Build(style, size, palette, cover.Source == JT.Image("jt-logo") ? null : cover.Source);
+    }
+    void Restyle() => Restyle(holeSize);
+
     void Pace(double level)
     {
+        if (look.Visibility == Visibility.Visible) look.Pulse(level);
         double target = 1 + level * 3, next = pace + (target - pace) * (target > pace ? 0.5 : 0.12); // quick to jump, slow to settle
         if (Math.Abs(next - pace) < 0.02) return;
         pace = next;

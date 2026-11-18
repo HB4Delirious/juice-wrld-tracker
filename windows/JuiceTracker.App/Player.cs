@@ -113,8 +113,35 @@ public sealed class Player
         media.Stop(); media.Close(); fading?.Close(); fading = null; ramp = rampOut = null;
         CurrentFile = null; Title = null; IsPaused = false; Changed?.Invoke();
     }
-    public void Pause() { if (CurrentFile is null) return; IsPaused = true; media.Pause(); Changed?.Invoke(); }
-    public void Resume() { IsPaused = false; if (CurrentFile is not null) { media.Play(); Changed?.Invoke(); } else Next(); }
+    /// Pausing and resuming fade over a moment (Settings), so the music doesn't cut off.
+    public void Pause()
+    {
+        if (CurrentFile is null) return;
+        IsPaused = true; Changed?.Invoke();
+        if (!Store.Shared.Me.FadePause) { media.Pause(); return; }
+        var who = media;
+        Fade(who, 0, () => { if (IsPaused && media == who) { who.Pause(); who.Volume = Loud; } });
+    }
+    public void Resume()
+    {
+        IsPaused = false;
+        if (CurrentFile is null) { Next(); return; }
+        if (Store.Shared.Me.FadePause) { media.Volume = 0; media.Play(); Fade(media, Loud, null); } else media.Play();
+        Changed?.Invoke();
+    }
+    DispatcherTimer? fader;
+    /// A quick volume glide (a third of a second, in small steps: the main tick is too coarse for it).
+    void Fade(MediaPlayer who, double to, Action? done)
+    {
+        fader?.Stop();
+        double from = who.Volume; var start = DateTime.Now;
+        fader = new DispatcherTimer(TimeSpan.FromMilliseconds(30), DispatcherPriority.Normal, (s, _) =>
+        {
+            var p = Math.Min(1, (DateTime.Now - start).TotalSeconds / 0.35);
+            who.Volume = from + (to - from) * p;
+            if (p >= 1) { ((DispatcherTimer)s!).Stop(); done?.Invoke(); }
+        }, Dispatcher.CurrentDispatcher);
+    }
     public void TogglePause() { if (IsPlaying) Pause(); else Resume(); }
     public void Skip() { IsPaused = false; Next(); }
     public void PlayNow(string file, string title) { IsPaused = false; Start(file, title, 0); }

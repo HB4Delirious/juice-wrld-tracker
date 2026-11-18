@@ -63,7 +63,17 @@ struct YearInReviewSection: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("Your \(String(Calendar.current.component(.year, from: Date()))) so far").font(.headline)
+            HStack {
+                Text("Your \(String(Calendar.current.component(.year, from: Date()))) so far").font(.headline)
+                Spacer()
+                if let r, r.plays > 0 {
+                    Menu("Wrapped picture") {
+                        Button("Save picture…") { if let png = wrapped(r) { _ = Files.save(png, name: "Juice WRLD \(year) wrapped.png", type: .png) } }
+                        Button("Copy picture") { if let png = wrapped(r), let img = NSImage(data: png) { NSPasteboard.general.clearContents(); NSPasteboard.general.writeObjects([img]) } }
+                    }
+                    .fixedSize()
+                }
+            }
             if let r, r.plays > 0 {
                 Text(summary(r))
                 HStack(alignment: .top, spacing: 30) {
@@ -85,14 +95,25 @@ struct YearInReviewSection: View {
         .task(id: store.version) { r = review() }
     }
 
+    private var year: String { String(Calendar.current.component(.year, from: Date())) }
+    /// Your year as a picture (1080 × 1350) to share.
+    private func wrapped(_ r: Review) -> Data? {
+        let host = NSHostingView(rootView: WrappedCard(year: year, r: r, time: time(r)))
+        host.frame = NSRect(x: 0, y: 0, width: 1080, height: 1350)
+        host.layoutSubtreeIfNeeded()
+        guard let rep = host.bitmapImageRepForCachingDisplay(in: host.bounds) else { return nil }
+        host.cacheDisplay(in: host.bounds, to: rep)
+        return rep.representation(using: .png, properties: [:])
+    }
+    private func time(_ r: Review) -> String { r.minutes >= 120 ? "\((r.minutes / 60).formatted()) hours" : "\(r.minutes) minutes" }
+
     private func row(_ n: Int, _ name: String, _ plays: Int) -> some View {
         HStack(spacing: 8) { Text("\(n + 1). \(name)").lineLimit(1); Text("\(plays)").foregroundColor(JT.muted) }
     }
 
     private func summary(_ r: Review) -> String {
-        let time = r.minutes >= 120 ? "\((r.minutes / 60).formatted()) hours" : "\(r.minutes) minutes"
         let month = r.month.isEmpty ? "" : " Your busiest month was \(r.month)."
-        return "\(r.plays.formatted()) plays, about \(time) of Juice WRLD.\(month)"
+        return "\(r.plays.formatted()) plays, about \(time(r)) of Juice WRLD.\(month)"
     }
 
     private func review() -> Review {
@@ -116,6 +137,48 @@ struct YearInReviewSection: View {
         out.eras = byEra.sorted { $0.value != $1.value ? $0.value > $1.value : $0.key < $1.key }.prefix(3).map { ($0.key, $0.value) }
         if let m = byMonth.max(by: { $0.value < $1.value })?.key, byMonth.count > 1 { out.month = cal.monthSymbols[m - 1] }
         return out
+    }
+}
+
+private struct WrappedCard: View {
+    let year: String
+    let r: YearInReviewSection.Review
+    let time: String
+    var body: some View {
+        ZStack {
+            LinearGradient(colors: [Color(red: 7 / 255, green: 4 / 255, blue: 15 / 255), Color(red: 29 / 255, green: 11 / 255, blue: 64 / 255), Color(red: 74 / 255, green: 18 / 255, blue: 80 / 255)],
+                           startPoint: .topLeading, endPoint: .bottomTrailing)
+            VStack(alignment: .leading, spacing: 34) {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("My \(year) in").font(JT.body(34, .semibold)).foregroundColor(.white.opacity(0.7))
+                    Text("Juice WRLD").font(JT.marker(96)).foregroundColor(JT.lavender)
+                }
+                HStack(spacing: 60) {
+                    stat("\(r.plays.formatted())", "plays")
+                    stat(time, "listened")
+                }
+                VStack(alignment: .leading, spacing: 12) {
+                    Text("Top songs").font(JT.body(30, .bold)).foregroundColor(.white.opacity(0.6))
+                    ForEach(Array(r.top.enumerated()), id: \.offset) { n, t in
+                        Text("\(n + 1). \(t.0)").font(JT.body(40, .heavy)).foregroundColor(.white).lineLimit(1)
+                    }
+                }
+                VStack(alignment: .leading, spacing: 12) {
+                    Text("Top eras").font(JT.body(30, .bold)).foregroundColor(.white.opacity(0.6))
+                    Text(r.eras.map(\.0).joined(separator: " · ")).font(JT.body(38, .heavy)).foregroundColor(JT.lavender).lineLimit(2)
+                }
+                if !r.month.isEmpty { Text("Busiest month: \(r.month)").font(JT.body(30, .semibold)).foregroundColor(.white.opacity(0.75)) }
+            }
+            .padding(.horizontal, 90).frame(width: 1080, alignment: .leading)
+            VStack { Spacer(); Text("Juice Tracker").font(JT.marker(22)).foregroundColor(.white.opacity(0.35)).padding(.bottom, 36) }
+        }
+        .frame(width: 1080, height: 1350).clipped()
+    }
+    private func stat(_ value: String, _ label: String) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(value).font(JT.body(64, .heavy)).foregroundColor(.white)
+            Text(label).font(JT.body(28, .semibold)).foregroundColor(.white.opacity(0.6))
+        }
     }
 }
 

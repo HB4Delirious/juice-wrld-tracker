@@ -222,8 +222,25 @@ final class AmbientPlayer: NSObject, AVAudioPlayerDelegate {
         publish()
     }
 
-    func pause() { guard player != nil else { return }; isPaused = true; player?.pause(); publish() }
-    func resume() { isPaused = false; if let player { player.play(); publish() } else { next() } }
+    /// Pausing and resuming fade over a moment (Settings > Playback), so the music doesn't cut off.
+    static var fadePause: Bool { UserDefaults.standard.object(forKey: "fadePause") as? Bool ?? true }
+    private static let pauseFade = 0.35
+    func pause() {
+        guard let p = player else { return }
+        isPaused = true; publish()
+        guard Self.fadePause else { p.pause(); return }
+        p.setVolume(0, fadeDuration: Self.pauseFade)
+        DispatchQueue.main.asyncAfter(deadline: .now() + Self.pauseFade) { [weak self] in
+            guard let self, self.isPaused, self.player === p else { return }
+            p.pause(); p.volume = self.loud // ready for the next resume
+        }
+    }
+    func resume() {
+        isPaused = false
+        guard let player else { next(); return }
+        if Self.fadePause { player.volume = 0; player.play(); player.setVolume(loud, fadeDuration: Self.pauseFade) } else { player.play() }
+        publish()
+    }
     func togglePause() { isPlaying ? pause() : resume() }
     func skip() { isPaused = false; next() }
     func playNow(_ url: URL, title: String) { isPaused = false; start((url: url, title: title)) }

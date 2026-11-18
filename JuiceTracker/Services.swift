@@ -1,4 +1,5 @@
 import AppKit
+import Carbon.HIToolbox
 import ServiceManagement
 import SwiftUI
 import UserNotifications
@@ -433,6 +434,8 @@ struct SettingsView: View {
     @AppStorage(Pref.menuBar) private var menuBar = true
     @AppStorage("eraTheme") private var eraTheme = "cosmic"
     @AppStorage("matchVolume") private var matchVolume = true
+    @AppStorage("fadePause") private var fadePause = true
+    @AppStorage("askQuitPlaying") private var askQuitPlaying = false
     @AppStorage("compactMode") private var compactMode = false
     @AppStorage("animatedDock") private var animatedDock = true
     @AppStorage("landedChime") private var landedChime = false
@@ -487,7 +490,13 @@ struct SettingsView: View {
                 }
                 Toggle("Match the volume of quiet and loud files", isOn: $matchVolume)
                 Text("Each file's level is measured when it starts and the player evens it out. Your files don't change.").font(.caption).foregroundColor(.secondary)
+                Toggle("Fade the music when pausing and resuming", isOn: $fadePause)
+                Toggle("Ask before quitting while a song plays", isOn: $askQuitPlaying)
             } header: { Text("Playback").bold() }
+
+            Section {
+                ShortcutsSettings()
+            } header: { Text("Keyboard shortcuts").bold() }
 
             Section {
                 Picker("Era theme", selection: $eraTheme) {
@@ -690,5 +699,127 @@ private extension View {
     @ViewBuilder func settingsLayout() -> some View {
         if #available(macOS 13, *) { formStyle(.grouped).frame(width: 600, height: 660) }
         else { ScrollView { padding(20) }.frame(width: 560, height: 660) }
+    }
+}
+
+// MARK: - Keyboard shortcuts
+
+/// Your own keys for the player: in the app, or (with Global on) from any app. Global shortcuts use the system's
+/// hot keys, which need no accessibility permission.
+@MainActor enum Shortcuts {
+    static let actions: [(id: String, name: String)] = [("playPause", "Play / pause"), ("next", "Next song"), ("restart", "Start the song again"),
+                                                         ("volUp", "Volume up"), ("volDown", "Volume down")]
+    struct Key: Equatable { var code: UInt16; var mods: NSEvent.ModifierFlags; var label: String }
+    static let changed = Notification.Name("ShortcutsChanged")
+    static var global: Bool { UserDefaults.standard.bool(forKey: "shortcutsGlobal") }
+    private static let relevant: NSEvent.ModifierFlags = [.command, .option, .control, .shift]
+
+    static func key(_ id: String) -> Key? {
+        let parts = (UserDefaults.standard.string(forKey: "shortcut.\(id)") ?? "").split(separator: "|", maxSplits: 2).map(String.init)
+        guard parts.count == 3, let code = UInt16(parts[0]), let mods = UInt(parts[1]) else { return nil }
+        return Key(code: code, mods: NSEvent.ModifierFlags(rawValue: mods), label: parts[2])
+    }
+    static func set(_ id: String, _ key: Key?) {
+        UserDefaults.standard.set(key.map { "\($0.code)|\($0.mods.rawValue)|\($0.label)" }, forKey: "shortcut.\(id)")
+        apply()
+    }
+    /// The key pressed, as a shortcut: it needs ⌘, ⌥ or ⌃ (or is a function key), so typing never sets one off.
+    static func from(_ e: NSEvent) -> Key? {
+        let mods = e.modifierFlags.intersection(relevant)
+        let fn = (122...135).contains(Int(e.keyCode)) || [96, 97, 98, 99, 100, 101, 103, 105, 106, 107, 109, 111, 113, 118, 120].contains(Int(e.keyCode))
+        guard fn || !mods.intersection([.command, .option, .control]).isEmpty else { return nil }
+        var label = ""
+        if mods.contains(.control) { label += "⌃" }; if mods.contains(.option) { label += "⌥" }
+        if mods.contains(.shift) { label += "⇧" }; if mods.contains(.command) { label += "⌘" }
+        let names: [UInt16: String] = [49: "Space", 36: "↩", 123: "←", 124: "→", 125: "↓", 126: "↑", 122: "F1", 120: "F2", 99: "F3", 118: "F4", 96: "F5", 97: "F6", 98: "F7", 100: "F8", 101: "F9", 109: "F10", 103: "F11", 111: "F12"]
+        label += names[e.keyCode] ?? (e.charactersIgnoringModifiers ?? "?").uppercased()
+        return Key(code: e.keyCode, mods: mods, label: label)
+    }
+
+    static func run(_ id: String) {
+        let p = AmbientPlayer.shared
+        switch id {
+        case "playPause": if p.title == nil { EngineAmbient.setOn(true); p.resume() } else { p.togglePause() }
+        case "next": p.skip()
+        case "restart": p.seek(to: 0)
+        case "volUp", "volDown":
+            EngineAmbient.volume = max(0, min(100, EngineAmbient.volume + (id == "volUp" ? 5 : -5)))
+            p.volume = Float(EngineAmbient.volume / 100)
+        default: break
+        }
+    }
+
+    private static var monitor: Any?
+    private static var hotKeys: [EventHotKeyRef] = []
+    private static var handler: EventHandlerRef?
+
+    /// Listens for the shortcuts: in the app always; from other apps too while Global is on.
+    static func apply() {
+        if monitor == nil {
+            monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { e in
+                guard !global, !recording, let k = from(e), let hit = actions.first(where: { key($0.id).map { $0.code == k.code && $0.mods == k.mods } ?? false }) else { return e }
+                run(hit.id); return nil
+            }
+        }
+        hotKeys.forEach { UnregisterEventHotKey($0) }; hotKeys = []
+        if global {
+            if handler == nil {
+                var spec = EventTypeSpec(eventClass: OSType(kEventClassKeyboard), eventKind: UInt32(kEventHotKeyPressed))
+                InstallEventHandler(GetApplicationEventTarget(), { _, event, _ in
+                    var hk = EventHotKeyID()
+                    GetEventParameter(event, EventParamName(kEventParamDirectObject), EventParamType(typeEventHotKeyID), nil, MemoryLayout<EventHotKeyID>.size, nil, &hk)
+                    let n = Int(hk.id)
+                    DispatchQueue.main.async { MainActor.assumeIsolated { if Shortcuts.actions.indices.contains(n) { Shortcuts.run(Shortcuts.actions[n].id) } } }
+                    return noErr
+                }, 1, &spec, nil, &handler)
+            }
+            for (n, a) in actions.enumerated() {
+                guard let k = key(a.id) else { continue }
+                var carbon: UInt32 = 0
+                if k.mods.contains(.command) { carbon |= UInt32(cmdKey) }; if k.mods.contains(.option) { carbon |= UInt32(optionKey) }
+                if k.mods.contains(.control) { carbon |= UInt32(controlKey) }; if k.mods.contains(.shift) { carbon |= UInt32(shiftKey) }
+                var ref: EventHotKeyRef?
+                if RegisterEventHotKey(UInt32(k.code), carbon, EventHotKeyID(signature: OSType(0x4A54524B), id: UInt32(n)), GetApplicationEventTarget(), 0, &ref) == noErr, let ref { hotKeys.append(ref) }
+            }
+        }
+        NotificationCenter.default.post(name: changed, object: nil)
+    }
+    /// While a shortcut is being recorded in Settings, keys go to the recorder.
+    static var recording = false
+}
+
+private struct ShortcutsSettings: View {
+    @AppStorage("shortcutsGlobal") private var global = false
+    @State private var recording: String?
+    @State private var monitor: Any?
+    @State private var version = 0
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            ForEach(Shortcuts.actions, id: \.id) { a in
+                HStack {
+                    Text(a.name).frame(width: 170, alignment: .leading)
+                    Button(recording == a.id ? "Press the keys…" : Shortcuts.key(a.id)?.label ?? "Not set") { record(a.id) }.frame(minWidth: 120)
+                    if Shortcuts.key(a.id) != nil, recording != a.id { Button("Clear") { Shortcuts.set(a.id, nil); version += 1 }.buttonStyle(.link) }
+                }
+            }
+            .id(version)
+            Toggle("Also when Juice Tracker is in the background (global)", isOn: $global).onChange(of: global) { _ in Shortcuts.apply() }
+            Text("Click a shortcut, then press the keys: they need ⌘, ⌥ or ⌃, or a function key. Esc cancels, Delete clears.").font(.caption).foregroundColor(.secondary)
+        }
+        .onDisappear(perform: stop)
+    }
+    private func record(_ id: String) {
+        stop(); recording = id; Shortcuts.recording = true
+        monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { e in
+            if e.keyCode == 53 { stop(); return nil }                                            // Esc
+            if e.keyCode == 51 || e.keyCode == 117 { Shortcuts.set(id, nil); stop(); return nil } // Delete
+            guard let k = Shortcuts.from(e) else { return nil }
+            Shortcuts.set(id, k); stop()
+            return nil
+        }
+    }
+    private func stop() {
+        if let monitor { NSEvent.removeMonitor(monitor) }
+        monitor = nil; recording = nil; Shortcuts.recording = false; version += 1
     }
 }

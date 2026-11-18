@@ -210,6 +210,23 @@ public static partial class Engine
         return ((int)Math.Ceiling(count * progress), progress < 1);
     }
 
+    /// Plays per bucket of `bucketDays` days, oldest first, the last bucket ending today (the listening timeline).
+    public static int[] PlayTimeline(IEnumerable<DateTime> times, int buckets, int bucketDays, DateTime now)
+    {
+        var output = new int[buckets];
+        foreach (var t in times)
+        {
+            int days = (int)(now.Date - t.Date).TotalDays;
+            if (days < 0) continue;
+            int b = buckets - 1 - days / bucketDays;
+            if (b >= 0) output[b]++;
+        }
+        return output;
+    }
+    /// A playlist as an .m3u file other players open: each song's length, title and full path.
+    public static string M3u(IEnumerable<(string Path, string Title, double? Seconds)> entries) =>
+        "#EXTM3U\n" + string.Concat(entries.Select(e => $"#EXTINF:{(e.Seconds is { } s ? (int)s : -1)},Juice WRLD - {string.Join(' ', e.Title.Split('\n', '\r'))}\n{e.Path}\n"));
+
     public static double? LengthSeconds(string text)
     {
         var g = Regex.Match(text, @"^\s*(?:(\d+):)?(\d{1,2}):(\d{2})\s*$");

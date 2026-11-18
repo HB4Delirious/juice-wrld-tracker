@@ -242,6 +242,12 @@ import Foundation
             expect(Engine.wordleWord("Can't Die") == "CANT DIE", "wordle: apostrophes dropped")
             expect(Engine.wordleWord("All Girls Are The Same") == nil && Engine.wordleWord("Hey") == nil, "wordle: too long or too short is skipped")
             expect(Engine.wordleScore("CRANE", "CREAK") == [2, 2, 1, 0, 1], "wordle: green, yellow and grey")
+            var utc = Calendar(identifier: .gregorian); utc.timeZone = TimeZone(identifier: "UTC")!
+            func day(_ d: Int, _ h: Int) -> Date { utc.date(from: DateComponents(year: 2026, month: 3, day: d, hour: h))! }
+            let plays = [day(10, 9), day(9, 23), day(2, 12), day(1, 0), day(11, 8)]
+            expect(Engine.playTimeline(plays, buckets: 7, bucketDays: 1, now: day(10, 12), calendar: utc) == [0, 0, 0, 0, 0, 1, 1], "timeline: plays by day, today last, older and future plays left out")
+            expect(Engine.playTimeline(plays, buckets: 2, bucketDays: 7, now: day(10, 12), calendar: utc) == [2, 2], "timeline: plays by week, the week ending today last")
+            expect(Engine.m3u([("/m/a.mp3", "Lucid Dreams", 239.6), ("/m/b.flac", "Two\nLines", nil)]) == "#EXTM3U\n#EXTINF:239,Juice WRLD - Lucid Dreams\n/m/a.mp3\n#EXTINF:-1,Juice WRLD - Two Lines\n/m/b.flac\n", "m3u: length, title on one line, path")
             let lrc = Engine.parseLrc("[ar:Juice WRLD]\n[00:12.50]second line\n[00:03.00]<00:03.00>first <00:03.60>line <00:04.20>here\n[00:20.00]<00:20.00>wrong count")
             expect(lrc.map(\.at) == [3, 12.5, 20] && lrc[0].line == "first line here", "lrc: tags skipped, sorted by time, word times taken out of the text")
             expect(lrc[0].words == [3, 3.6, 4.2] && lrc[1].words.isEmpty && lrc[2].words.isEmpty, "lrc: word times only when every word has one")
