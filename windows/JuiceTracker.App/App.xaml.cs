@@ -1,5 +1,6 @@
 using System.IO;
 using System.Windows;
+using System.Windows.Media;
 using System.Windows.Threading;
 
 namespace JuiceTracker.App;
@@ -73,6 +74,11 @@ public partial class App : Application
         try { Directory.CreateDirectory(Store.DataDir); File.AppendAllText(CrashLog, $"{DateTime.Now:u}\n{e}\n\n"); } catch (IOException) { }
     }
 
+    /// Settings: ask before quitting while a song plays. True to go ahead.
+    public static bool ConfirmQuit() =>
+        !Store.Shared.Me.AskQuitPlaying || !Player.Shared.IsPlaying ||
+        MessageBox.Show("A song is playing. Quit Juice Tracker and stop the music?", "Juice Tracker", MessageBoxButton.YesNo, MessageBoxImage.Question) == MessageBoxResult.Yes;
+
     /// CI runs the built exe with --smoke-test: it opens the window and every screen, then quits with 0, or with 1 and
     /// the error in %TEMP%\juicetracker-smoke.txt. A layout or resource that fails to load fails the build.
     void SmokeTest()
@@ -106,6 +112,19 @@ public partial class App : Application
                     window.ShowOverlay(new SongCard(song));
                     window.ShowOverlay(new SongCard(Store.Shared.Songs.First(s => !s.Owned && s.HasFile)));
                     SettingsWindow.Open();
+                    // every Player look draws and moves, and the looks gallery opens
+                    foreach (var (id, _) in PlayerLooks.All)
+                    {
+                        var look = new PlayerLook(); look.Build(id, 120, [Colors.Red, Colors.Blue, Colors.Purple], null);
+                        look.Measure(new Size(400, 400)); look.Arrange(new Rect(0, 0, 400, 400)); look.Pulse(0.8); look.Pulse(0);
+                    }
+                    PlayerLooksWindow.Open([Colors.Red, Colors.Blue, Colors.Purple], null);
+                    // the equalizer's filters run over some audio (on and off), and turning it on and off is safe with nothing playing
+                    Equalizer.Set(true, [6, 0, 1]);
+                    var eq = new EqStage(new NAudio.Wave.SampleProviders.SignalGenerator(44100, 2) { Frequency = 440, Gain = 0.5 });
+                    var samples = new float[4096];
+                    if (eq.Read(samples, 0, samples.Length) != samples.Length || samples.Any(float.IsNaN)) throw new Exception("The equalizer's filters came out wrong.");
+                    Equalizer.Set(false, [0, 0, 0]);
                     // the lyrics windows open
                     LyricsMakerWindow.Open(); LyricsCardWindow.Open(null);
                     // every desktop widget opens and closes

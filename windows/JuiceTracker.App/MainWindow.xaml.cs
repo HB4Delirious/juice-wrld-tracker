@@ -33,7 +33,12 @@ public partial class MainWindow : Window
             if (Store.Shared.Owned.Count.ToString().Contains("999")) Fx.Shower999();
         };
         // with "keep running" on, closing hides the window; the notification-area icon brings it back or quits
-        Closing += (_, e) => { if (Store.Shared.Me.KeepRunning && !Tray.Quitting) { e.Cancel = true; Hide(); } };
+        Shortcuts.Start(this); // your keyboard shortcuts
+        Closing += (_, e) =>
+        {
+            if (Store.Shared.Me.KeepRunning && !Tray.Quitting) { e.Cancel = true; Hide(); }
+            else if (!Tray.Quitting && !App.ConfirmQuit()) e.Cancel = true;
+        };
         Restyle();
     }
     string typed = "";

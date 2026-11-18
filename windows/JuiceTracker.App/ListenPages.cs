@@ -5,6 +5,7 @@ using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Media.Imaging;
 using System.Windows.Shapes;
 using Path = System.IO.Path;
 
@@ -35,10 +36,9 @@ public static class Listen
     {
         var d = new Microsoft.Win32.SaveFileDialog { FileName = Engine.SafeName(name) + ".m3u", Filter = "Playlist|*.m3u" };
         if (d.ShowDialog() != true) return;
-        var lines = new List<string> { "#EXTM3U" };
-        foreach (var i in songs)
-            if (FileFor(i) is { } f) { var s = Store.Shared.Catalog[i]; lines.Add($"#EXTINF:{(int)(Engine.LengthSeconds(s.Length) ?? -1)},Juice WRLD - {s.Name}"); lines.Add(f); }
-        File.WriteAllLines(d.FileName, lines, new System.Text.UTF8Encoding(false));
+        var entries = songs.Select(i => (File: FileFor(i), Song: Store.Shared.Catalog[i])).Where(x => x.File is not null)
+                           .Select(x => (x.File!, x.Song.Name, Engine.LengthSeconds(x.Song.Length)));
+        File.WriteAllText(d.FileName, Engine.M3u(entries), new System.Text.UTF8Encoding(false));
     }
     /// "Add to playlist" as a menu.
     public static ContextMenu PlaylistMenu(IEnumerable<string> ids)
@@ -143,6 +143,12 @@ public sealed class PlaylistsPage : ToolPage
             if (!name.IsKeyboardFocused) name.Text = current.Name;
             var head = UI.Row(10, name, UI.Button("Play", () => Listen.PlayInOrder(songs.Where(s => s.Owned).Select(s => s.I)), ""),
                               UI.Button("Export M3U…", () => Listen.SaveM3U(songs.Select(s => s.I), current.Name)),
+                              songs.Where(s => !s.Owned && s.HasFile).ToList() is { Count: > 0 } missing ? UI.Button($"Download {missing.Count} missing", () =>
+                              {
+                                  if (MessageBox.Show(Window.GetWindow(this), "The songs in this playlist you don't have yet, one at a time, into the folders the tracker picks for each era.",
+                                                      $"Download {missing.Count} songs into your music folder?", MessageBoxButton.OKCancel, MessageBoxImage.Question) == MessageBoxResult.OK)
+                                      store.AddDownloads(missing.Select(s => s.S.Id));
+                              }) : new Border(),
                               Plex.Configured ? UI.Button("Send to Plex", async () =>
                               {
                                   try { var n = await Plex.MakePlaylist(current.Name, songs.Where(s => s.Owned).Select(s => s.I)); MessageBox.Show($"“{current.Name}” is in Plex with {n:N0} songs.", "Sent to Plex"); }
@@ -239,7 +245,9 @@ public sealed class StatsPage : ToolPage
         var week = TopList("This week", Top(log.Where(e => e.At > DateTime.Now.AddDays(-7)))); var all = TopList("All time", Top(log)); Grid.SetColumn(all, 1);
         listening.Children.Add(week); listening.Children.Add(all);
         var lp = new StackPanel(); lp.Children.Add(UI.Text("Your listening in Juice Tracker", 16, weight: FontWeights.SemiBold));
-        lp.Children.Add(UI.Muted(log.Count == 0 ? "Nothing played yet." : $"{log.Count:N0} plays so far.", 13)); lp.Children.Add(listening);
+        lp.Children.Add(UI.Muted(log.Count == 0 ? "Nothing played yet." : $"{log.Count:N0} plays so far.", 13));
+        if (log.Count > 0) lp.Children.Add(Timeline(log.Select(e => e.At).ToList()));
+        lp.Children.Add(listening);
         if (log.Count > 0)
         {
             var mostPlayed = log.Select(e => songFor.GetValueOrDefault(e.File, -1)).Where(i => i >= 0).GroupBy(i => i).OrderByDescending(g => g.Count()).Take(25).Select(g => g.Key).ToList();
@@ -261,7 +269,8 @@ public sealed class StatsPage : ToolPage
 
         // the year so far
         var thisYear = log.Where(e => e.At.Year == DateTime.Now.Year).ToList();
-        var yir = new StackPanel(); yir.Children.Add(UI.Text($"Your {DateTime.Now.Year} so far", 16, weight: FontWeights.SemiBold));
+        var yir = new StackPanel();
+        var yirHead = new DockPanel(); yirHead.Children.Add(UI.Text($"Your {DateTime.Now.Year} so far", 16, weight: FontWeights.SemiBold)); yir.Children.Add(yirHead);
         if (thisYear.Count == 0) yir.Children.Add(UI.Muted("Nothing played in the app this year yet.", 13));
         else
         {
@@ -273,10 +282,77 @@ public sealed class StatsPage : ToolPage
             var g2 = new Grid(); g2.ColumnDefinitions.Add(new ColumnDefinition()); g2.ColumnDefinitions.Add(new ColumnDefinition());
             var ts = TopList("Top songs", Top(thisYear).Take(5).ToList()); var te = TopList("Top eras", eraTop); Grid.SetColumn(te, 1);
             g2.Children.Add(ts); g2.Children.Add(te); yir.Children.Add(g2);
+            var wrapped = Listen.MenuButton("Wrapped picture", () => WrappedMenu(thisYear.Count, minutes, Top(thisYear).Take(5).Select(t => t.Name).ToList(), eraTop.Select(e => e.Item1).ToList(),
+                                                                                  thisYear.Select(e => e.At.Month).Distinct().Count() > 1 ? new DateTime(2000, busiest.Key, 1).ToString("MMMM") : ""));
+            DockPanel.SetDock(wrapped, Dock.Right); yirHead.Children.Insert(0, wrapped);
         }
         Add(UI.Panel(yir, 2, 16), 16);
         Add(Calendar(log), 16);
         Add(Gaps(), 16);
+    }
+
+    /// Plays per day (the last 30 days) or per week (the last 26 weeks).
+    FrameworkElement Timeline(List<DateTime> times)
+    {
+        var me = Store.Shared.Me; bool weeks = me.TimelineWeeks;
+        var counts = Engine.PlayTimeline(times, weeks ? 26 : 30, weeks ? 7 : 1, DateTime.Now);
+        int top = Math.Max(1, counts.Max());
+        var col = new StackPanel { Margin = new Thickness(0, 10, 0, 6) };
+        var mode = new ComboBox { Width = 100, ItemsSource = new[] { "Days", "Weeks" }, SelectedIndex = weeks ? 1 : 0 };
+        mode.SelectionChanged += (_, _) => { me.TimelineWeeks = mode.SelectedIndex == 1; Store.Shared.SavePersonal(); Refresh(); };
+        UI.AutomationName(mode, "Timeline by day or week");
+        var head = new DockPanel(); DockPanel.SetDock(mode, Dock.Right); head.Children.Add(mode); head.Children.Add(UI.Text("Listening timeline", 13.5, weight: FontWeights.Bold));
+        col.Children.Add(head);
+        var bars = new UniformGrid { Rows = 1, Height = 70, Margin = new Thickness(0, 6, 0, 2) };
+        for (int k = 0; k < counts.Length; k++)
+        {
+            int back = (counts.Length - 1 - k) * (weeks ? 7 : 1);
+            string when = back == 0 ? (weeks ? "this week" : "today") : (weeks ? "the week of " : "on ") + DateTime.Now.AddDays(-back).ToString("MMM d");
+            bars.Children.Add(new Border { Height = Math.Max(3, 70.0 * counts[k] / top), VerticalAlignment = VerticalAlignment.Bottom, Margin = new Thickness(1.5, 0, 1.5, 0), CornerRadius = new CornerRadius(2),
+                                           Background = JT.Brush(counts[k] == 0 ? Color.FromArgb(20, 255, 255, 255) : Color.FromArgb((byte)(k == counts.Length - 1 ? 255 : 178), JT.Lavender.R, JT.Lavender.G, JT.Lavender.B)),
+                                           ToolTip = $"{counts[k]} play{(counts[k] == 1 ? "" : "s")} {when}" });
+        }
+        col.Children.Add(bars);
+        var ends = new DockPanel(); var right = UI.Text(weeks ? "this week" : "today", 12, JT.Muted); DockPanel.SetDock(right, Dock.Right);
+        ends.Children.Add(right); ends.Children.Add(UI.Text(DateTime.Now.AddDays(-(counts.Length - 1) * (weeks ? 7 : 1)).ToString("MMM d"), 12, JT.Muted));
+        col.Children.Add(ends);
+        return col;
+    }
+
+    /// Your year as a picture (1080 × 1350) to save or copy.
+    static ContextMenu WrappedMenu(int plays, int minutes, List<string> top, List<string> eras, string month)
+    {
+        BitmapSource Make()
+        {
+            var card = new Grid { Width = 1080, Height = 1350, Background = Games.Night };
+            var col = new StackPanel { Margin = new Thickness(90, 0, 90, 0), VerticalAlignment = VerticalAlignment.Center };
+            col.Children.Add(new TextBlock { Text = $"My {DateTime.Now.Year} in", FontSize = 34, FontWeight = FontWeights.SemiBold, Foreground = JT.Brush(Color.FromArgb(178, 255, 255, 255)) });
+            col.Children.Add(new TextBlock { Text = "Juice WRLD", FontFamily = JT.Marker, FontSize = 96, Foreground = JT.Brush(JT.Lavender), Margin = new Thickness(0, 0, 0, 34) });
+            StackPanel Stat(string v, string l) => new StackPanel { Margin = new Thickness(0, 0, 60, 0), Children = { new TextBlock { Text = v, FontSize = 64, FontWeight = FontWeights.Black, Foreground = Brushes.White }, new TextBlock { Text = l, FontSize = 28, FontWeight = FontWeights.SemiBold, Foreground = JT.Brush(Color.FromArgb(153, 255, 255, 255)) } } };
+            col.Children.Add(new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 0, 34), Children = { Stat($"{plays:N0}", "plays"), Stat(minutes >= 120 ? $"{minutes / 60:N0} hours" : $"{minutes} minutes", "listened") } });
+            col.Children.Add(new TextBlock { Text = "Top songs", FontSize = 30, FontWeight = FontWeights.Bold, Foreground = JT.Brush(Color.FromArgb(153, 255, 255, 255)), Margin = new Thickness(0, 0, 0, 12) });
+            for (int n = 0; n < top.Count; n++) col.Children.Add(new TextBlock { Text = $"{n + 1}. {top[n]}", FontSize = 40, FontWeight = FontWeights.Black, Foreground = Brushes.White, TextTrimming = TextTrimming.CharacterEllipsis, Margin = new Thickness(0, 0, 0, 12) });
+            col.Children.Add(new TextBlock { Text = "Top eras", FontSize = 30, FontWeight = FontWeights.Bold, Foreground = JT.Brush(Color.FromArgb(153, 255, 255, 255)), Margin = new Thickness(0, 22, 0, 12) });
+            col.Children.Add(new TextBlock { Text = string.Join(" · ", eras), FontSize = 38, FontWeight = FontWeights.Black, Foreground = JT.Brush(JT.Lavender), TextWrapping = TextWrapping.Wrap });
+            if (month.Length > 0) col.Children.Add(new TextBlock { Text = $"Busiest month: {month}", FontSize = 30, FontWeight = FontWeights.SemiBold, Foreground = JT.Brush(Color.FromArgb(191, 255, 255, 255)), Margin = new Thickness(0, 34, 0, 0) });
+            card.Children.Add(col);
+            card.Children.Add(new TextBlock { Text = "Juice Tracker", FontFamily = JT.Marker, FontSize = 22, Foreground = JT.Brush(Color.FromArgb(89, 255, 255, 255)), HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Bottom, Margin = new Thickness(0, 0, 0, 36) });
+            card.Measure(new Size(1080, 1350)); card.Arrange(new Rect(0, 0, 1080, 1350)); card.UpdateLayout();
+            var bmp = new RenderTargetBitmap(1080, 1350, 96, 96, PixelFormats.Pbgra32); bmp.Render(card); bmp.Freeze();
+            return bmp;
+        }
+        var menu = new ContextMenu();
+        var save = new MenuItem { Header = "Save picture…" };
+        save.Click += (_, _) =>
+        {
+            var d = new Microsoft.Win32.SaveFileDialog { FileName = $"Juice WRLD {DateTime.Now.Year} wrapped.png", Filter = "PNG image|*.png" };
+            if (d.ShowDialog() != true) return;
+            var enc = new PngBitmapEncoder(); enc.Frames.Add(BitmapFrame.Create(Make()));
+            using var fs = File.Create(d.FileName); enc.Save(fs);
+        };
+        var copy = new MenuItem { Header = "Copy picture" }; copy.Click += (_, _) => Clipboard.SetImage(Make());
+        menu.Items.Add(save); menu.Items.Add(copy);
+        return menu;
     }
 
     static string Ago(DateTime at)

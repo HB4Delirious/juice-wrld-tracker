@@ -1,5 +1,6 @@
 import AppIntents
 import AppKit
+import AVFoundation
 import CoreSpotlight
 import SwiftUI
 import Combine
@@ -87,6 +88,7 @@ struct SongExtras {
     @Published var singing = false
     private var timer: Timer?
     private var path: String?
+    private var boostPeak = 0.0
 
     private init() {
         NotificationCenter.default.addObserver(forName: AmbientPlayer.changed, object: nil, queue: .main) { [weak self] _ in
@@ -133,7 +135,8 @@ struct SongExtras {
 
     private func tick() {
         let p = AmbientPlayer.shared
-        let level = p.level()
+        var level = p.level()
+        if Pref.bool("visualBoost", default: true) { let b = Engine.boosted(Double(level), peak: boostPeak); level = Float(b.level); boostPeak = b.peak }
         LevelMeter.shared.level = level
         SkyNSView.current?.setGlow(level)
         if let x = extras, !x.synced.isEmpty {
@@ -357,6 +360,8 @@ struct ListeningSection: View {
     @State private var plays = 0
     @State private var eras: [(String, Int)] = []
     @State private var recent: [(Song, Date)] = []
+    @State private var times: [Date] = []
+    @AppStorage("timelineWeeks") private var byWeek = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -369,6 +374,7 @@ struct ListeningSection: View {
                     Spacer()
                     if !allTime.isEmpty { Button("Play your most played") { playInOrder(allTime.prefix(25).map(\.0.i)) } }
                 }
+                timeline
                 HStack(alignment: .top, spacing: 18) {
                     list("This week", week)
                     list("All time", allTime)
@@ -431,6 +437,34 @@ struct ListeningSection: View {
         .task(id: store.version) { await loadOwn() }
     }
 
+    /// Plays per day (the last 30 days) or per week (the last 26 weeks).
+    private var timeline: some View {
+        let counts = Engine.playTimeline(times, buckets: byWeek ? 26 : 30, bucketDays: byWeek ? 7 : 1, now: Date())
+        let top = max(1, counts.max() ?? 1)
+        return VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                Text("Listening timeline").font(.subheadline.bold())
+                Spacer()
+                Picker("", selection: $byWeek) { Text("Days").tag(false); Text("Weeks").tag(true) }.pickerStyle(.segmented).labelsHidden().frame(width: 140)
+            }
+            HStack(alignment: .bottom, spacing: 3) {
+                ForEach(Array(counts.enumerated()), id: \.offset) { k, n in
+                    RoundedRectangle(cornerRadius: 2).fill(n == 0 ? Color.white.opacity(0.08) : JT.lavender.opacity(k == counts.count - 1 ? 1 : 0.7))
+                        .frame(maxWidth: .infinity).frame(height: max(3, 70 * CGFloat(n) / CGFloat(top)))
+                        .help("\(n) play\(n == 1 ? "" : "s") \(label(k, counts.count))")
+                }
+            }
+            .frame(height: 70, alignment: .bottom)
+            HStack { Text(label(0, counts.count)); Spacer(); Text(byWeek ? "this week" : "today") }.font(.caption).foregroundColor(JT.muted)
+        }
+    }
+    private func label(_ k: Int, _ count: Int) -> String {
+        let back = (count - 1 - k) * (byWeek ? 7 : 1)
+        if back == 0 { return byWeek ? "this week" : "today" }
+        let d = Calendar.current.date(byAdding: .day, value: -back, to: Date()) ?? Date()
+        return (byWeek ? "the week of " : "on ") + d.formatted(.dateTime.month(.abbreviated).day())
+    }
+
     private func list(_ title: String, _ items: [(Song, Int)]) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             Text(title).font(.subheadline.bold())
@@ -449,6 +483,7 @@ struct ListeningSection: View {
     private func loadOwn() async {
         let log = AmbientPlayer.playLog
         plays = log.count
+        times = log.map(\.at)
         guard !log.isEmpty else { return }
         let paths = Array(Set(log.map(\.path)))
         let raw = await store.act("songsForPaths", -1, ["paths": paths])
@@ -645,6 +680,10 @@ struct PlayerScreen: View {
     @State private var browsing = false
     @State private var lyricsCard = false
     @State private var lyricsMaker = false
+    @State private var looks = false
+    @AppStorage("playerStyle") private var look = "hole"
+    @AppStorage("musicVideos") private var videosOn = true
+    @State private var video: URL? // the song's music video, when your folder has one
     @State private var query = ""
     @State private var era = ""
     @State private var palette = CoverPalette.fallback
@@ -668,7 +707,16 @@ struct PlayerScreen: View {
                 Circle().stroke(AngularGradient(colors: [palette.a, palette.b, palette.c, palette.a], center: .center), lineWidth: 3)
                     .frame(width: hole, height: hole).padding(4).drawingGroup().scaleEffect(wave.scale).opacity(wave.alpha).blur(radius: 1.5)
                     .position(x: cx, y: cy).allowsHitTesting(false)
-                BlackHole(palette: palette, size: hole).frame(width: hole * 2.6, height: hole * 2.6).position(x: cx, y: cy)
+                if let video, videosOn {
+                    MusicVideoView(url: video).frame(width: hole * 2.3, height: hole * 2.3 * 9 / 16)
+                        .clipShape(RoundedRectangle(cornerRadius: 18)).shadow(color: palette.a.opacity(0.6), radius: 30)
+                        .position(x: cx, y: cy)
+                } else if look == "hole" || !PlayerLooks.all.contains(where: { $0.id == look }) {
+                    BlackHole(palette: palette, size: hole).frame(width: hole * 2.6, height: hole * 2.6).position(x: cx, y: cy)
+                } else {
+                    PlayerLook(style: look, palette: palette, size: hole, cover: AmbientPlayer.shared.coverImage)
+                        .frame(width: hole * 2.6, height: hole * 2.6).position(x: cx, y: cy)
+                }
                 IconSwirl(size: hole).frame(width: hole * 3.4, height: hole * 3.4).position(x: cx, y: cy)
                 PlayerClock(size: hole * 0.34, glow: palette.a).position(x: cx, y: cy - hole * 0.62)
                 if portrait {
@@ -700,6 +748,11 @@ struct PlayerScreen: View {
                             .background(Circle().fill(Color.white.opacity(0.1))).overlay(Circle().stroke(Color.white.opacity(0.2)))
                     }
                     .buttonStyle(.plain).help("Time the lyrics: make the song's synced lyrics yourself").accessibilityLabel("Time the lyrics")
+                    Button { looks = true } label: {
+                        Image(systemName: "sparkles").frame(width: 30, height: 30)
+                            .background(Circle().fill(Color.white.opacity(0.1))).overlay(Circle().stroke(Color.white.opacity(0.2)))
+                    }
+                    .buttonStyle(.plain).help("Player looks: pick how the Player looks").accessibilityLabel("Player looks")
                     Menu {
                         if live.isOn {
                             Button("Stop the live stream") { live.stop() }
@@ -737,6 +790,7 @@ struct PlayerScreen: View {
         .background(SpaceField(palette: palette).ignoresSafeArea())
         .sheet(isPresented: $lyricsCard) { LyricsCardSheet { lyricsCard = false } }
         .sheet(isPresented: $lyricsMaker) { LyricsMakerSheet { lyricsMaker = false } }
+        .sheet(isPresented: $looks) { PlayerLooksSheet(palette: palette) { looks = false } }
         .onReceive(changed) { _ in version += 1; updatePalette(); rollWave() }
         .onReceive(NowPlaying.shared.$song) { _ in version += 1 }
         .onAppear { updatePalette() }
@@ -747,7 +801,15 @@ struct PlayerScreen: View {
         let path = AmbientPlayer.shared.currentPath
         guard path != lastPath else { return }
         lastPath = path
-        guard path != nil else { return }
+        video = nil
+        guard let path else { return }
+        let name = NowPlaying.shared.song?.n ?? AmbientPlayer.shared.title ?? ""
+        Task.detached(priority: .utility) {
+            let found = MusicVideo.find(audio: path, title: name)
+            await MainActor.run { if lastPath == path { video = found } }
+        }
+        // Settings > Look: a different look for every song
+        if Pref.bool("playerStyleAuto", default: false), let k = PlayerLooks.all.firstIndex(where: { $0.id == look }) { look = PlayerLooks.all[(k + 1) % PlayerLooks.all.count].id }
         var still = Transaction(); still.disablesAnimations = true
         withTransaction(still) { wave = (1, 0.9) }
         DispatchQueue.main.async { withAnimation(.easeOut(duration: 1.6)) { wave = (2.8, 0) } }
@@ -1122,6 +1184,219 @@ private struct LiveBadge: View {
     private func pill(_ text: some View, color: Color) -> some View {
         text.font(JT.body(12, .bold)).foregroundColor(.white).padding(.horizontal, 12).padding(.vertical, 6)
             .background(Capsule().fill(color.opacity(0.85)))
+    }
+}
+
+// MARK: - Music videos
+
+/// A video of the song in its folder (an .mp4, .mov or .m4v with the file's name or the song's title) plays muted in
+/// time with the song, in place of the look.
+enum MusicVideo {
+    static let kinds: Set<String> = ["mp4", "mov", "m4v"]
+    /// Off the main thread: it lists the song's folder, which can be slow on a network drive.
+    static func find(audio: String, title: String) -> URL? {
+        let file = URL(fileURLWithPath: audio), folder = file.deletingLastPathComponent()
+        let base = file.deletingPathExtension().lastPathComponent, want = Engine.normalize(title)
+        guard let names = try? FileManager.default.contentsOfDirectory(atPath: folder.path) else { return nil }
+        let videos = names.filter { kinds.contains(($0 as NSString).pathExtension.lowercased()) }
+        let hit = videos.first { ($0 as NSString).deletingPathExtension == base }
+            ?? videos.first { !want.isEmpty && Engine.normalize(($0 as NSString).deletingPathExtension) == want }
+        return hit.map { folder.appendingPathComponent($0) }
+    }
+}
+
+struct MusicVideoView: NSViewRepresentable {
+    let url: URL
+    func makeNSView(context: Context) -> MusicVideoNSView { MusicVideoNSView(url: url) }
+    func updateNSView(_ view: MusicVideoNSView, context: Context) { view.show(url) }
+}
+
+/// Muted, following the song: it plays and pauses with it and catches up when they drift apart.
+final class MusicVideoNSView: NSView {
+    private let player = AVPlayer()
+    private let shown = AVPlayerLayer()
+    private var url: URL?
+    private var timer: Timer?
+
+    init(url: URL) {
+        super.init(frame: .zero)
+        wantsLayer = true
+        player.isMuted = true
+        shown.player = player; shown.videoGravity = .resizeAspectFill
+        layer?.addSublayer(shown)
+        show(url)
+    }
+    required init?(coder: NSCoder) { fatalError("init(coder:) is not used") }
+    override func layout() { super.layout(); shown.frame = bounds }
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
+
+    func show(_ next: URL) {
+        guard next != url else { return }
+        url = next
+        player.replaceCurrentItem(with: AVPlayerItem(url: next))
+        follow()
+    }
+    override func viewDidMoveToWindow() {
+        timer?.invalidate(); timer = nil
+        guard window != nil else { player.pause(); return }
+        timer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in MainActor.assumeIsolated { self?.follow() } }
+    }
+    private func follow() {
+        let song = AmbientPlayer.shared
+        guard song.isPlaying else { player.pause(); return }
+        let want = song.currentTime, now = player.currentTime().seconds
+        if !now.isFinite || abs(now - want) > 0.3 { player.seek(to: CMTime(seconds: want, preferredTimescale: 600), toleranceBefore: .zero, toleranceAfter: .zero) }
+        if player.rate == 0 { player.play() }
+    }
+}
+
+// MARK: - Player looks
+
+/// The Player's looks: the ringed black hole (the default), and three more to pick from (Player looks).
+enum PlayerLooks {
+    static let all: [(id: String, name: String)] = [("hole", "Black hole"), ("rings", "Rings"), ("bars", "Bars"), ("disc", "Record")]
+}
+
+struct PlayerLook: NSViewRepresentable {
+    let style: String
+    let palette: CoverPalette
+    let size: CGFloat
+    var cover: NSImage?
+    func makeNSView(context: Context) -> PlayerLookView { PlayerLookView() }
+    func updateNSView(_ view: PlayerLookView, context: Context) {
+        view.show(style: style, size: size, colors: [NSColor(palette.a), NSColor(palette.b), NSColor(palette.c)], cover: cover)
+    }
+}
+
+/// Rings (circles in the song's colors turning at their own speeds, swelling with the beat), Bars (bars round a
+/// dark center, longer on the beat) and Record (the cover on a spinning record). Core Animation, like the black hole.
+final class PlayerLookView: NSView {
+    private var key = ""
+    private var pulsing: [(layer: CALayer, amount: CGFloat)] = [] // scaled with the music
+    private var bars: [CALayer] = []
+    private var pauser: PausesInBackground?
+    private var meter: AnyCancellable?
+
+    private var last: (style: String, size: CGFloat, colors: [NSColor], cover: NSImage?)?
+
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
+    // drawn round the middle: again once the view has its real size
+    override func layout() { super.layout(); if let l = last { show(style: l.style, size: l.size, colors: l.colors, cover: l.cover) } }
+
+    func show(style: String, size: CGFloat, colors: [NSColor], cover: NSImage?) {
+        last = (style, size, colors, cover)
+        let k = "\(style)|\(size)|\(bounds.size)|\(colors.map(\.description))|\(cover.map { ObjectIdentifier($0).hashValue } ?? 0)"
+        guard k != key, size > 0, bounds.width > 0 else { return }
+        key = k
+        wantsLayer = true
+        guard let root = layer else { return }
+        root.sublayers?.forEach { $0.removeFromSuperlayer() }
+        pulsing = []; bars = []
+        let c = CGPoint(x: bounds.midX, y: bounds.midY)
+        func circle(_ r: CGFloat) -> CGPath { CGPath(ellipseIn: CGRect(x: -r, y: -r, width: r * 2, height: r * 2), transform: nil) }
+        func spin(_ l: CALayer, _ seconds: Double, reverse: Bool = false) {
+            let a = CABasicAnimation(keyPath: "transform.rotation.z")
+            a.fromValue = 0; a.toValue = (reverse ? -2 : 2) * Double.pi; a.duration = seconds; a.repeatCount = .infinity
+            l.add(a, forKey: "spin")
+        }
+        let hole = CAShapeLayer(); hole.path = circle(size * 0.5); hole.position = c
+        hole.fillColor = NSColor.black.cgColor
+        hole.shadowColor = colors[0].cgColor; hole.shadowRadius = size * 0.12; hole.shadowOpacity = 0.9; hole.shadowOffset = .zero
+        switch style {
+        case "rings":
+            for k in 0..<4 {
+                let ring = CAShapeLayer(); ring.path = circle(size * (0.56 + CGFloat(k) * 0.16)); ring.position = c
+                ring.fillColor = nil; ring.strokeColor = colors[k % 3].withAlphaComponent(0.85 - CGFloat(k) * 0.15).cgColor
+                ring.lineWidth = k == 0 ? 3 : 2; ring.lineDashPattern = k == 0 ? nil : [NSNumber(value: Double(6 + k * 4)), NSNumber(value: Double(8 + k * 3))]
+                ring.shadowColor = colors[k % 3].cgColor; ring.shadowRadius = 8; ring.shadowOpacity = 0.8; ring.shadowOffset = .zero
+                root.addSublayer(ring); spin(ring, 18 + Double(k) * 9, reverse: k % 2 == 1)
+                pulsing.append((ring, 0.05 + CGFloat(k) * 0.035))
+            }
+            root.addSublayer(hole); pulsing.append((hole, 0.03))
+        case "bars":
+            let count = 64
+            let group = CALayer(); group.position = c; root.addSublayer(group); spin(group, 60)
+            for n in 0..<count {
+                let b = CALayer()
+                b.anchorPoint = CGPoint(x: 0.5, y: 0)
+                b.bounds = CGRect(x: 0, y: 0, width: max(2, size * 0.022), height: size * 0.42)
+                b.cornerRadius = b.bounds.width / 2
+                let angle = CGFloat(n) / CGFloat(count) * 2 * .pi
+                b.position = CGPoint(x: cos(angle) * size * 0.54, y: sin(angle) * size * 0.54)
+                b.setValue(angle - .pi / 2, forKey: "angle")
+                let t = CGFloat(n) / CGFloat(count)
+                b.backgroundColor = (t < 0.5 ? colors[0].blended(withFraction: t * 2, of: colors[1]) : colors[1].blended(withFraction: (t - 0.5) * 2, of: colors[2]))?.cgColor
+                b.setAffineTransform(CGAffineTransform(rotationAngle: angle - .pi / 2).scaledBy(x: 1, y: 0.12))
+                group.addSublayer(b); bars.append(b)
+            }
+            root.addSublayer(hole); pulsing.append((hole, 0.03))
+        default: // "disc": the cover on a spinning record
+            let disc = CALayer(); disc.position = c; root.addSublayer(disc)
+            let vinyl = CAShapeLayer(); vinyl.path = circle(size * 0.62); vinyl.fillColor = NSColor(white: 0.04, alpha: 1).cgColor
+            vinyl.shadowColor = colors[0].cgColor; vinyl.shadowRadius = size * 0.14; vinyl.shadowOpacity = 0.9; vinyl.shadowOffset = .zero
+            disc.addSublayer(vinyl); pulsing.append((vinyl, 0.04))
+            for g in 0..<7 {
+                let groove = CAShapeLayer(); groove.path = circle(size * (0.32 + CGFloat(g) * 0.042)); groove.fillColor = nil
+                groove.strokeColor = NSColor(white: 1, alpha: g % 2 == 0 ? 0.07 : 0.04).cgColor; groove.lineWidth = 1
+                disc.addSublayer(groove)
+            }
+            let label = CALayer(); let r = size * 0.28
+            label.bounds = CGRect(x: -r, y: -r, width: r * 2, height: r * 2); label.position = .zero
+            label.cornerRadius = r; label.masksToBounds = true; label.contentsGravity = .resizeAspectFill
+            if let cg = cover?.cgImage(forProposedRect: nil, context: nil, hints: nil) { label.contents = cg } else { label.backgroundColor = colors[0].cgColor }
+            disc.addSublayer(label)
+            let spindle = CAShapeLayer(); spindle.path = circle(size * 0.02); spindle.fillColor = NSColor.black.cgColor; disc.addSublayer(spindle)
+            spin(disc, 8)
+        }
+        pauser = PausesInBackground(root)
+        meter = LevelMeter.shared.$level.sink { [weak self] level in self?.pulse(CGFloat(level)) }
+    }
+
+    private func pulse(_ level: CGFloat) {
+        CATransaction.begin(); CATransaction.setAnimationDuration(0.12)
+        for (l, amount) in pulsing { l.setValue(1 + level * amount * 2, forKeyPath: "transform.scale") }
+        for (n, b) in bars.enumerated() {
+            let wobble = level > 0 ? 0.25 * CGFloat((n * 37 + Int(level * 50)) % 5) / 4 : 0
+            let angle = b.value(forKey: "angle") as? CGFloat ?? 0
+            b.setAffineTransform(CGAffineTransform(rotationAngle: angle).scaledBy(x: 1, y: max(0.12, min(1, level * (0.7 + wobble)))))
+        }
+        CATransaction.commit()
+    }
+}
+
+/// Every look playing at once: click one to use it.
+struct PlayerLooksSheet: View {
+    let palette: CoverPalette
+    let close: () -> Void
+    @AppStorage("playerStyle") private var look = "hole"
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack {
+                Text("Player looks").font(JT.marker(26))
+                Spacer()
+                Button("Done", action: close).keyboardShortcut(.cancelAction)
+            }
+            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 14) {
+                ForEach(PlayerLooks.all, id: \.id) { l in
+                    Button { look = l.id } label: {
+                        VStack(spacing: 6) {
+                            ZStack {
+                                Color.black
+                                if l.id == "hole" { BlackHole(palette: palette, size: 70).frame(width: 182, height: 182) }
+                                else { PlayerLook(style: l.id, palette: palette, size: 70, cover: AmbientPlayer.shared.coverImage).frame(width: 182, height: 182) }
+                            }
+                            .frame(height: 170).clipShape(RoundedRectangle(cornerRadius: 12))
+                            .overlay(RoundedRectangle(cornerRadius: 12).stroke(look == l.id ? JT.lavender : Color.white.opacity(0.12), lineWidth: look == l.id ? 3 : 1))
+                            Text(l.name).font(JT.body(14, look == l.id ? .bold : .regular))
+                        }
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            Text("They move with the music while a song plays.").font(JT.body(12)).foregroundColor(JT.muted)
+        }
+        .padding(22).frame(width: 520)
     }
 }
 

@@ -1329,6 +1329,38 @@ extension Engine {
         return (Int((Double(count) * progress).rounded(.up)), progress < 1)
     }
 
+    /// Plays per bucket of `bucketDays` days, oldest first, the last bucket ending today (the listening timeline).
+    static func playTimeline(_ times: [Date], buckets: Int, bucketDays: Int, now: Date, calendar: Calendar = .current) -> [Int] {
+        var out = Array(repeating: 0, count: buckets)
+        let today = calendar.startOfDay(for: now)
+        for t in times {
+            guard let days = calendar.dateComponents([.day], from: calendar.startOfDay(for: t), to: today).day, days >= 0 else { continue }
+            let b = buckets - 1 - days / bucketDays
+            if b >= 0 { out[b] += 1 }
+        }
+        return out
+    }
+    /// A playlist as an .m3u file other players open: each song's length, title and full path.
+    static func m3u(_ entries: [(path: String, title: String, seconds: Double?)]) -> String {
+        "#EXTM3U\n" + entries.map { e in
+            "#EXTINF:\(e.seconds.map { Int($0) } ?? -1),Juice WRLD - \(e.title.split(whereSeparator: \.isNewline).joined(separator: " "))\n\(e.path)\n"
+        }.joined()
+    }
+
+    /// The equalizer's presets: bass, mids and treble in dB.
+    static let eqPresets: [(name: String, bands: [Double])] = [("Flat", [0, 0, 0]), ("Bass boost", [6, 0, 1]), ("Vocals", [-2, 4, 2]), ("Bright", [0, 1, 5]), ("Late night", [-4, 1, -3])]
+    /// The preset these bands match, or "Custom".
+    static func eqPreset(_ bands: [Double]) -> String { eqPresets.first { $0.bands == bands }?.name ?? "Custom" }
+    /// How far everything is turned down so boosted bands don't clip: half the biggest boost.
+    static func eqHeadroom(_ bands: [Double]) -> Double { -max(0, bands.max() ?? 0) / 2 }
+
+    /// Quiet songs still move the visuals: the level measured against the song's recent loudest, which falls back
+    /// slowly (about 7% a second at 15 readings a second), never below 0.25 so near-silence isn't blown up.
+    static func boosted(_ level: Double, peak: Double) -> (level: Double, peak: Double) {
+        let p = max(level, peak * 0.995, 0.25)
+        return (min(1, level / p), p)
+    }
+
     /// "4:26" or "1:02:03" to seconds.
     static func lengthSeconds(_ text: String) -> Double? {
         guard let g = groups(#"^\s*(?:(\d+):)?(\d{1,2}):(\d{2})\s*$"#, text).first else { return nil }

@@ -112,6 +112,18 @@ public sealed partial class Store
         public string EdgeColor { get; set; } = "";        // the edge light's color as hex, or "" for the cover's
         public string LyricStyle { get; set; } = "line";   // the Player's lyrics: "line" (word by word) or "list" (scrolling)
         public bool LyricBlur { get; set; } = true;        // blur the lines not being sung (list style)
+        public bool FadePause { get; set; } = true;        // fade the music when pausing and resuming
+        public bool AskQuitPlaying { get; set; }           // ask before quitting while a song plays
+        public bool TimelineWeeks { get; set; }            // Stats' listening timeline by week instead of by day
+        public string PlayerStyle { get; set; } = "hole";  // the Player's look: hole, rings, bars or disc
+        public Dictionary<string, string> Shortcuts { get; set; } = []; // action → "modifiers|key" (WPF enum numbers)
+        public bool ShortcutsGlobal { get; set; }          // shortcuts also work while another app is in front
+        public bool EdgeAll { get; set; } = true;          // the edge light round every screen, not only the main one
+        public bool PlayerStyleAuto { get; set; }          // a different Player look for every song
+        public bool VisualBoost { get; set; } = true;      // lift quiet songs so the visuals still move
+        public bool MusicVideos { get; set; } = true;      // play a song's music video on the Player tab
+        public bool EqOn { get; set; }                     // the equalizer
+        public List<double> EqBands { get; set; } = [0, 0, 0]; // bass, mids, treble in dB
     }
     public sealed record Playlist(string Id, string Name, List<string> Songs);
     public Personal Me { get; private set; } = new();

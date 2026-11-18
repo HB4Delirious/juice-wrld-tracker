@@ -646,10 +646,20 @@ struct HeardleScreen: View {
     /// The edge light follows the music's loudness, so the meter keeps ticking while the app is in the background.
     static var wantsLevel: Bool { windows["edge"] != nil }
 
+    /// The edge light's windows on the other screens (the main screen's is windows["edge"]).
+    private static var edgeOthers: [NSWindow] = []
+    private static var screensWatch: NSObjectProtocol?
+
     static func apply() {
         for (key, _) in kinds {
             if isOn(key), windows[key] == nil { open(key) }
-            if !isOn(key), let w = windows.removeValue(forKey: key) { w.close() }
+            if !isOn(key), let w = windows.removeValue(forKey: key) { w.close(); if key == "edge" { edgeOthers.forEach { $0.close() }; edgeOthers = [] } }
+        }
+        // a screen plugged in or out (or "every screen" turned on or off): the edge light goes round the screens there are now
+        if screensWatch == nil {
+            screensWatch = NotificationCenter.default.addObserver(forName: NSApplication.didChangeScreenParametersNotification, object: nil, queue: .main) { _ in
+                MainActor.assumeIsolated { reopenEdge() }
+            }
         }
         NotificationCenter.default.post(name: changed, object: nil)
     }
@@ -687,17 +697,29 @@ struct HeardleScreen: View {
         windows[key] = p
     }
 
+    /// Settings > Look: the edge light on every screen, or only the main one.
+    static var edgeEverywhere: Bool { Pref.bool("widget.edgeAll", default: true) }
+    static func reopenEdge() {
+        guard let w = windows.removeValue(forKey: "edge") else { return }
+        w.close(); edgeOthers.forEach { $0.close() }; edgeOthers = []
+        openEdge()
+    }
+
     private static func openEdge() {
-        guard let screen = NSScreen.main else { return }
-        let w = NSWindow(contentRect: screen.frame, styleMask: .borderless, backing: .buffered, defer: false, screen: screen)
-        w.level = .floating; w.backgroundColor = .clear; w.isOpaque = false; w.hasShadow = false
-        w.ignoresMouseEvents = true // clicks go through to whatever is underneath
-        w.collectionBehavior = [.canJoinAllSpaces, .stationary, .fullScreenAuxiliary, .ignoresCycle]
-        w.isReleasedWhenClosed = false
-        w.contentView = EdgeLightView(frame: NSRect(origin: .zero, size: screen.frame.size))
-        w.setFrame(screen.frame, display: true)
-        w.orderFrontRegardless()
-        windows["edge"] = w
+        guard let main = NSScreen.main else { return }
+        let screens = [main] + (edgeEverywhere ? NSScreen.screens.filter { $0 != main } : [])
+        let all = screens.map { screen -> NSWindow in
+            let w = NSWindow(contentRect: screen.frame, styleMask: .borderless, backing: .buffered, defer: false, screen: screen)
+            w.level = .floating; w.backgroundColor = .clear; w.isOpaque = false; w.hasShadow = false
+            w.ignoresMouseEvents = true // clicks go through to whatever is underneath
+            w.collectionBehavior = [.canJoinAllSpaces, .stationary, .fullScreenAuxiliary, .ignoresCycle]
+            w.isReleasedWhenClosed = false
+            w.contentView = EdgeLightView(frame: NSRect(origin: .zero, size: screen.frame.size))
+            w.setFrame(screen.frame, display: true)
+            w.orderFrontRegardless()
+            return w
+        }
+        windows["edge"] = all[0]; edgeOthers = Array(all.dropFirst())
     }
 }
 

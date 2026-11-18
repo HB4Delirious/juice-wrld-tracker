@@ -206,12 +206,21 @@ static class DesktopWidgets
 
     public static void Apply()
     {
+        if (!watching) { watching = true; Microsoft.Win32.SystemEvents.DisplaySettingsChanged += (_, _) => Application.Current?.Dispatcher.BeginInvoke(ReopenEdge); }
         foreach (var (key, _) in Kinds)
         {
             bool on = Store.Shared.Me.Widgets.Contains(key);
             if (on && !open.ContainsKey(key)) open[key] = key == "edge" ? EdgeLight.Open() : [Widget(key)];
             if (!on && open.Remove(key, out var ws)) foreach (var w in ws) w.Close();
         }
+    }
+    static bool watching;
+    /// A screen plugged in or out (or "every screen" changed): the edge light goes round the screens there are now.
+    public static void ReopenEdge()
+    {
+        if (!open.Remove("edge", out var ws)) return;
+        foreach (var w in ws) w.Close();
+        open["edge"] = EdgeLight.Open();
     }
     public static void Set(string key, bool on)
     {
@@ -366,7 +375,6 @@ static class EdgeLight
     const int Thick = 46;
     public static Window[] Open()
     {
-        var a = SystemParameters.PrimaryScreenWidth; var b = SystemParameters.PrimaryScreenHeight;
         var glow = new SolidColorBrush(JT.Lavender);
         Window Strip(double x, double y, double w, double h, Point from, Point to)
         {
@@ -379,13 +387,20 @@ static class EdgeLight
             win.Show();
             return win;
         }
-        Window[] strips =
-        [
-            Strip(0, 0, a, Thick, new Point(0, 0), new Point(0, 1)), Strip(0, b - Thick, a, Thick, new Point(0, 1), new Point(0, 0)),
-            Strip(0, Thick, Thick, b - 2 * Thick, new Point(0, 0), new Point(1, 0)), Strip(a - Thick, Thick, Thick, b - 2 * Thick, new Point(1, 0), new Point(0, 0)),
-        ];
+        // round every screen (Settings), or only the main one; screen pixels to WPF's units at the main window's scale
+        double scale = Application.Current.MainWindow is { } mw && PresentationSource.FromVisual(mw)?.CompositionTarget is { } ct ? ct.TransformFromDevice.M11 : 1;
+        var screens = System.Windows.Forms.Screen.AllScreens.Where(s => s.Primary || Store.Shared.Me.EdgeAll).Select(s => s.Bounds);
+        var strips = screens.SelectMany(r =>
+        {
+            double x = r.X * scale, y = r.Y * scale, a = r.Width * scale, b = r.Height * scale;
+            return new[]
+            {
+                Strip(x, y, a, Thick, new Point(0, 0), new Point(0, 1)), Strip(x, y + b - Thick, a, Thick, new Point(0, 1), new Point(0, 0)),
+                Strip(x, y + Thick, Thick, b - 2 * Thick, new Point(0, 0), new Point(1, 0)), Strip(x + a - Thick, y + Thick, Thick, b - 2 * Thick, new Point(1, 0), new Point(0, 0)),
+            };
+        }).ToArray();
         // follow the music: loudness 15 times a second (off the UI thread), colour from the song's picture
-        var meter = new LevelMeter(); bool measuring = false; string? colourFor = null;
+        var meter = new LevelMeter(); var boost = new LevelBoost(); bool measuring = false; string? colourFor = null;
         var timer = new DispatcherTimer(TimeSpan.FromMilliseconds(66), DispatcherPriority.Background, async (_, _) =>
         {
             var p = Player.Shared;
@@ -403,7 +418,7 @@ static class EdgeLight
             // fades out when the music stops
             if (!p.IsPlaying || p.CurrentFile is not { } f) { foreach (var s in strips) s.Opacity = Math.Max(0, s.Opacity - 0.05); return; }
             measuring = true; var at = p.Position;
-            var level = await Task.Run(() => meter.Level(f, at)); measuring = false;
+            var level = boost.Apply(await Task.Run(() => meter.Level(f, at))); measuring = false;
             foreach (var s in strips) s.Opacity = 0.2 + level * 0.8;
         }, Dispatcher.CurrentDispatcher);
         timer.Start();

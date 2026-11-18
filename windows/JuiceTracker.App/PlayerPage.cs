@@ -24,6 +24,12 @@ public sealed class PlayerPage : Grid, IRefresh
 
     readonly Canvas stage = new() { ClipToBounds = true };
     readonly Grid hole = new(), clock = new(), backDisc = new(), frontDisc = new();
+    readonly PlayerLook look = new(); // the other looks, in place of the hole
+    readonly LevelBoost boost = new();
+    // the song's music video, when its folder has one: muted, in time with the song, in place of the look
+    readonly MediaElement video = new() { IsMuted = true, LoadedBehavior = MediaState.Manual, UnloadedBehavior = MediaState.Manual, Stretch = Stretch.UniformToFill, IsHitTestVisible = false };
+    readonly Border videoBox = new() { CornerRadius = new CornerRadius(18), ClipToBounds = true, Visibility = Visibility.Collapsed, IsHitTestVisible = false };
+    string? videoFile;
     readonly RotateTransform spinBack = new(), spinFront = new();
     readonly TextBlock date = new() { FontSize = 13, FontWeight = FontWeights.SemiBold, Foreground = JT.Brush(Color.FromArgb(217, 255, 246, 251)), HorizontalAlignment = HorizontalAlignment.Center };
     readonly TextBlock time = new() { FontFamily = new FontFamily("Bahnschrift Condensed, Bahnschrift, Segoe UI"), FontStretch = FontStretches.Condensed, FontWeight = FontWeights.Bold, HorizontalAlignment = HorizontalAlignment.Center,
@@ -81,6 +87,8 @@ public sealed class PlayerPage : Grid, IRefresh
         wave.Stroke = Ring((0, 1), (1, 1), (2, 1), (0, 1)); wave.Effect = new BlurEffect { Radius = 2 };
         stage.Children.Add(Cached(wave));
         stage.Children.Add(BuildHole());
+        stage.Children.Add(look);
+        videoBox.Child = video; stage.Children.Add(videoBox);
         stage.Children.Add(swirl);
         clock.Children.Add(UI.Column(0, date, time)); clock.IsHitTestVisible = false; stage.Children.Add(clock);
         lyrics.Children.Add(before); lyrics.Children.Add(karaoke); lyrics.Children.Add(after);
@@ -152,6 +160,10 @@ public sealed class PlayerPage : Grid, IRefresh
         cardButton.ToolTip = "Lyrics card: save a line as a picture";
         stage.Children.Add(new Border { Width = 32, Height = 32, CornerRadius = new CornerRadius(16), Background = JT.Brush(Color.FromArgb(26, 255, 255, 255)),
                                         BorderBrush = JT.Brush(Color.FromArgb(51, 255, 255, 255)), BorderThickness = new Thickness(1), Child = cardButton, Tag = "card" });
+        var looksButton = UI.IconButton("\uE790", "Player looks: pick how the Player looks", () => PlayerLooksWindow.Open(palette, cover.Source), 14);
+        looksButton.ToolTip = "Player looks: pick how the Player looks";
+        stage.Children.Add(new Border { Width = 32, Height = 32, CornerRadius = new CornerRadius(16), Background = JT.Brush(Color.FromArgb(26, 255, 255, 255)),
+                                        BorderBrush = JT.Brush(Color.FromArgb(51, 255, 255, 255)), BorderThickness = new Thickness(1), Child = looksButton, Tag = "looks" });
         var timeButton = UI.IconButton("\uE916", "Time the lyrics: make the song's synced lyrics yourself", LyricsMakerWindow.Open, 14);
         timeButton.ToolTip = "Time the lyrics: make the song's synced lyrics yourself";
         stage.Children.Add(new Border { Width = 32, Height = 32, CornerRadius = new CornerRadius(16), Background = JT.Brush(Color.FromArgb(26, 255, 255, 255)),
@@ -199,7 +211,7 @@ public sealed class PlayerPage : Grid, IRefresh
         }
         if (stream)
         {
-            foreach (var b in stage.Children.OfType<Border>().Where(b => b == queueBox || b == bar || b == songsPanel || b.Tag is "search" or "stream" or "card" or "time").ToList()) b.Visibility = Visibility.Collapsed;
+            foreach (var b in stage.Children.OfType<Border>().Where(b => b == queueBox || b == bar || b == songsPanel || b.Tag is "search" or "stream" or "card" or "time" or "looks").ToList()) b.Visibility = Visibility.Collapsed;
             mark.Text = "Juice Tracker"; stage.Children.Add(mark);
         }
 
@@ -208,8 +220,8 @@ public sealed class PlayerPage : Grid, IRefresh
         shooter.Tick += (_, _) => Shoot();
         listen.Tick += (_, _) => Hear();
         sky.SizeChanged += (_, _) => Twinkles();
-        Loaded += (_, _) => { Player.Shared.Changed += Tick; MyLyrics.Changed += Relyric; minute.Start(); shooter.Start(); listen.Start(); Spin(true); Tick(); };
-        Unloaded += (_, _) => { Player.Shared.Changed -= Tick; MyLyrics.Changed -= Relyric; minute.Stop(); shooter.Stop(); listen.Stop(); Spin(false); };
+        Loaded += (_, _) => { Player.Shared.Changed += Tick; MyLyrics.Changed += Relyric; PlayerLooks.Changed += Restyle; minute.Start(); shooter.Start(); listen.Start(); Spin(true); Tick(); };
+        Unloaded += (_, _) => { Player.Shared.Changed -= Tick; MyLyrics.Changed -= Relyric; PlayerLooks.Changed -= Restyle; minute.Stop(); shooter.Stop(); listen.Stop(); Spin(false); };
         Clock();
         Refresh();
     }
@@ -403,6 +415,9 @@ public sealed class PlayerPage : Grid, IRefresh
         frontDisc.Clip = new RectangleGeometry(new Rect(0, span / 2, span, span / 2));
         foreach (var e in hole.Children.OfType<Ellipse>()) { e.Width = e.Height = size * (double)e.Tag; }
         At(hole, cx - span / 2, cy - span / 2);
+        At(look, cx - span / 2, cy - span / 2);
+        videoBox.Width = size * 2.3; videoBox.Height = size * 2.3 * 9 / 16; At(videoBox, cx - videoBox.Width / 2, cy - videoBox.Height / 2);
+        Restyle(size);
         Swirl(size, new Point(cx, cy));
         time.FontSize = size * 0.34;
         clock.Width = 400; At(clock, cx - 200, cy - size * 0.62 - size * 0.34 * 0.75);
@@ -425,6 +440,7 @@ public sealed class PlayerPage : Grid, IRefresh
         At(stage.Children.OfType<Border>().First(b => "stream".Equals(b.Tag)), cx + bar.Width / 2 - 74, h - 126);
         At(stage.Children.OfType<Border>().First(b => "card".Equals(b.Tag)), cx + bar.Width / 2 - 114, h - 126);
         At(stage.Children.OfType<Border>().First(b => "time".Equals(b.Tag)), cx + bar.Width / 2 - 154, h - 126);
+        At(stage.Children.OfType<Border>().First(b => "looks".Equals(b.Tag)), cx + bar.Width / 2 - 194, h - 126);
         songsPanel.Width = Math.Min(460, w - 40); songsPanel.Height = Math.Max(240, h - 170); At(songsPanel, w - songsPanel.Width - 20, 20);
         empty.Width = 420; empty.TextAlignment = TextAlignment.Center; At(empty, cx - 210, cy - 10);
         Spin(IsLoaded);
@@ -494,6 +510,7 @@ public sealed class PlayerPage : Grid, IRefresh
     void UsePalette(Color[] found)
     {
         palette = [found.Length > 0 ? found[0] : Fallback[0], found.Length > 1 ? found[1] : found.Length > 0 ? found[0] : Fallback[1], found.Length > 2 ? found[2] : Fallback[2]];
+        Restyle();
         playGlow.BeginAnimation(DropShadowEffect.ColorProperty, new ColorAnimation(palette[0], TimeSpan.FromSeconds(1.2)));
         foreach (var (stop, slot, alpha) in tinted)
         {
@@ -616,7 +633,16 @@ public sealed class PlayerPage : Grid, IRefresh
         {
             file = p.CurrentFile; synced = []; line = -2; lit = -1; artFor = file;
             if (file is not null) Wave();
+            // Settings: a different look for every song
+            if (file is not null && store.Me.PlayerStyleAuto && Array.FindIndex(PlayerLooks.All, l => l.Id == store.Me.PlayerStyle) is var k and >= 0)
+            { store.Me.PlayerStyle = PlayerLooks.All[(k + 1) % PlayerLooks.All.Length].Id; store.SavePersonal(); Restyle(); }
             var i = file is null ? -1 : store.SongForFile(file);
+            ShowVideo(null);
+            if (file is not null && store.Me.MusicVideos) // looked for alongside the rest, not before it
+            {
+                var forFile = file; var title = i >= 0 ? store.Catalog[i].Name : p.Title ?? "";
+                _ = Task.Run(() => MusicVideo.Find(forFile, title)).ContinueWith(t => { if (file == forFile) ShowVideo(t.Result); }, TaskScheduler.FromCurrentSynchronizationContext());
+            }
             var era = i >= 0 ? Engine.EraName(store.Catalog[i]) : "Juice WRLD";
             cardTitle.Text = barTitle.Text = p.Title ?? "Nothing playing"; cardEra.Text = barEra.Text = era;
             ShowArt(null, file ?? "");
@@ -631,9 +657,27 @@ public sealed class PlayerPage : Grid, IRefresh
             line = -2;
         }
         Karaoke(p.Position.TotalSeconds);
+        FollowVideo();
     }
 
     /// The line being sung, its words lighting up as the song gets to them. Shown live from the site, never saved.
+    void ShowVideo(string? found)
+    {
+        if (found == videoFile) return;
+        videoFile = found; video.Stop();
+        video.Source = found is null ? null : new Uri(found);
+        Restyle();
+    }
+    /// Keeps the video with the song: playing and paused with it, and caught up when they drift apart.
+    void FollowVideo()
+    {
+        if (videoFile is null || videoBox.Visibility != Visibility.Visible) return;
+        var p = Player.Shared;
+        if (!p.IsPlaying) { video.Pause(); return; }
+        if (Math.Abs((video.Position - p.Position).TotalSeconds) > 0.4) video.Position = p.Position;
+        video.Play();
+    }
+
     /// Your own lyrics timing was saved or removed: look the song up again.
     void Relyric() { file = "\0"; Tick(); }
 
@@ -749,8 +793,21 @@ public sealed class PlayerPage : Grid, IRefresh
     }
 
     /// Louder means faster: the swirl runs up to four times as fast on a strong beat, easing back between.
+    /// The look you picked (Player looks): the hole, or one of the others in its place.
+    void Restyle(double size)
+    {
+        var style = Store.Shared.Me.PlayerStyle;
+        bool other = style != "hole" && PlayerLooks.All.Any(l => l.Id == style), film = videoFile is not null && Store.Shared.Me.MusicVideos;
+        videoBox.Visibility = film ? Visibility.Visible : Visibility.Collapsed;
+        hole.Visibility = other || film ? Visibility.Collapsed : Visibility.Visible;
+        look.Visibility = other && !film ? Visibility.Visible : Visibility.Collapsed;
+        if (other) look.Build(style, size, palette, cover.Source == JT.Image("jt-logo") ? null : cover.Source);
+    }
+    void Restyle() => Restyle(holeSize);
+
     void Pace(double level)
     {
+        if (look.Visibility == Visibility.Visible) look.Pulse(level);
         double target = 1 + level * 3, next = pace + (target - pace) * (target > pace ? 0.5 : 0.12); // quick to jump, slow to settle
         if (Math.Abs(next - pace) < 0.02) return;
         pace = next;
@@ -764,7 +821,7 @@ public sealed class PlayerPage : Grid, IRefresh
         var p = Player.Shared;
         if (!p.IsPlaying || p.CurrentFile is not { } f) { Pace(0); return; }
         measuring = true; var at = p.Position;
-        Task.Run(() => meter.Level(f, at)).ContinueWith(t => { measuring = false; Pace(t.Result); }, TaskScheduler.FromCurrentSynchronizationContext());
+        Task.Run(() => meter.Level(f, at)).ContinueWith(t => { measuring = false; Pace(boost.Apply(t.Result)); }, TaskScheduler.FromCurrentSynchronizationContext());
     }
 
     /// Faint doodles drifting slowly across the sky: hearts, butterflies, stickers, 999s, a planet.

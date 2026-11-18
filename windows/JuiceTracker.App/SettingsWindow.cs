@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Input;
 using System.Windows.Media;
 
 namespace JuiceTracker.App;
@@ -98,6 +99,8 @@ public sealed class SettingsWindow : Window
         }
         Check("Compact (smaller text and spacing, for small screens)", store.Me.Compact, v => { store.Me.Compact = v; MainWindow.Current?.Restyle(); });
         Check("Play a chime when songs land in your library", store.Me.Chime, v => { store.Me.Chime = v; if (v) Chime.Play(); });
+        Check("Fade the music when pausing and resuming", store.Me.FadePause, v => store.Me.FadePause = v);
+        Check("Ask before quitting while a song plays", store.Me.AskQuitPlaying, v => store.Me.AskQuitPlaying = v);
         Check("Show download progress on the taskbar button", store.Me.TaskbarProgress, v => store.Me.TaskbarProgress = v);
         body.Children.Add(UI.Muted("Desktop widgets (drag to move, right-click to close)", 12).Also(t => t.Margin = new Thickness(0, 10, 0, 0)));
         foreach (var (key, name) in DesktopWidgets.Kinds) Check(name, store.Me.Widgets.Contains(key), v => DesktopWidgets.Set(key, v));
@@ -117,6 +120,64 @@ public sealed class SettingsWindow : Window
         UI.AutomationName(style, "Player lyrics");
         body.Children.Add(UI.Row(12, UI.Text("Player lyrics", 14, JT.Muted), style).Also(r => r.Margin = new Thickness(0, 10, 0, 0)));
         Check("Blur the lines not being sung (scrolling list)", store.Me.LyricBlur, v => store.Me.LyricBlur = v);
+        Check("Edge light on every screen", store.Me.EdgeAll, v => { store.Me.EdgeAll = v; Dispatcher.BeginInvoke(DesktopWidgets.ReopenEdge); });
+        Check("A different Player look for every song", store.Me.PlayerStyleAuto, v => store.Me.PlayerStyleAuto = v);
+        Check("Lift quiet songs so the visuals still move", store.Me.VisualBoost, v => store.Me.VisualBoost = v);
+        Check("Play a song's music video on the Player tab (a video with its name in its folder)", store.Me.MusicVideos, v => store.Me.MusicVideos = v);
+
+        Section("Equalizer");
+        {
+            var me = store.Me; bool setting = false;
+            var on = new CheckBox { Content = "Equalizer", IsChecked = me.EqOn, Margin = new Thickness(0, 6, 0, 0) };
+            var preset = new ComboBox { Width = 150, ItemsSource = Engine.EqPresets.Select(p => p.Name).Append("Custom").ToList() };
+            var sliders = new List<(Slider S, TextBlock V)>();
+            void Show()
+            {
+                setting = true;
+                var b = Equalizer.Bands;
+                for (int k = 0; k < 3; k++) { sliders[k].S.Value = b[k]; sliders[k].V.Text = $"{b[k]:+0;-0;0} dB"; sliders[k].S.IsEnabled = me.EqOn; }
+                preset.SelectedItem = Engine.EqPreset(b); preset.IsEnabled = me.EqOn;
+                setting = false;
+            }
+            foreach (var name in new[] { "Bass", "Mids", "Treble" })
+            {
+                var s = new Slider { Minimum = -12, Maximum = 12, TickFrequency = 1, IsSnapToTickEnabled = true, Width = 260, VerticalAlignment = VerticalAlignment.Center };
+                var v = UI.Text("", 12, JT.Muted).Also(t => { t.Width = 50; t.VerticalAlignment = VerticalAlignment.Center; });
+                UI.AutomationName(s, name);
+                s.ValueChanged += (_, _) => { if (!setting) { Equalizer.Set(me.EqOn, [.. sliders.Select(x => x.S.Value)]); Show(); } };
+                sliders.Add((s, v));
+                body.Children.Add(UI.Row(10, UI.Text(name, 14).Also(t => { t.Width = 60; t.VerticalAlignment = VerticalAlignment.Center; }), s, v).Also(r => r.Margin = new Thickness(0, 6, 0, 0)));
+            }
+            on.Click += (_, _) => { Equalizer.Set(on.IsChecked == true, Equalizer.Bands); Show(); };
+            preset.SelectionChanged += (_, _) => { if (!setting && preset.SelectedItem is string n && Engine.EqPresets.FirstOrDefault(p => p.Name == n).Bands is { } b) { Equalizer.Set(me.EqOn, b); Show(); } };
+            UI.AutomationName(preset, "Equalizer preset");
+            body.Children.Insert(body.Children.Count - 3, UI.Row(14, on, preset));
+            body.Children.Add(UI.Muted("Shapes the music's sound. Your files don't change.", 12));
+            Show();
+        }
+
+        Section("Keyboard shortcuts");
+        foreach (var (id, name) in Shortcuts.Actions)
+        {
+            var keyButton = UI.Button(Shortcuts.Label(Shortcuts.Get(id)), () => { });
+            keyButton.MinWidth = 150;
+            keyButton.Click += (_, _) => { Shortcuts.Recording = true; keyButton.Content = "Press the keys…"; keyButton.Tag = id; };
+            keyButton.PreviewKeyDown += (_, e) =>
+            {
+                if (!Shortcuts.Recording || !id.Equals(keyButton.Tag)) return;
+                e.Handled = true;
+                var key = e.Key == Key.System ? e.SystemKey : e.Key;
+                if (key == Key.Escape) { }
+                else if (key is Key.Back or Key.Delete) Shortcuts.Set(id, null);
+                else if (Shortcuts.From(e) is { } k) Shortcuts.Set(id, k);
+                else return; // a modifier on its own, or a plain key: keep listening
+                Shortcuts.Recording = false; keyButton.Tag = null; keyButton.Content = Shortcuts.Label(Shortcuts.Get(id));
+            };
+            keyButton.LostKeyboardFocus += (_, _) => { if (id.Equals(keyButton.Tag)) { Shortcuts.Recording = false; keyButton.Tag = null; keyButton.Content = Shortcuts.Label(Shortcuts.Get(id)); } };
+            body.Children.Add(UI.Row(12, UI.Text(name, 14).Also(t => { t.Width = 170; t.VerticalAlignment = VerticalAlignment.Center; }), keyButton).Also(r => r.Margin = new Thickness(0, 6, 0, 0)));
+        }
+        Check("Also when Juice Tracker is in the background (global)", store.Me.ShortcutsGlobal, v => { store.Me.ShortcutsGlobal = v; Dispatcher.BeginInvoke(Shortcuts.Apply); });
+        body.Children.Add(UI.Muted("Click a shortcut, then press the keys: they need Ctrl, Alt or Win, or a function key. Esc cancels, Backspace clears.", 12));
 
         Section("Updates");
         Check("Check for a new version every day", store.Me.AutoUpdate, v => store.Me.AutoUpdate = v);
