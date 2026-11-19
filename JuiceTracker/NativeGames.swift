@@ -14,7 +14,7 @@ struct WordleScreen: View {
     @ObservedObject private var store = NativeStore.shared
     @AppStorage("wordleDaily") private var daily = true
     @AppStorage("wordleEra") private var era = ""
-    @AppStorage("wordleSaved") private var saved = ""     // today's daily round: "date|era|GUESS,GUESS"
+    @AppStorage("wordleSaved") private var saved = ""     // today's daily round: "d<day>|era|GUESS,GUESS"
     @AppStorage("wordleStats") private var stats = "0,0,0,0" // daily rounds: played, won, streak, best
     @AppStorage("wordleCounted") private var counted = ""  // the last daily round counted in the stats
     @State private var unlimitedPick = Int.random(in: 0..<10_000)
@@ -71,11 +71,12 @@ struct WordleScreen: View {
     private var guesses: [String] {
         guard daily else { return unlimitedGuesses }
         let parts = saved.split(separator: "|", omittingEmptySubsequences: false).map(String.init)
-        guard parts.count == 3, parts[0] == today, parts[1] == era else { return [] }
+        // keyed by the day number that picks the answer, so a saved round is never scored against another title
+        guard parts.count == 3, parts[0] == "d\(dayNumber)", parts[1] == era else { return [] }
         return parts[2].split(separator: ",").map(String.init)
     }
     private func setGuesses(_ list: [String]) {
-        if daily { saved = "\(today)|\(era)|\(list.joined(separator: ","))" } else { unlimitedGuesses = list }
+        if daily { saved = "d\(dayNumber)|\(era)|\(list.joined(separator: ","))" } else { unlimitedGuesses = list }
     }
     private func restart() { unlimitedGuesses = []; typed = ""; note = "" }
 
@@ -334,17 +335,17 @@ private struct TierCard: View {
 }
 
 /// A view drawn at its own size: every share picture (cards, badges, Wrapped, lyrics, songs) is made with this.
-@MainActor func render(_ host: NSView) -> NSBitmapImageRep? {
+@MainActor func captureView(_ host: NSView) -> NSBitmapImageRep? {
     host.layoutSubtreeIfNeeded()
     guard let rep = host.bitmapImageRepForCachingDisplay(in: host.bounds) else { return nil }
     host.cacheDisplay(in: host.bounds, to: rep)
     return rep
 }
 /// The same, as a PNG.
-@MainActor func snapshot(_ host: NSView) -> Data? { render(host)?.representation(using: .png, properties: [:]) }
+@MainActor func snapshot(_ host: NSView) -> Data? { captureView(host)?.representation(using: .png, properties: [:]) }
 /// The same, as an image.
 @MainActor func snapshotImage(_ host: NSView) -> NSImage? {
-    render(host).map { rep in let image = NSImage(size: host.bounds.size); image.addRepresentation(rep); return image }
+    captureView(host).map { rep in let image = NSImage(size: host.bounds.size); image.addRepresentation(rep); return image }
 }
 
 // MARK: - Lyrics card
@@ -489,7 +490,7 @@ struct HeardleScreen: View {
     @AppStorage("heardleDaily") private var daily = true
     @AppStorage("heardleEra") private var era = ""
     @AppStorage("heardleIntro") private var fromIntro = true
-    @AppStorage("heardleSaved") private var saved = ""      // today's daily round: "date|era|intro|id,id,-" (- is a skip)
+    @AppStorage("heardleSaved") private var saved = ""      // today's daily round: "d<day>|era|intro|id,id,-" (- is a skip)
     @AppStorage("heardleStats") private var stats = "0,0,0,0" // daily rounds: played, won, streak, best
     @AppStorage("heardleCounted") private var counted = ""
     @State private var unlimitedPick = Int.random(in: 0..<10_000)
@@ -506,7 +507,8 @@ struct HeardleScreen: View {
     }
     private static let day: DateFormatter = { let f = DateFormatter(); f.dateFormat = "yyyy-MM-dd"; return f }()
     private var today: String { Self.day.string(from: Date()) }
-    private var key: String { "\(today)|\(era)|\(fromIntro)" }
+    // keyed by the day number that picks the answer, so a saved round is never scored against another song
+    private var key: String { "d\(Engine.localDay(Date()))|\(era)|\(fromIntro)" }
 
     var body: some View {
         let pool = self.pool

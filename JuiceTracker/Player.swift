@@ -441,30 +441,52 @@ final class AmbientPlayer: NSObject {
     /// them: the list in the app's settings this replaces kept only the newest 5,000, so the year's totals came out short.
     private static let playsFile = FileManager.default.homeDirectoryForCurrentUser
         .appendingPathComponent("Library/Application Support/JuiceTracker/\(Bundle.main.bundleIdentifier ?? "com.hb4delirious.JuiceTracker")/plays.tsv")
+    // One lock around the file, the cache and the one-time move: a play logged while Stats reads (on another thread)
+    // was counted twice, and two moves at once wrote the old plays in twice.
+    private static let playsLock = NSLock()
     static func logPlay(_ path: String) {
+        playsLock.lock(); defer { playsLock.unlock() }
         movePlaysToFile()
-        appendPlays("\(Int(Date().timeIntervalSince1970))\t\(path)\n")
+        let at = Int(Date().timeIntervalSince1970)
+        guard appendPlays("\(at)\t\(path)\n") else { return }
+        playsCache?.append((path, Date(timeIntervalSince1970: TimeInterval(at))))
     }
+    /// Read and parsed once, then kept up to date as songs play: Stats, the calendar, badges and playlists all ask.
+    private static var playsCache: [(path: String, at: Date)]?
     static var playLog: [(path: String, at: Date)] {
+        playsLock.lock(); defer { playsLock.unlock() }
         movePlaysToFile()
-        return Engine.parsePlays((try? String(contentsOf: playsFile, encoding: .utf8)) ?? "")
+        if let playsCache { return playsCache }
+        let log = Engine.parsePlays((try? String(contentsOf: playsFile, encoding: .utf8)) ?? "")
+        playsCache = log
+        return log
     }
-    private static func appendPlays(_ text: String) {
+    /// Adds to the file; false when it couldn't (a full disk), and then the play just isn't logged.
+    @discardableResult private static func appendPlays(_ text: String) -> Bool {
         try? FileManager.default.createDirectory(at: playsFile.deletingLastPathComponent(), withIntermediateDirectories: true)
-        if let h = try? FileHandle(forWritingTo: playsFile) { h.seekToEndOfFile(); h.write(Data(text.utf8)); h.closeFile() }
-        else { try? Data(text.utf8).write(to: playsFile) }
+        guard FileManager.default.fileExists(atPath: playsFile.path) else { return (try? Data(text.utf8).write(to: playsFile)) != nil }
+        // the throwing calls: the older seekToEndOfFile()/write(_:) raise an exception on a write error, which crashed the app
+        guard let h = try? FileHandle(forWritingTo: playsFile) else { return false }
+        defer { try? h.close() }
+        do { try h.seekToEnd(); try h.write(contentsOf: Data(text.utf8)); return true } catch { return false }
     }
-    /// Plays logged before (in the app's settings) move to the file once, oldest first.
+    /// Plays logged before (in the app's settings) move to the file once, oldest first. Called with playsLock held.
     private static func movePlaysToFile() {
         guard let old = UserDefaults.standard.array(forKey: "playLog") as? [[Any]] else { return }
-        let lines = old.compactMap { e -> String? in
+        let plays = old.compactMap { e -> (path: String, at: Double)? in
             guard e.count == 2, let p = e[0] as? String, let t = e[1] as? Double else { return nil }
-            return "\(Int(t))\t\(p)\n"
+            return (p, t)
         }
-        let existing = (try? String(contentsOf: playsFile, encoding: .utf8)) ?? ""
+        // an existing file that can't be read now is left alone (the old plays stay in settings and move next time)
+        var existing = ""
+        if FileManager.default.fileExists(atPath: playsFile.path) {
+            guard let text = try? String(contentsOf: playsFile, encoding: .utf8) else { return }
+            existing = text
+        }
         try? FileManager.default.createDirectory(at: playsFile.deletingLastPathComponent(), withIntermediateDirectories: true)
-        guard (try? Data((lines.joined() + existing).utf8).write(to: playsFile, options: .atomic)) != nil else { return } // kept in settings until it's safely in the file
+        guard (try? Data(Engine.movedPlays(plays, before: existing).utf8).write(to: playsFile, options: .atomic)) != nil else { return } // kept in settings until it's safely in the file
         UserDefaults.standard.removeObject(forKey: "playLog")
+        playsCache = nil // read afresh with the old plays in
     }
 
     /// Paths played today, kept across launches.

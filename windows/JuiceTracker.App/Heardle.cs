@@ -50,7 +50,8 @@ public sealed class HeardlePage : ToolPage
 
     static Store.Personal Me => Store.Shared.Me;
     static string Today => DateTime.Now.ToString("yyyy-MM-dd");
-    static string Key => $"{Today}|{Me.HeardleEra}|{Me.HeardleIntro}";
+    // keyed by the day number that picks the answer, so a saved round is never scored against another song
+    static string Key => $"d{Engine.LocalDay(DateTimeOffset.Now)}|{Me.HeardleEra}|{Me.HeardleIntro}";
 
     /// Songs you have that can play, one per title (versions count as the same song), in a fixed order.
     static List<Song> Pool()

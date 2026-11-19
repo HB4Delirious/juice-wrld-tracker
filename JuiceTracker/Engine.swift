@@ -1356,14 +1356,20 @@ extension Engine {
         }
     }
 
+    /// The plays.tsv text after moving the old play list (from the app's settings) in front of what the file holds.
+    static func movedPlays(_ old: [(path: String, at: Double)], before existing: String) -> String {
+        old.map { "\(Int($0.at))\t\($0.path)\n" }.joined() + existing
+    }
+
     /// Days since 1970 counted in a time zone: the daily games' "today", which turns over at local midnight (counted in
     /// UTC, it turned over at 7 pm in New York while the saved round still said "today").
     static func localDay(_ date: Date, _ tz: TimeZone = .current) -> Int {
         Int(((date.timeIntervalSince1970 + Double(tz.secondsFromGMT(for: date))) / 86400).rounded(.down))
     }
-    /// About how big the site's file for a song is, from the bitrate and length it lists (12 MB when it lists neither).
+    /// About how big the site's file for a song is, from the bitrate it lists for that file's format (the highest when
+    /// the format isn't listed) and its length; 12 MB when it lists neither.
     static func estimatedBytes(_ s: EngineSong) -> Int {
-        let kbps = siteKbps(s.bitrate, "")
+        let own = siteKbps(s.bitrate, extOf(s.filePath)), kbps = own > 0 ? own : siteKbps(s.bitrate, "")
         guard kbps > 0, let seconds = lengthSeconds(s.length) else { return 12_000_000 }
         return Int(Double(kbps) * 1000 / 8 * seconds)
     }

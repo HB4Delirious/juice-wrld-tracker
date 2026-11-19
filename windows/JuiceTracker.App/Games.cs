@@ -81,9 +81,10 @@ public sealed class WordlePage : ToolPage
         {
             if (!Me.WordleDaily) return unlimitedGuesses;
             var parts = Me.WordleSaved.Split('|');
-            return parts.Length == 3 && parts[0] == Today && parts[1] == Me.WordleEra ? [.. parts[2].Split(',', StringSplitOptions.RemoveEmptyEntries)] : [];
+            // keyed by the day number that picks the answer, so a saved round is never scored against another title
+            return parts.Length == 3 && parts[0] == $"d{DayNumber}" && parts[1] == Me.WordleEra ? [.. parts[2].Split(',', StringSplitOptions.RemoveEmptyEntries)] : [];
         }
-        set { if (Me.WordleDaily) { Me.WordleSaved = $"{Today}|{Me.WordleEra}|{string.Join(',', value)}"; Store.Shared.SavePersonal(); } else unlimitedGuesses = value; }
+        set { if (Me.WordleDaily) { Me.WordleSaved = $"d{DayNumber}|{Me.WordleEra}|{string.Join(',', value)}"; Store.Shared.SavePersonal(); } else unlimitedGuesses = value; }
     }
     static string Clean(string s) => new(s.ToUpperInvariant().Where(c => c is >= 'A' and <= 'Z' or >= '0' and <= '9').ToArray());
 

@@ -261,12 +261,17 @@ import Foundation
                    && Engine.dateSentence("Surfaced\n", fallback: "Surfaced") == "", "story: the site's own date label leads, once, on one line")
             let plays2 = Engine.parsePlays("1700000000\tMusic/A.mp3\nbroken line\n1700000060\tMusic/B\twith tab.mp3\n")
             expect(plays2.map(\.path) == ["Music/A.mp3", "Music/B\twith tab.mp3"] && plays2[1].at.timeIntervalSince1970 == 1_700_000_060, "plays: a line each, broken lines skipped, tabs in paths kept")
+            let moved = Engine.movedPlays([("Music/Old.mp3", 1_600_000_000.9)], before: "1700000000\tMusic/New.mp3\n")
+            expect(Engine.parsePlays(moved).map(\.path) == ["Music/Old.mp3", "Music/New.mp3"] && Engine.parsePlays(Engine.movedPlays([], before: "")).isEmpty,
+                   "plays: the old list moves in front of the file's plays, each once")
             let ny = TimeZone(identifier: "America/New_York")!
             func at(_ iso: String) -> Date { ISO8601DateFormatter().date(from: iso)! }
             expect(Engine.localDay(at("2026-03-11T00:30:00Z"), ny) == Engine.localDay(at("2026-03-10T15:00:00Z"), ny)
                    && Engine.localDay(at("2026-03-11T04:30:00Z"), ny) == Engine.localDay(at("2026-03-10T15:00:00Z"), ny) + 1, "daily games: the day turns over at local midnight, not UTC's")
             var wav = song("w", "W", "DRFL"); wav.bitrate = "1411kbps (.wav)"; wav.length = "3:00"
-            expect(Engine.estimatedBytes(wav) == 31_747_500 && Engine.estimatedBytes(song("x", "X", "DRFL")) == 12_000_000, "downloads: size from the site's bitrate and length")
+            var mp3 = wav; mp3.bitrate = "1411kbps (.wav), 320kbps (.mp3)"; mp3.filePath = "Juice WRLD/W.mp3"
+            expect(Engine.estimatedBytes(wav) == 31_747_500 && Engine.estimatedBytes(song("x", "X", "DRFL")) == 12_000_000
+                   && Engine.estimatedBytes(mp3) == 7_200_000, "downloads: size from the site's bitrate for the file's own format, and length")
             expect(Engine.downloadsThatFit([10_000_000, 50_000_000, 50_000_000], free: 2_070_000_000) == 2 && Engine.downloadsThatFit([1, 2], free: nil) == 2
                    && Engine.downloadsThatFit([1], free: 1_000_000_000) == 0, "downloads: as many as fit, keeping 2 GB free")
             expect(Engine.eqPreset([-2, 4, 2]) == "Vocals" && Engine.eqPreset([0, 4, 2]) == "Custom", "equalizer: bands name their preset, or Custom")

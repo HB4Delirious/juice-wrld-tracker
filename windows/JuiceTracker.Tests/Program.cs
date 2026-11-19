@@ -253,7 +253,9 @@ foreach (var c in fx["csvCases"]!.AsArray())
     var ny = TimeSpan.FromHours(-5); // New York in March, before the clocks change
     Expect(Engine.LocalDay(new DateTimeOffset(2026, 3, 10, 19, 30, 0, ny)) == Engine.LocalDay(new DateTimeOffset(2026, 3, 10, 10, 0, 0, ny))
            && Engine.LocalDay(new DateTimeOffset(2026, 3, 10, 23, 30, 0, ny)) + 1 == Engine.LocalDay(new DateTimeOffset(2026, 3, 11, 0, 30, 0, ny)), () => "daily games: the day turns over at local midnight, not UTC's");
-    Expect(Engine.EstimatedBytes(new EngineSong { Bitrate = "1411kbps (.wav)", Length = "3:00" }) == 31_747_500 && Engine.EstimatedBytes(new EngineSong()) == 12_000_000, () => "downloads: size from the site's bitrate and length");
+    Expect(Engine.EstimatedBytes(new EngineSong { Bitrate = "1411kbps (.wav)", Length = "3:00" }) == 31_747_500 && Engine.EstimatedBytes(new EngineSong()) == 12_000_000
+           && Engine.EstimatedBytes(new EngineSong { Bitrate = "1411kbps (.wav), 320kbps (.mp3)", Length = "3:00", FilePath = "Juice WRLD/W.mp3" }) == 7_200_000,
+           () => "downloads: size from the site's bitrate for the file's own format, and length");
     Expect(Engine.DownloadsThatFit([10_000_000, 50_000_000, 50_000_000], 2_070_000_000) == 2 && Engine.DownloadsThatFit([1, 2], null) == 2
            && Engine.DownloadsThatFit([1], 1_000_000_000) == 0, () => "downloads: as many as fit, keeping 2 GB free");
     Expect(Engine.EqPreset([-2, 4, 2]) == "Vocals" && Engine.EqPreset([0, 4, 2]) == "Custom", () => "equalizer: bands name their preset, or Custom");

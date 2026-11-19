@@ -481,7 +481,7 @@ struct ListeningSection: View {
     }
 
     private func loadOwn() async {
-        let log = AmbientPlayer.playLog
+        let log = await Task.detached { AmbientPlayer.playLog }.value // read off the main thread
         plays = log.count
         times = log.map(\.at)
         guard !log.isEmpty else { return }
