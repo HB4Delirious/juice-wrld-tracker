@@ -443,16 +443,29 @@ final class AmbientPlayer: NSObject {
         .appendingPathComponent("Library/Application Support/JuiceTracker/\(Bundle.main.bundleIdentifier ?? "com.hb4delirious.JuiceTracker")/plays.tsv")
     static func logPlay(_ path: String) {
         movePlaysToFile()
-        appendPlays("\(Int(Date().timeIntervalSince1970))\t\(path)\n")
+        let at = Int(Date().timeIntervalSince1970)
+        guard appendPlays("\(at)\t\(path)\n") else { return }
+        playsLock.lock(); playsCache?.append((path, Date(timeIntervalSince1970: TimeInterval(at)))); playsLock.unlock()
     }
+    /// Read and parsed once, then kept up to date as songs play: Stats, the calendar, badges and playlists all ask.
+    private static var playsCache: [(path: String, at: Date)]?
+    private static let playsLock = NSLock()
     static var playLog: [(path: String, at: Date)] {
         movePlaysToFile()
-        return Engine.parsePlays((try? String(contentsOf: playsFile, encoding: .utf8)) ?? "")
+        playsLock.lock(); defer { playsLock.unlock() }
+        if let playsCache { return playsCache }
+        let log = Engine.parsePlays((try? String(contentsOf: playsFile, encoding: .utf8)) ?? "")
+        playsCache = log
+        return log
     }
-    private static func appendPlays(_ text: String) {
+    /// Adds to the file; false when it couldn't (a full disk), and then the play just isn't logged.
+    @discardableResult private static func appendPlays(_ text: String) -> Bool {
         try? FileManager.default.createDirectory(at: playsFile.deletingLastPathComponent(), withIntermediateDirectories: true)
-        if let h = try? FileHandle(forWritingTo: playsFile) { h.seekToEndOfFile(); h.write(Data(text.utf8)); h.closeFile() }
-        else { try? Data(text.utf8).write(to: playsFile) }
+        guard FileManager.default.fileExists(atPath: playsFile.path) else { return (try? Data(text.utf8).write(to: playsFile)) != nil }
+        // the throwing calls: the older seekToEndOfFile()/write(_:) raise an exception on a write error, which crashed the app
+        guard let h = try? FileHandle(forWritingTo: playsFile) else { return false }
+        defer { try? h.close() }
+        do { try h.seekToEnd(); try h.write(contentsOf: Data(text.utf8)); return true } catch { return false }
     }
     /// Plays logged before (in the app's settings) move to the file once, oldest first.
     private static func movePlaysToFile() {
@@ -461,10 +474,16 @@ final class AmbientPlayer: NSObject {
             guard e.count == 2, let p = e[0] as? String, let t = e[1] as? Double else { return nil }
             return "\(Int(t))\t\(p)\n"
         }
-        let existing = (try? String(contentsOf: playsFile, encoding: .utf8)) ?? ""
+        // an existing file that can't be read now is left alone (the old plays stay in settings and move next time)
+        var existing = ""
+        if FileManager.default.fileExists(atPath: playsFile.path) {
+            guard let text = try? String(contentsOf: playsFile, encoding: .utf8) else { return }
+            existing = text
+        }
         try? FileManager.default.createDirectory(at: playsFile.deletingLastPathComponent(), withIntermediateDirectories: true)
         guard (try? Data((lines.joined() + existing).utf8).write(to: playsFile, options: .atomic)) != nil else { return } // kept in settings until it's safely in the file
         UserDefaults.standard.removeObject(forKey: "playLog")
+        playsLock.lock(); playsCache = nil; playsLock.unlock() // read afresh with the old plays in
     }
 
     /// Paths played today, kept across launches.

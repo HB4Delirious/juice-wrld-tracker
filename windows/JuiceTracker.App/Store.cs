@@ -94,7 +94,7 @@ public sealed partial class Store
         public string? LiveServer { get; set; }
         public bool WordleDaily { get; set; } = true;
         public string WordleEra { get; set; } = "";
-        public string WordleSaved { get; set; } = "";     // today's daily round: "date|era|GUESS,GUESS"
+        public string WordleSaved { get; set; } = "";     // today's daily round: "d<day>|era|GUESS,GUESS"
         public string WordleStats { get; set; } = "0,0,0,0"; // daily rounds: played, won, streak, best
         public string WordleCounted { get; set; } = "";   // the last daily round counted in the stats
         public List<TierList> TierLists { get; set; } = [];
@@ -102,7 +102,7 @@ public sealed partial class Store
         public bool HeardleDaily { get; set; } = true;
         public string HeardleEra { get; set; } = "";
         public bool HeardleIntro { get; set; } = true;
-        public string HeardleSaved { get; set; } = "";     // today's daily round: "date|era|intro|id,id,-" (- is a skip)
+        public string HeardleSaved { get; set; } = "";     // today's daily round: "d<day>|era|intro|id,id,-" (- is a skip)
         public string HeardleStats { get; set; } = "0,0,0,0"; // daily rounds: played, won, streak, best
         public string HeardleCounted { get; set; } = "";
         public List<string> Widgets { get; set; } = [];    // desktop widgets that are on: clock, playing, upnext, edge

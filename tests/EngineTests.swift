@@ -266,7 +266,9 @@ import Foundation
             expect(Engine.localDay(at("2026-03-11T00:30:00Z"), ny) == Engine.localDay(at("2026-03-10T15:00:00Z"), ny)
                    && Engine.localDay(at("2026-03-11T04:30:00Z"), ny) == Engine.localDay(at("2026-03-10T15:00:00Z"), ny) + 1, "daily games: the day turns over at local midnight, not UTC's")
             var wav = song("w", "W", "DRFL"); wav.bitrate = "1411kbps (.wav)"; wav.length = "3:00"
-            expect(Engine.estimatedBytes(wav) == 31_747_500 && Engine.estimatedBytes(song("x", "X", "DRFL")) == 12_000_000, "downloads: size from the site's bitrate and length")
+            var mp3 = wav; mp3.bitrate = "1411kbps (.wav), 320kbps (.mp3)"; mp3.filePath = "Juice WRLD/W.mp3"
+            expect(Engine.estimatedBytes(wav) == 31_747_500 && Engine.estimatedBytes(song("x", "X", "DRFL")) == 12_000_000
+                   && Engine.estimatedBytes(mp3) == 7_200_000, "downloads: size from the site's bitrate for the file's own format, and length")
             expect(Engine.downloadsThatFit([10_000_000, 50_000_000, 50_000_000], free: 2_070_000_000) == 2 && Engine.downloadsThatFit([1, 2], free: nil) == 2
                    && Engine.downloadsThatFit([1], free: 1_000_000_000) == 0, "downloads: as many as fit, keeping 2 GB free")
             expect(Engine.eqPreset([-2, 4, 2]) == "Vocals" && Engine.eqPreset([0, 4, 2]) == "Custom", "equalizer: bands name their preset, or Custom")

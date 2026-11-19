@@ -230,8 +230,13 @@ public static partial class Engine
     /// Days since 1970 counted in the clock's own time zone: the daily games' "today", which turns over at local midnight
     /// (counted in UTC, it turned over at 7 pm in New York while the saved round still said "today").
     public static int LocalDay(DateTimeOffset now) => (int)Math.Floor((now.ToUnixTimeSeconds() + now.Offset.TotalSeconds) / 86400);
-    /// About how big the site's file for a song is, from the bitrate and length it lists (12 MB when it lists neither).
-    public static long EstimatedBytes(EngineSong s) => SiteKbps(s.Bitrate, "") is var kbps and > 0 && LengthSeconds(s.Length) is { } seconds ? (long)(kbps * 1000.0 / 8 * seconds) : 12_000_000;
+    /// About how big the site's file for a song is, from the bitrate it lists for that file's format (the highest when
+    /// the format isn't listed) and its length; 12 MB when it lists neither.
+    public static long EstimatedBytes(EngineSong s)
+    {
+        int own = SiteKbps(s.Bitrate, ExtOf(s.FilePath)), kbps = own > 0 ? own : SiteKbps(s.Bitrate, "");
+        return kbps > 0 && LengthSeconds(s.Length) is { } seconds ? (long)(kbps * 1000.0 / 8 * seconds) : 12_000_000;
+    }
     /// How many of these downloads (in order) fit on a drive with `free` bytes while keeping `keep` free; all when the
     /// free space can't be told.
     public static int DownloadsThatFit(IReadOnlyList<long> sizes, long? free, long keep = 2_000_000_000)

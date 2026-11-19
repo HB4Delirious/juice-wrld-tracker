@@ -92,7 +92,7 @@ struct YearInReviewSection: View {
             }
         }
         .padding(16).frame(maxWidth: .infinity, alignment: .leading).doodled(14)
-        .task(id: store.version) { r = review() }
+        .task(id: store.version) { r = review(await Task.detached { AmbientPlayer.playLog }.value) } // read off the main thread
     }
 
     private var year: String { String(Calendar.current.component(.year, from: Date())) }
@@ -113,9 +113,9 @@ struct YearInReviewSection: View {
         return "\(r.plays.formatted()) plays, about \(time(r)) of Juice WRLD.\(month)"
     }
 
-    private func review() -> Review {
+    private func review(_ all: [(path: String, at: Date)]) -> Review {
         let cal = Calendar.current, year = cal.component(.year, from: Date())
-        let log = AmbientPlayer.playLog.filter { cal.component(.year, from: $0.at) == year }
+        let log = all.filter { cal.component(.year, from: $0.at) == year }
         guard !log.isEmpty else { return Review() }
         let catalog = EngineState.shared.catalog
         let paths = Array(Set(log.map(\.path))), songs = EngineRouter.songsFor(paths: paths)
