@@ -120,7 +120,7 @@ struct DuplicatesScreen: View {
                     Spacer()
                     Text(f.ext.uppercased()).font(.caption).foregroundColor(JT.muted)
                     Text(size(f.size)).font(.caption.monospacedDigit()).foregroundColor(JT.muted).frame(width: 70, alignment: .trailing)
-                    if f.keep { Text("kept").font(.caption).foregroundColor(JT.have) }
+                    Text(f.keep ? "kept" : "").font(.caption).foregroundColor(JT.have).frame(width: 30, alignment: .leading) // the same room on every row, so the columns line up
                     if f.onDisk {
                         Button { Task { _ = try? await store.tryAct("healthFix", -1, ["fix": "reveal", "path": f.path]) } } label: { Image(systemName: "magnifyingglass") }
                             .buttonStyle(.borderless).help("Show in Finder").accessibilityLabel("Show in Finder")
@@ -221,8 +221,9 @@ struct HealthScreen: View {
                             Button { fix("reveal", x) } label: { Image(systemName: "magnifyingglass") }.help("Show in Finder").accessibilityLabel("Show in Finder")
                             if x.art == true { Button("Add artwork") { fix("art", x) } }
                         } else {
-                            if x.reveal { Button { fix("reveal", x) } label: { Image(systemName: "magnifyingglass") }.help("Show in Finder").accessibilityLabel("Show in Finder") }
+                            // the optional button first, so Show in Finder and Move to Trash keep their places down the list
                             if x.replace { Button(g.key == "upgrade" ? "Upgrade" : "Replace with the site's copy") { fix("replace", x) } }
+                            if x.reveal { Button { fix("reveal", x) } label: { Image(systemName: "magnifyingglass") }.help("Show in Finder").accessibilityLabel("Show in Finder") }
                             if x.trash { Button("Move to Trash") { fix("trash", x) } }
                         }
                     }

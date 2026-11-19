@@ -134,7 +134,12 @@ public sealed class PlaylistsPage : ToolPage
         grid.Children.Add(left);
 
         var right = new StackPanel(); Grid.SetColumn(right, 1);
-        if (current is null) right.Children.Add(UI.Muted("Make a playlist here, then add songs from a song's card or a row's right-click menu.", 14));
+        if (current is null)
+            right.Children.Add(UI.Panel(UI.Column(10,
+                UI.Icon("\uE90B", 30, JT.Lavender).Also(i => i.HorizontalAlignment = HorizontalAlignment.Center),
+                UI.Text("No playlists yet", 18, weight: FontWeights.Bold).Also(t => t.HorizontalAlignment = HorizontalAlignment.Center),
+                UI.Muted("Make one with New playlist, then add songs from a song's card or a row's right-click menu.", 14).Also(t => { t.TextAlignment = TextAlignment.Center; t.TextWrapping = TextWrapping.Wrap; t.MaxWidth = 360; t.HorizontalAlignment = HorizontalAlignment.Center; })
+            ).Also(c => c.Margin = new Thickness(32)), 1, 0));
         else
         {
             var byId = store.Songs.GroupBy(s => s.S.Id).ToDictionary(g => g.Key, g => g.First());

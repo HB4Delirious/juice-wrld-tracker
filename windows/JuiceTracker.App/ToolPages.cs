@@ -179,7 +179,9 @@ public sealed class DuplicatesPage : ToolPage
     {
         var store = Store.Shared;
         Start("Duplicates", "Songs with more than one file in your library. The best copy is kept: lossless first, then the largest file. Only files with exactly the same title are cleaned up, so remixes and versions are never touched.");
-        var groups = Engine.DuplicateGroups(store.Files, store.Match, store.Catalog);
+        // a file that could be several versions of a song is in each version's group: show the same files once
+        var shown = new HashSet<string>();
+        var groups = Engine.DuplicateGroups(store.Files, store.Match, store.Catalog).Where(g => shown.Add(string.Join("\n", g.Files.Select(f => f.Path).Order()))).ToList();
         var exact = groups.Where(Engine.IsExactDuplicate).ToList(); var extra = Engine.ExtraCopies(exact);
         if (groups.Count == 0) { Add(UI.Row(8, UI.Icon("", 14, JT.Have), UI.Text("No duplicates. Every song has one file.", 15, JT.Have))); return; }
         if (extra.Count > 0)

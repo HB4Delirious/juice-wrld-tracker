@@ -214,7 +214,10 @@ import AVFoundation
 @MainActor enum EngineDups {
     private static func groups() -> [Engine.DupGroup] {
         let library = EngineLibrary.shared
+        // a file that could be several versions of a song is in each version's group: show the same files once
+        var shown = Set<[String]>()
         return Engine.duplicateGroups(files: library.files, match: library.match, catalog: EngineState.shared.catalog)
+            .filter { shown.insert($0.files.map(\.path).sorted()).inserted }
     }
 
     static func json() -> String {
