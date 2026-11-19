@@ -25,15 +25,23 @@ static class Games
     public static readonly Color[] TierColors = [Color.FromRgb(255, 107, 115), Color.FromRgb(255, 168, 92), Color.FromRgb(255, 219, 97), Color.FromRgb(140, 219, 115), Color.FromRgb(107, 168, 255)];
     public static List<string> EraNames() => Store.Shared.Songs.Select(s => s.Era).Distinct().ToList();
 
-    /// A visual drawn into a PNG at its own size.
+    /// A visual drawn into a picture at a set size: every share picture (cards, badges, Wrapped, lyrics, songs) uses this.
+    public static BitmapSource Render(FrameworkElement visual, int width, int height)
+    {
+        visual.Measure(new Size(width, height)); visual.Arrange(new Rect(0, 0, width, height)); visual.UpdateLayout();
+        var bmp = new RenderTargetBitmap(width, height, 96, 96, PixelFormats.Pbgra32); bmp.Render(visual); bmp.Freeze();
+        return bmp;
+    }
+    public static void SavePng(BitmapSource bmp, string file)
+    {
+        var enc = new PngBitmapEncoder(); enc.Frames.Add(BitmapFrame.Create(bmp));
+        using var fs = File.Create(file); enc.Save(fs);
+    }
+    /// A visual drawn into a PNG at its own width and the height it needs (the tier list).
     public static void SavePng(FrameworkElement visual, string file)
     {
         visual.Measure(new Size(visual.Width, double.PositiveInfinity));
-        visual.Arrange(new Rect(visual.DesiredSize)); visual.UpdateLayout();
-        var bmp = new RenderTargetBitmap((int)Math.Ceiling(visual.ActualWidth), (int)Math.Ceiling(visual.ActualHeight), 96, 96, PixelFormats.Pbgra32);
-        bmp.Render(visual);
-        var enc = new PngBitmapEncoder(); enc.Frames.Add(BitmapFrame.Create(bmp));
-        using var fs = File.Create(file); enc.Save(fs);
+        SavePng(Render(visual, (int)Math.Ceiling(visual.Width), (int)Math.Ceiling(visual.DesiredSize.Height)), file);
     }
     public static Brush Night => new LinearGradientBrush(Color.FromRgb(7, 4, 15), Color.FromRgb(29, 11, 64), 90);
 }
@@ -57,7 +65,7 @@ public sealed class WordlePage : ToolPage
 
     static Store.Personal Me => Store.Shared.Me;
     static string Today => DateTime.Now.ToString("yyyy-MM-dd");
-    static int DayNumber => (int)(DateTimeOffset.Now.ToUnixTimeSeconds() / 86400);
+    static int DayNumber => Engine.LocalDay(DateTimeOffset.Now); // turns over at local midnight, with the saved round
 
     /// Every title that makes a puzzle (4 to 14 letters), one song per title, in a fixed order.
     static List<(string Word, Song Song)> Pool()
@@ -402,7 +410,7 @@ public sealed class LyricsCardWindow : Window
         list.Children.Add(UI.Muted("Loading the lyrics…", 13));
         var json = await Store.Shared.DetailsAsync(song.S);
         list.Children.Clear();
-        var synced = Listen.ParseSynced(json?["synced_lyrics"]?.GetValue<string>() ?? "");
+        var synced = MyLyrics.Synced(song.S, json);
         var source = synced.Count > 0 ? synced.Select(x => x.Line) : (json?["lyrics"]?.GetValue<string>() ?? "").Split('\n');
         lines.AddRange(source.Select(l => l.Trim()).Where(l => l.Length > 0));
         if (lines.Count == 0) { list.Children.Add(UI.Muted("The site has no lyrics for this song.", 14)); return; }
@@ -456,16 +464,14 @@ public sealed class LyricsCardWindow : Window
     {
         if (Chosen.Count == 0) { note.Text = "Pick a line first."; return null; }
         var card = Card(Chosen);
-        card.Measure(new Size(1080, 1350)); card.Arrange(new Rect(0, 0, 1080, 1350)); card.UpdateLayout();
-        var bmp = new RenderTargetBitmap(1080, 1350, 96, 96, PixelFormats.Pbgra32); bmp.Render(card);
+        var bmp = Games.Render(card, 1080, 1350);
         return bmp;
     }
     void Save()
     {
         var d = new Microsoft.Win32.SaveFileDialog { FileName = $"{Engine.SafeName(song?.Name ?? "lyrics")} lyrics.png", Filter = "PNG image|*.png" };
         if (d.ShowDialog(this) != true || Render() is not { } bmp) return;
-        var enc = new PngBitmapEncoder(); enc.Frames.Add(BitmapFrame.Create(bmp));
-        using (var fs = File.Create(d.FileName)) enc.Save(fs);
+        Games.SavePng(bmp, d.FileName);
         note.Text = "Saved.";
     }
     void CopyImage() { if (Render() is { } bmp) { Clipboard.SetImage(bmp); note.Text = "Copied: paste it anywhere."; } }

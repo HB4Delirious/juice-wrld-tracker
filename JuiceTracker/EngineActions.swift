@@ -84,12 +84,7 @@ extension EngineState {
         let view = CollectionCardView(have: state.have, total: state.total, top: top, best: best)
         let host = NSHostingView(rootView: view)
         host.frame = NSRect(x: 0, y: 0, width: 1200, height: 630)
-        host.layoutSubtreeIfNeeded()
-        guard let rep = host.bitmapImageRepForCachingDisplay(in: host.bounds) else { return nil }
-        host.cacheDisplay(in: host.bounds, to: rep)
-        let image = NSImage(size: host.bounds.size)
-        image.addRepresentation(rep)
-        return image
+        return snapshotImage(host)
     }
 
     static func isoString(_ d: Date) -> String {

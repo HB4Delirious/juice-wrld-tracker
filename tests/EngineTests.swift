@@ -159,6 +159,7 @@ import Foundation
             expect(mine == pageChanges, "\(label): changes\n\(mine)\nvs page\n\(pageChanges)")
         }
         let groups = Engine.duplicateGroups(files: toolLib, match: tm, catalog: toolSongs)
+        expect(Engine.distinctGroups(groups + groups).count == Engine.distinctGroups(groups).count, "duplicates: the same files are shown once")
         let pageGroups = t["dupGroups"] as! [[String: Any]]
         expect(groups.count == pageGroups.count, "duplicate groups: \(groups.count), page \(pageGroups.count)")
         for (gr, pg) in zip(groups, pageGroups) {
@@ -258,6 +259,16 @@ import Foundation
                    && Engine.dateSentence("December 25, 2025", fallback: "Surfaced") == "Surfaced December 25, 2025."
                    && Engine.dateSentence("First Teased August 16, 2019", fallback: "Previewed") == "First teased August 16, 2019."
                    && Engine.dateSentence("Surfaced\n", fallback: "Surfaced") == "", "story: the site's own date label leads, once, on one line")
+            let plays2 = Engine.parsePlays("1700000000\tMusic/A.mp3\nbroken line\n1700000060\tMusic/B\twith tab.mp3\n")
+            expect(plays2.map(\.path) == ["Music/A.mp3", "Music/B\twith tab.mp3"] && plays2[1].at.timeIntervalSince1970 == 1_700_000_060, "plays: a line each, broken lines skipped, tabs in paths kept")
+            let ny = TimeZone(identifier: "America/New_York")!
+            func at(_ iso: String) -> Date { ISO8601DateFormatter().date(from: iso)! }
+            expect(Engine.localDay(at("2026-03-11T00:30:00Z"), ny) == Engine.localDay(at("2026-03-10T15:00:00Z"), ny)
+                   && Engine.localDay(at("2026-03-11T04:30:00Z"), ny) == Engine.localDay(at("2026-03-10T15:00:00Z"), ny) + 1, "daily games: the day turns over at local midnight, not UTC's")
+            var wav = song("w", "W", "DRFL"); wav.bitrate = "1411kbps (.wav)"; wav.length = "3:00"
+            expect(Engine.estimatedBytes(wav) == 31_747_500 && Engine.estimatedBytes(song("x", "X", "DRFL")) == 12_000_000, "downloads: size from the site's bitrate and length")
+            expect(Engine.downloadsThatFit([10_000_000, 50_000_000, 50_000_000], free: 2_070_000_000) == 2 && Engine.downloadsThatFit([1, 2], free: nil) == 2
+                   && Engine.downloadsThatFit([1], free: 1_000_000_000) == 0, "downloads: as many as fit, keeping 2 GB free")
             expect(Engine.eqPreset([-2, 4, 2]) == "Vocals" && Engine.eqPreset([0, 4, 2]) == "Custom", "equalizer: bands name their preset, or Custom")
             expect(Engine.eqHeadroom([6, 0, 1]) == -3 && Engine.eqHeadroom([-4, 1, -3]) == -0.5 && Engine.eqHeadroom([-4, -1, -3]) == 0, "equalizer: turned down by half the biggest boost")
             let lrc = Engine.parseLrc("[ar:Juice WRLD]\n[00:12.50]second line\n[00:03.00]<00:03.00>first <00:03.60>line <00:04.20>here\n[00:20.00]<00:20.00>wrong count")

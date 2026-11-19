@@ -57,13 +57,14 @@ import AppKit
     }
 
     /// Settings > Downloads: new songs with a file download on their own when the daily check finds them, as many as
-    /// fit with room to spare (2 GB, at about 12 MB a song). Returns how many were queued.
-    @discardableResult func autoDownload(_ ids: [String]) -> Int {
+    /// fit while keeping 2 GB free (each song's size from the site's bitrate and length). `free` is asked by the caller
+    /// off the main thread: a network drive that's asleep can take minutes to answer. Returns how many were queued.
+    @discardableResult func autoDownload(_ ids: [String], free: Int64?) -> Int {
         let engine = EngineState.shared, owned = EngineLibrary.shared.owned
         let wanted = ids.filter { id in engine.catalog.firstIndex { $0.id == id }.map { !owned.contains($0) && !engine.catalog[$0].filePath.isEmpty } ?? false }
         guard !wanted.isEmpty else { return 0 }
-        let room = Self.freeSpace(EngineLibrary.shared.root).map { Int(max(0, $0 - 2_000_000_000) / 12_000_000) } ?? wanted.count
-        let fits = Array(wanted.prefix(room))
+        let sizes = wanted.map { id in engine.catalog.first { $0.id == id }.map(Engine.estimatedBytes) ?? 12_000_000 }
+        let fits = Array(wanted.prefix(Engine.downloadsThatFit(sizes, free: free)))
         if fits.count < wanted.count { Inbox.add("Not everything fits on the music drive", "\(wanted.count - fits.count) new song\(wanted.count - fits.count == 1 ? "" : "s") weren't downloaded, to keep 2 GB free.") }
         guard !fits.isEmpty else { return 0 }
         let names = fits.compactMap { id in engine.catalog.first { $0.id == id }?.name }

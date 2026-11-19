@@ -1347,6 +1347,41 @@ extension Engine {
         }.joined()
     }
 
+    /// plays.tsv: a play a line, "seconds since 1970", a tab, then the file's path (which may hold tabs itself).
+    static func parsePlays(_ text: String) -> [(path: String, at: Date)] {
+        text.split(whereSeparator: \.isNewline).compactMap { line in
+            let parts = line.split(separator: "\t", maxSplits: 1)
+            guard parts.count == 2, let t = Double(parts[0]) else { return nil }
+            return (String(parts[1]), Date(timeIntervalSince1970: t))
+        }
+    }
+
+    /// Days since 1970 counted in a time zone: the daily games' "today", which turns over at local midnight (counted in
+    /// UTC, it turned over at 7 pm in New York while the saved round still said "today").
+    static func localDay(_ date: Date, _ tz: TimeZone = .current) -> Int {
+        Int(((date.timeIntervalSince1970 + Double(tz.secondsFromGMT(for: date))) / 86400).rounded(.down))
+    }
+    /// About how big the site's file for a song is, from the bitrate and length it lists (12 MB when it lists neither).
+    static func estimatedBytes(_ s: EngineSong) -> Int {
+        let kbps = siteKbps(s.bitrate, "")
+        guard kbps > 0, let seconds = lengthSeconds(s.length) else { return 12_000_000 }
+        return Int(Double(kbps) * 1000 / 8 * seconds)
+    }
+    /// How many of these downloads (in order) fit on a drive with `free` bytes while keeping `keep` free; all when the
+    /// free space can't be told.
+    static func downloadsThatFit(_ sizes: [Int], free: Int64?, keep: Int64 = 2_000_000_000) -> Int {
+        guard let free else { return sizes.count }
+        var room = free - keep, n = 0
+        for s in sizes { room -= Int64(s); if room < 0 { break }; n += 1 }
+        return n
+    }
+    /// Duplicate groups with the same files shown once (a file that could be several versions of a song is in each
+    /// version's group).
+    static func distinctGroups(_ groups: [DupGroup]) -> [DupGroup] {
+        var seen = Set<[String]>()
+        return groups.filter { seen.insert($0.files.map(\.path).sorted()).inserted }
+    }
+
     /// The site's date notes as one sentence. They often carry their own label on its own line ("First Teased" then
     /// "March 23, 2018."): that label leads ("First teased March 23, 2018."), else `fallback` does. "" when there's no date.
     static func dateSentence(_ text: String, fallback: String, extra: String = "") -> String {

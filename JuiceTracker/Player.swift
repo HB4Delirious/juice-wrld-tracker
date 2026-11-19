@@ -437,18 +437,34 @@ final class AmbientPlayer: NSObject {
         start(items[order.removeLast()], failures: failures, fade: fade)
     }
 
-    /// Every play (path and time), for "your listening" in Stats. The newest 5,000 are kept.
+    /// Every play (time and path, a line each), for "your listening" in Stats, in plays.tsv like the Windows app. All of
+    /// them: the list in the app's settings this replaces kept only the newest 5,000, so the year's totals came out short.
+    private static let playsFile = FileManager.default.homeDirectoryForCurrentUser
+        .appendingPathComponent("Library/Application Support/JuiceTracker/\(Bundle.main.bundleIdentifier ?? "com.hb4delirious.JuiceTracker")/plays.tsv")
     static func logPlay(_ path: String) {
-        var log = UserDefaults.standard.array(forKey: "playLog") as? [[Any]] ?? []
-        log.append([path, Date().timeIntervalSince1970])
-        if log.count > 5000 { log.removeFirst(log.count - 5000) }
-        UserDefaults.standard.set(log, forKey: "playLog")
+        movePlaysToFile()
+        appendPlays("\(Int(Date().timeIntervalSince1970))\t\(path)\n")
     }
     static var playLog: [(path: String, at: Date)] {
-        (UserDefaults.standard.array(forKey: "playLog") as? [[Any]] ?? []).compactMap { e in
+        movePlaysToFile()
+        return Engine.parsePlays((try? String(contentsOf: playsFile, encoding: .utf8)) ?? "")
+    }
+    private static func appendPlays(_ text: String) {
+        try? FileManager.default.createDirectory(at: playsFile.deletingLastPathComponent(), withIntermediateDirectories: true)
+        if let h = try? FileHandle(forWritingTo: playsFile) { h.seekToEndOfFile(); h.write(Data(text.utf8)); h.closeFile() }
+        else { try? Data(text.utf8).write(to: playsFile) }
+    }
+    /// Plays logged before (in the app's settings) move to the file once, oldest first.
+    private static func movePlaysToFile() {
+        guard let old = UserDefaults.standard.array(forKey: "playLog") as? [[Any]] else { return }
+        let lines = old.compactMap { e -> String? in
             guard e.count == 2, let p = e[0] as? String, let t = e[1] as? Double else { return nil }
-            return (p, Date(timeIntervalSince1970: t))
+            return "\(Int(t))\t\(p)\n"
         }
+        let existing = (try? String(contentsOf: playsFile, encoding: .utf8)) ?? ""
+        try? FileManager.default.createDirectory(at: playsFile.deletingLastPathComponent(), withIntermediateDirectories: true)
+        guard (try? Data((lines.joined() + existing).utf8).write(to: playsFile, options: .atomic)) != nil else { return } // kept in settings until it's safely in the file
+        UserDefaults.standard.removeObject(forKey: "playLog")
     }
 
     /// Paths played today, kept across launches.

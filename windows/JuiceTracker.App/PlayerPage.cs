@@ -651,7 +651,7 @@ public sealed class PlayerPage : Grid, IRefresh
             // lyrics and the era's art come live from the site, never saved
             if (i >= 0 && await store.DetailsAsync(store.Catalog[i]) is { } json && playing == file)
             {
-                synced = Engine.ParseLrc(MyLyrics.Lrc(store.Catalog[i].Id) ?? json["synced_lyrics"]?.GetValue<string>() ?? "");
+                synced = MyLyrics.Synced(store.Catalog[i], json);
                 if (json["image_url"]?.GetValue<string>() is { Length: > 0 } img && Uri.TryCreate(new Uri("https://juicewrldapi.com"), img, out var url))
                     try { ShowArt(new BitmapImage(url), playing ?? ""); } catch (Exception) { }
             }

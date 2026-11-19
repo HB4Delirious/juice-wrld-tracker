@@ -240,10 +240,8 @@ public sealed class BadgesPage : ToolPage
                       new TextBlock { Text = b.Detail, FontFamily = JT.Body, FontSize = 30, Foreground = JT.Brush(JT.Muted) },
                       new TextBlock { Text = $"{Store.Shared.Owned.Count:N0} Juice WRLD songs · {DateTime.Now:MMMM d, yyyy}", FontFamily = JT.Body, FontSize = 22, Foreground = JT.Brush(Color.FromArgb(178, 255, 255, 255)), Margin = new Thickness(0, 20, 0, 0) }));
         row.Margin = new Thickness(70); canvas.Children.Add(row);
-        canvas.Measure(new Size(1200, 630)); canvas.Arrange(new Rect(0, 0, 1200, 630)); canvas.UpdateLayout();
-        var bmp = new RenderTargetBitmap(1200, 630, 96, 96, PixelFormats.Pbgra32); bmp.Render(canvas);
-        var enc = new PngBitmapEncoder(); enc.Frames.Add(BitmapFrame.Create(bmp));
-        using (var fs = File.Create(file)) enc.Save(fs);
+        var bmp = Games.Render(canvas, 1200, 630);
+        Games.SavePng(bmp, file);
         Result = $"Saved the “{b.Title}” card."; ResultIsError = false; Refresh();
     }
 }

@@ -293,15 +293,15 @@ public sealed partial class Store
         return AddDownloads(WishRanked.Where(wanted.Contains));
     }
 
-    /// Settings: new songs with a file download on their own when the catalog check finds them, as many as fit with
-    /// room to spare (2 GB, at about 12 MB a song). Returns how many were queued.
-    public int AutoDownload(IEnumerable<string> ids)
+    /// Settings: new songs with a file download on their own when the catalog check finds them, as many as fit while
+    /// keeping 2 GB free (each song's size from the site's bitrate and length). `free` is asked by the caller off the UI
+    /// thread: a network drive that's asleep can take minutes to answer. Returns how many were queued.
+    public int AutoDownload(IEnumerable<string> ids, long? free)
     {
         var owned = Owned; var byId = Catalog.Select((s, i) => (s, i)).GroupBy(x => x.s.Id).ToDictionary(g => g.Key, g => g.First());
         var wanted = ids.Where(id => byId.TryGetValue(id, out var x) && !owned.Contains(x.i) && x.s.FilePath.Length > 0).ToList();
         if (wanted.Count == 0) return 0;
-        int room = Disk.Free(Root) is { } free ? (int)(Math.Max(0, free - 2_000_000_000) / 12_000_000) : wanted.Count;
-        var fits = wanted.Take(room).ToList();
+        var fits = wanted.Take(Engine.DownloadsThatFit([.. wanted.Select(id => Engine.EstimatedBytes(byId[id].s))], free)).ToList();
         if (fits.Count < wanted.Count) Inbox.Add("Not everything fits on the music drive", $"{wanted.Count - fits.Count} new song{(wanted.Count - fits.Count == 1 ? "" : "s")} weren't downloaded, to keep 2 GB free.");
         if (fits.Count == 0) return 0;
         var names = fits.Select(id => byId[id].s.Name).ToList();

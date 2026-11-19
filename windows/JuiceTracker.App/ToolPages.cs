@@ -179,9 +179,7 @@ public sealed class DuplicatesPage : ToolPage
     {
         var store = Store.Shared;
         Start("Duplicates", "Songs with more than one file in your library. The best copy is kept: lossless first, then the largest file. Only files with exactly the same title are cleaned up, so remixes and versions are never touched.");
-        // a file that could be several versions of a song is in each version's group: show the same files once
-        var shown = new HashSet<string>();
-        var groups = Engine.DuplicateGroups(store.Files, store.Match, store.Catalog).Where(g => shown.Add(string.Join("\n", g.Files.Select(f => f.Path).Order()))).ToList();
+        var groups = Engine.DistinctGroups(Engine.DuplicateGroups(store.Files, store.Match, store.Catalog));
         var exact = groups.Where(Engine.IsExactDuplicate).ToList(); var extra = Engine.ExtraCopies(exact);
         if (groups.Count == 0) { Add(UI.Row(8, UI.Icon("", 14, JT.Have), UI.Text("No duplicates. Every song has one file.", 15, JT.Have))); return; }
         if (extra.Count > 0)
@@ -429,10 +427,8 @@ public sealed class ExportPage : ToolPage
         if (best is not null) col.Children.Add(new TextBlock { Text = $"Most complete: {best.Name} ({best.Have} of {best.Total})", FontFamily = JT.Body, FontSize = 28, Foreground = JT.Brush(JT.Mist), Margin = new Thickness(0, 8, 0, 0) });
         canvas.Children.Add(col);
         canvas.Children.Add(new TextBlock { Text = "999", FontFamily = JT.Marker, FontSize = 90, Foreground = JT.Gradient(JT.Count), HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Bottom, Margin = new Thickness(0, 0, 60, 30), RenderTransform = new RotateTransform(-8) });
-        canvas.Measure(new Size(1200, 630)); canvas.Arrange(new Rect(0, 0, 1200, 630)); canvas.UpdateLayout();
-        var bmp = new RenderTargetBitmap(1200, 630, 96, 96, PixelFormats.Pbgra32); bmp.Render(canvas);
-        var enc = new PngBitmapEncoder(); enc.Frames.Add(BitmapFrame.Create(bmp));
-        using (var fs = File.Create(file)) enc.Save(fs);
+        var bmp = Games.Render(canvas, 1200, 630);
+        Games.SavePng(bmp, file);
         Result = "Saved your collection card."; ResultIsError = false; Refresh();
     }
 }

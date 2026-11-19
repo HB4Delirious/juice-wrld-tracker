@@ -89,7 +89,7 @@ public sealed class HeardlePage : ToolPage
         Add(head);
         var pool = Pool();
         if (pool.Count == 0) { answer = null; Add(UI.Muted("No songs you have to play in this era.", 14)); return; }
-        int day = (int)(DateTimeOffset.Now.ToUnixTimeSeconds() / 86400);
+        int day = Engine.LocalDay(DateTimeOffset.Now); // turns over at local midnight, with the saved round
         seed = Me.HeardleDaily ? day : unlimitedPick;
         answer = Me.HeardleDaily ? pool[day * 7919 % pool.Count] : pool[unlimitedPick % pool.Count];
         var a = answer; var list = Guesses; var target = Engine.Normalize(a.Name);
@@ -536,8 +536,7 @@ static class SongPicture
                                       Child = new TextBlock { Text = s.Owned ? "✓ In my library" : "Still hunting for this one", FontSize = 28, FontWeight = FontWeights.Bold, Foreground = JT.Brush(s.Owned ? JT.Have : JT.New) } });
         card.Children.Add(col);
         card.Children.Add(new TextBlock { Text = "Juice Tracker", FontFamily = JT.Marker, FontSize = 22, Foreground = JT.Brush(Color.FromArgb(89, 255, 255, 255)), HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Bottom, Margin = new Thickness(0, 0, 0, 36) });
-        card.Measure(new Size(1080, 1350)); card.Arrange(new Rect(0, 0, 1080, 1350)); card.UpdateLayout();
-        var bmp = new RenderTargetBitmap(1080, 1350, 96, 96, PixelFormats.Pbgra32); bmp.Render(card); bmp.Freeze();
+        var bmp = Games.Render(card, 1080, 1350);
         return bmp;
     }
 
@@ -550,8 +549,7 @@ static class SongPicture
         {
             var d = new Microsoft.Win32.SaveFileDialog { FileName = $"{Engine.SafeName(s.Name)}.png", Filter = "PNG image|*.png" };
             if (d.ShowDialog() != true) return;
-            var enc = new PngBitmapEncoder(); enc.Frames.Add(BitmapFrame.Create(await Make(s)));
-            using var fs = File.Create(d.FileName); enc.Save(fs);
+            Games.SavePng(await Make(s), d.FileName);
         };
         var copy = new MenuItem { Header = "Copy picture" };
         copy.Click += async (_, _) => Clipboard.SetImage(await Make(s));

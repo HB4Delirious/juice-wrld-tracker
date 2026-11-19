@@ -227,6 +227,28 @@ public static partial class Engine
     public static string M3u(IEnumerable<(string Path, string Title, double? Seconds)> entries) =>
         "#EXTM3U\n" + string.Concat(entries.Select(e => $"#EXTINF:{(e.Seconds is { } s ? (int)s : -1)},Juice WRLD - {string.Join(' ', e.Title.Split('\n', '\r'))}\n{e.Path}\n"));
 
+    /// Days since 1970 counted in the clock's own time zone: the daily games' "today", which turns over at local midnight
+    /// (counted in UTC, it turned over at 7 pm in New York while the saved round still said "today").
+    public static int LocalDay(DateTimeOffset now) => (int)Math.Floor((now.ToUnixTimeSeconds() + now.Offset.TotalSeconds) / 86400);
+    /// About how big the site's file for a song is, from the bitrate and length it lists (12 MB when it lists neither).
+    public static long EstimatedBytes(EngineSong s) => SiteKbps(s.Bitrate, "") is var kbps and > 0 && LengthSeconds(s.Length) is { } seconds ? (long)(kbps * 1000.0 / 8 * seconds) : 12_000_000;
+    /// How many of these downloads (in order) fit on a drive with `free` bytes while keeping `keep` free; all when the
+    /// free space can't be told.
+    public static int DownloadsThatFit(IReadOnlyList<long> sizes, long? free, long keep = 2_000_000_000)
+    {
+        if (free is not { } f) return sizes.Count;
+        long room = f - keep; int n = 0;
+        foreach (var s in sizes) { room -= s; if (room < 0) break; n++; }
+        return n;
+    }
+    /// Duplicate groups with the same files shown once (a file that could be several versions of a song is in each
+    /// version's group).
+    public static List<DupGroup> DistinctGroups(IEnumerable<DupGroup> groups)
+    {
+        var seen = new HashSet<string>();
+        return groups.Where(g => seen.Add(string.Join("\n", g.Files.Select(f => f.Path).Order()))).ToList();
+    }
+
     /// The site's date notes as one sentence. They often carry their own label on its own line ("First Teased" then
     /// "March 23, 2018."): that label leads ("First teased March 23, 2018."), else `fallback` does. "" when there's no date.
     public static string DateSentence(string text, string fallback, string extra = "")
