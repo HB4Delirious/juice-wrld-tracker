@@ -441,18 +441,21 @@ final class AmbientPlayer: NSObject {
     /// them: the list in the app's settings this replaces kept only the newest 5,000, so the year's totals came out short.
     private static let playsFile = FileManager.default.homeDirectoryForCurrentUser
         .appendingPathComponent("Library/Application Support/JuiceTracker/\(Bundle.main.bundleIdentifier ?? "com.hb4delirious.JuiceTracker")/plays.tsv")
+    // One lock around the file, the cache and the one-time move: a play logged while Stats reads (on another thread)
+    // was counted twice, and two moves at once wrote the old plays in twice.
+    private static let playsLock = NSLock()
     static func logPlay(_ path: String) {
+        playsLock.lock(); defer { playsLock.unlock() }
         movePlaysToFile()
         let at = Int(Date().timeIntervalSince1970)
         guard appendPlays("\(at)\t\(path)\n") else { return }
-        playsLock.lock(); playsCache?.append((path, Date(timeIntervalSince1970: TimeInterval(at)))); playsLock.unlock()
+        playsCache?.append((path, Date(timeIntervalSince1970: TimeInterval(at))))
     }
     /// Read and parsed once, then kept up to date as songs play: Stats, the calendar, badges and playlists all ask.
     private static var playsCache: [(path: String, at: Date)]?
-    private static let playsLock = NSLock()
     static var playLog: [(path: String, at: Date)] {
-        movePlaysToFile()
         playsLock.lock(); defer { playsLock.unlock() }
+        movePlaysToFile()
         if let playsCache { return playsCache }
         let log = Engine.parsePlays((try? String(contentsOf: playsFile, encoding: .utf8)) ?? "")
         playsCache = log
@@ -467,12 +470,12 @@ final class AmbientPlayer: NSObject {
         defer { try? h.close() }
         do { try h.seekToEnd(); try h.write(contentsOf: Data(text.utf8)); return true } catch { return false }
     }
-    /// Plays logged before (in the app's settings) move to the file once, oldest first.
+    /// Plays logged before (in the app's settings) move to the file once, oldest first. Called with playsLock held.
     private static func movePlaysToFile() {
         guard let old = UserDefaults.standard.array(forKey: "playLog") as? [[Any]] else { return }
-        let lines = old.compactMap { e -> String? in
+        let plays = old.compactMap { e -> (path: String, at: Double)? in
             guard e.count == 2, let p = e[0] as? String, let t = e[1] as? Double else { return nil }
-            return "\(Int(t))\t\(p)\n"
+            return (p, t)
         }
         // an existing file that can't be read now is left alone (the old plays stay in settings and move next time)
         var existing = ""
@@ -481,9 +484,9 @@ final class AmbientPlayer: NSObject {
             existing = text
         }
         try? FileManager.default.createDirectory(at: playsFile.deletingLastPathComponent(), withIntermediateDirectories: true)
-        guard (try? Data((lines.joined() + existing).utf8).write(to: playsFile, options: .atomic)) != nil else { return } // kept in settings until it's safely in the file
+        guard (try? Data(Engine.movedPlays(plays, before: existing).utf8).write(to: playsFile, options: .atomic)) != nil else { return } // kept in settings until it's safely in the file
         UserDefaults.standard.removeObject(forKey: "playLog")
-        playsLock.lock(); playsCache = nil; playsLock.unlock() // read afresh with the old plays in
+        playsCache = nil // read afresh with the old plays in
     }
 
     /// Paths played today, kept across launches.

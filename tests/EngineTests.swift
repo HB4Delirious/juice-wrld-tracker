@@ -261,6 +261,9 @@ import Foundation
                    && Engine.dateSentence("Surfaced\n", fallback: "Surfaced") == "", "story: the site's own date label leads, once, on one line")
             let plays2 = Engine.parsePlays("1700000000\tMusic/A.mp3\nbroken line\n1700000060\tMusic/B\twith tab.mp3\n")
             expect(plays2.map(\.path) == ["Music/A.mp3", "Music/B\twith tab.mp3"] && plays2[1].at.timeIntervalSince1970 == 1_700_000_060, "plays: a line each, broken lines skipped, tabs in paths kept")
+            let moved = Engine.movedPlays([("Music/Old.mp3", 1_600_000_000.9)], before: "1700000000\tMusic/New.mp3\n")
+            expect(Engine.parsePlays(moved).map(\.path) == ["Music/Old.mp3", "Music/New.mp3"] && Engine.parsePlays(Engine.movedPlays([], before: "")).isEmpty,
+                   "plays: the old list moves in front of the file's plays, each once")
             let ny = TimeZone(identifier: "America/New_York")!
             func at(_ iso: String) -> Date { ISO8601DateFormatter().date(from: iso)! }
             expect(Engine.localDay(at("2026-03-11T00:30:00Z"), ny) == Engine.localDay(at("2026-03-10T15:00:00Z"), ny)

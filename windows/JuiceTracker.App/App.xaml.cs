@@ -67,7 +67,7 @@ public partial class App : Application
                 catch (Exception e)
                 {
                     Log(e);
-                    try { Inbox.Add("New songs couldn't be queued to download", e.Message); } catch (IOException) { } // the notice needs the same settings file
+                    try { Inbox.Add("New songs couldn't be queued to download", e.Message); } catch (Exception) { } // the notice needs the same settings file, which may be what failed
                 }
             }
         };

@@ -1356,6 +1356,11 @@ extension Engine {
         }
     }
 
+    /// The plays.tsv text after moving the old play list (from the app's settings) in front of what the file holds.
+    static func movedPlays(_ old: [(path: String, at: Double)], before existing: String) -> String {
+        old.map { "\(Int($0.at))\t\($0.path)\n" }.joined() + existing
+    }
+
     /// Days since 1970 counted in a time zone: the daily games' "today", which turns over at local midnight (counted in
     /// UTC, it turned over at 7 pm in New York while the saved round still said "today").
     static func localDay(_ date: Date, _ tz: TimeZone = .current) -> Int {

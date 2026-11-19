@@ -216,9 +216,9 @@ public static class Updater
             for (int tries = 0; ; tries++) // the old copy can be held for a moment too
             {
                 try { File.Move(exe + ".old", exe, true); break; }
-                catch (IOException) when (tries < 10) { await Task.Delay(500); }
+                catch (Exception e) when (e is IOException or UnauthorizedAccessException && tries < 10) { await Task.Delay(500); } // held, or access denied for a moment
             }
-            try { File.Delete(tmp); } catch (IOException) { } // the abandoned download; the next update downloads it again
+            try { File.Delete(tmp); } catch (Exception e) when (e is IOException or UnauthorizedAccessException) { } // the abandoned download; the next update downloads it again
             throw new EngineError("The new version couldn't be put in place (another program had it open), so you still have this one. Try again in a minute.");
         }
         Process.Start(new ProcessStartInfo(exe) { UseShellExecute = true });
