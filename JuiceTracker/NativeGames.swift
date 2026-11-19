@@ -33,7 +33,7 @@ struct WordleScreen: View {
     }
     private static let day: DateFormatter = { let f = DateFormatter(); f.dateFormat = "yyyy-MM-dd"; return f }()
     private var today: String { Self.day.string(from: Date()) }
-    private var dayNumber: Int { Int(Date().timeIntervalSince1970 / 86400) }
+    private var dayNumber: Int { Engine.localDay(Date()) } // turns over at local midnight, with the saved round
 
     var body: some View {
         let pool = self.pool
@@ -166,7 +166,7 @@ struct WordleScreen: View {
     private func count(won: Bool) {
         guard daily, counted != today else { return }
         var st = stats.split(separator: ",").map { Int($0) ?? 0 } + [0, 0, 0, 0]
-        let yesterday = Self.day.string(from: Date().addingTimeInterval(-86400))
+        let yesterday = Self.day.string(from: Calendar.current.date(byAdding: .day, value: -1, to: Date()) ?? Date())
         st[0] += 1
         if won { st[1] += 1; st[2] = counted == yesterday ? st[2] + 1 : 1; st[3] = max(st[3], st[2]) } else { st[2] = 0 }
         stats = st.prefix(4).map(String.init).joined(separator: ",")
@@ -333,12 +333,18 @@ private struct TierCard: View {
     }
 }
 
-/// A view drawn into a PNG (the same way the badge and collection cards are made).
-@MainActor private func snapshot(_ host: NSView) -> Data? {
+/// A view drawn at its own size: every share picture (cards, badges, Wrapped, lyrics, songs) is made with this.
+@MainActor func render(_ host: NSView) -> NSBitmapImageRep? {
     host.layoutSubtreeIfNeeded()
     guard let rep = host.bitmapImageRepForCachingDisplay(in: host.bounds) else { return nil }
     host.cacheDisplay(in: host.bounds, to: rep)
-    return rep.representation(using: .png, properties: [:])
+    return rep
+}
+/// The same, as a PNG.
+@MainActor func snapshot(_ host: NSView) -> Data? { render(host)?.representation(using: .png, properties: [:]) }
+/// The same, as an image.
+@MainActor func snapshotImage(_ host: NSView) -> NSImage? {
+    render(host).map { rep in let image = NSImage(size: host.bounds.size); image.addRepresentation(rep); return image }
 }
 
 // MARK: - Lyrics card
@@ -524,7 +530,7 @@ struct HeardleScreen: View {
             if pool.isEmpty {
                 Text("No songs you have to play in this era.").foregroundColor(JT.muted)
             } else {
-                let day = Int(Date().timeIntervalSince1970 / 86400)
+                let day = Engine.localDay(Date()) // turns over at local midnight, with the saved round
                 game(daily ? pool[(day * 7919) % pool.count] : pool[unlimitedPick % pool.count], seed: daily ? day : unlimitedPick)
             }
         }
@@ -628,7 +634,7 @@ struct HeardleScreen: View {
         guard daily, counted != today else { return }
         var st = stats.split(separator: ",").map { Int($0) ?? 0 } + [0, 0, 0, 0]
         st[0] += 1
-        if won { st[1] += 1; st[2] = counted == Self.day.string(from: Date().addingTimeInterval(-86400)) ? st[2] + 1 : 1; st[3] = max(st[3], st[2]) } else { st[2] = 0 }
+        if won { st[1] += 1; st[2] = counted == Self.day.string(from: Calendar.current.date(byAdding: .day, value: -1, to: Date()) ?? Date()) ? st[2] + 1 : 1; st[3] = max(st[3], st[2]) } else { st[2] = 0 }
         stats = st.prefix(4).map(String.init).joined(separator: ","); counted = today
     }
 }

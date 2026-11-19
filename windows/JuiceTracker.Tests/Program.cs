@@ -157,6 +157,7 @@ foreach (var p in tools["plans"]!.AsArray())
     Expect(mineChanges.SequenceEqual(pageChanges), () => $"{label}: changes\n{string.Join("\n", mineChanges)}\nvs page\n{string.Join("\n", pageChanges)}");
 }
 var groups = Engine.DuplicateGroups(toolLib, tm, toolSongs); var pageGroups = tools["dupGroups"]!.AsArray();
+Expect(Engine.DistinctGroups(groups.Concat(groups)).Count == Engine.DistinctGroups(groups).Count, () => "duplicates: the same files are shown once");
 Expect(groups.Count == pageGroups.Count, () => $"duplicate groups: {groups.Count}, page {pageGroups.Count}");
 foreach (var (gr, pg) in groups.Zip(pageGroups))
 {
@@ -249,6 +250,12 @@ foreach (var c in fx["csvCases"]!.AsArray())
            && Engine.DateSentence("December 25, 2025", "Surfaced") == "Surfaced December 25, 2025."
            && Engine.DateSentence("First Teased August 16, 2019", "Previewed") == "First teased August 16, 2019."
            && Engine.DateSentence("Surfaced\n", "Surfaced") == "", () => "story: the site's own date label leads, once, on one line");
+    var ny = TimeSpan.FromHours(-5); // New York in March, before the clocks change
+    Expect(Engine.LocalDay(new DateTimeOffset(2026, 3, 10, 19, 30, 0, ny)) == Engine.LocalDay(new DateTimeOffset(2026, 3, 10, 10, 0, 0, ny))
+           && Engine.LocalDay(new DateTimeOffset(2026, 3, 10, 23, 30, 0, ny)) + 1 == Engine.LocalDay(new DateTimeOffset(2026, 3, 11, 0, 30, 0, ny)), () => "daily games: the day turns over at local midnight, not UTC's");
+    Expect(Engine.EstimatedBytes(new EngineSong { Bitrate = "1411kbps (.wav)", Length = "3:00" }) == 31_747_500 && Engine.EstimatedBytes(new EngineSong()) == 12_000_000, () => "downloads: size from the site's bitrate and length");
+    Expect(Engine.DownloadsThatFit([10_000_000, 50_000_000, 50_000_000], 2_070_000_000) == 2 && Engine.DownloadsThatFit([1, 2], null) == 2
+           && Engine.DownloadsThatFit([1], 1_000_000_000) == 0, () => "downloads: as many as fit, keeping 2 GB free");
     Expect(Engine.EqPreset([-2, 4, 2]) == "Vocals" && Engine.EqPreset([0, 4, 2]) == "Custom", () => "equalizer: bands name their preset, or Custom");
     Expect(Engine.EqHeadroom([6, 0, 1]) == -3 && Engine.EqHeadroom([-4, 1, -3]) == -0.5 && Engine.EqHeadroom([-4, -1, -3]) == 0, () => "equalizer: turned down by half the biggest boost");
     var lrc = Engine.ParseLrc("[ar:Juice WRLD]\n[00:12.50]second line\n[00:03.00]<00:03.00>first <00:03.60>line <00:04.20>here\n[00:20.00]<00:20.00>wrong count");

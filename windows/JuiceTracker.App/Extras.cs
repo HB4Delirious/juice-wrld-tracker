@@ -209,7 +209,9 @@ public static class Updater
         var head = new byte[2]; await using (var f = File.OpenRead(tmp)) _ = await f.ReadAsync(head);
         if (head[0] != 'M' || head[1] != 'Z' || new FileInfo(tmp).Length < 10_000_000) { File.Delete(tmp); throw new EngineError("The download isn't the Juice Tracker app, so it wasn't installed."); }
         File.Move(exe, exe + ".old", true);
-        File.Move(tmp, exe);
+        // antivirus scanning the new file can block this for a moment: then the old app goes back, so there's always one
+        try { File.Move(tmp, exe); }
+        catch (Exception) { File.Move(exe + ".old", exe, true); throw new EngineError("The new version couldn't be put in place (another program had it open), so you still have this one. Try again in a minute."); }
         Process.Start(new ProcessStartInfo(exe) { UseShellExecute = true });
         Tray.Quitting = true;
         App.Current.Shutdown();

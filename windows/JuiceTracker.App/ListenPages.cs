@@ -66,11 +66,6 @@ public static class Listen
         if (p.SleepAt is not null || p.SleepAtEnd) { m.Items.Add(new Separator()); var off = new MenuItem { Header = "Turn off the sleep timer" }; off.Click += (_, _) => p.Sleep(null); m.Items.Add(off); }
         return m;
     }
-
-    /// Synced lyrics ("[mm:ss.xx] line") from the site, shown live and never saved.
-    public static List<(double At, string Line)> ParseSynced(string text) =>
-        text.Split('\n').Select(l => Regex.Match(l.Trim(), @"^\[(\d+):(\d+(?:\.\d+)?)\]\s*(.*)$")).Where(m => m.Success)
-            .Select(m => (int.Parse(m.Groups[1].Value) * 60 + double.Parse(m.Groups[2].Value, System.Globalization.CultureInfo.InvariantCulture), m.Groups[3].Value)).OrderBy(x => x.Item1).ToList();
 }
 
 // MARK: - Playlists
@@ -342,8 +337,7 @@ public sealed class StatsPage : ToolPage
             if (month.Length > 0) col.Children.Add(new TextBlock { Text = $"Busiest month: {month}", FontSize = 30, FontWeight = FontWeights.SemiBold, Foreground = JT.Brush(Color.FromArgb(191, 255, 255, 255)), Margin = new Thickness(0, 34, 0, 0) });
             card.Children.Add(col);
             card.Children.Add(new TextBlock { Text = "Juice Tracker", FontFamily = JT.Marker, FontSize = 22, Foreground = JT.Brush(Color.FromArgb(89, 255, 255, 255)), HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Bottom, Margin = new Thickness(0, 0, 0, 36) });
-            card.Measure(new Size(1080, 1350)); card.Arrange(new Rect(0, 0, 1080, 1350)); card.UpdateLayout();
-            var bmp = new RenderTargetBitmap(1080, 1350, 96, 96, PixelFormats.Pbgra32); bmp.Render(card); bmp.Freeze();
+            var bmp = Games.Render(card, 1080, 1350);
             return bmp;
         }
         var menu = new ContextMenu();
@@ -352,8 +346,7 @@ public sealed class StatsPage : ToolPage
         {
             var d = new Microsoft.Win32.SaveFileDialog { FileName = $"Juice WRLD {DateTime.Now.Year} wrapped.png", Filter = "PNG image|*.png" };
             if (d.ShowDialog() != true) return;
-            var enc = new PngBitmapEncoder(); enc.Frames.Add(BitmapFrame.Create(Make()));
-            using var fs = File.Create(d.FileName); enc.Save(fs);
+            Games.SavePng(Make(), d.FileName);
         };
         var copy = new MenuItem { Header = "Copy picture" }; copy.Click += (_, _) => Clipboard.SetImage(Make());
         menu.Items.Add(save); menu.Items.Add(copy);
@@ -582,7 +575,7 @@ public sealed class LyricsWindow : Window
     public static void Open() { if (open is null) { open = new LyricsWindow { Owner = MainWindow.Current }; open.Closed += (_, _) => open = null; open.Show(); } else open.Activate(); }
     readonly StackPanel lines = new() { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(40) };
     readonly TextBlock title = new() { FontFamily = JT.Marker, FontSize = 20, Foreground = JT.Brush(JT.Lavender), HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 24, 0, 0) };
-    string? file; List<(double At, string Line)> synced = []; string plain = ""; int shown = -2;
+    string? file; List<Engine.LrcLine> synced = []; string plain = ""; int shown = -2;
     LyricsWindow()
     {
         Title = "Lyrics"; Width = 760; Height = 560; Background = JT.Brush(JT.Night); WindowStartupLocation = WindowStartupLocation.CenterOwner;
@@ -599,7 +592,7 @@ public sealed class LyricsWindow : Window
             var i = file is null ? -1 : Store.Shared.SongForFile(file);
             if (i >= 0 && await Store.Shared.DetailsAsync(Store.Shared.Catalog[i]) is { } json)
             {
-                synced = Listen.ParseSynced(json["synced_lyrics"]?.GetValue<string>() ?? "");
+                synced = MyLyrics.Synced(Store.Shared.Catalog[i], json);
                 plain = (json["lyrics"]?.GetValue<string>() ?? "").Trim();
             }
         }

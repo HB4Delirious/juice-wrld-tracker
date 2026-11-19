@@ -23,6 +23,9 @@ static class MyLyrics
         }
     }
     public static string? Lrc(string id) => All.GetValueOrDefault(id);
+    /// A song's timed lyrics: your own timing when you made one, else the site's. Everything that sings uses this.
+    public static List<Engine.LrcLine> Synced(EngineSong s, System.Text.Json.Nodes.JsonObject? json) =>
+        Engine.ParseLrc(Lrc(s.Id) ?? json?["synced_lyrics"]?.GetValue<string>() ?? "");
     /// Saves (or with null removes) your timing, and the Player picks it up right away.
     public static void Set(string id, string? lrc)
     {

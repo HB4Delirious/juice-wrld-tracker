@@ -100,10 +100,7 @@ struct YearInReviewSection: View {
     private func wrapped(_ r: Review) -> Data? {
         let host = NSHostingView(rootView: WrappedCard(year: year, r: r, time: time(r)))
         host.frame = NSRect(x: 0, y: 0, width: 1080, height: 1350)
-        host.layoutSubtreeIfNeeded()
-        guard let rep = host.bitmapImageRepForCachingDisplay(in: host.bounds) else { return nil }
-        host.cacheDisplay(in: host.bounds, to: rep)
-        return rep.representation(using: .png, properties: [:])
+        return snapshot(host)
     }
     private func time(_ r: Review) -> String { r.minutes >= 120 ? "\((r.minutes / 60).formatted()) hours" : "\(r.minutes) minutes" }
 

@@ -212,7 +212,9 @@ enum SongAlerts {
         // Settings > Downloads: new songs (and older ones that just got a file) download on their own
         if !known.isEmpty, Pref.bool("autoDownload", default: false) {
             let fresh = songs.filter { s in s.hasFile && (!known.contains(s.id) || (hadFile.map { !$0.contains(s.id) } ?? false)) }.map(\.id)
-            await MainActor.run { _ = EngineDownloads.shared.autoDownload(fresh) }
+            let root = await MainActor.run { EngineLibrary.shared.root }
+            let free = EngineDownloads.freeSpace(root) // here, off the main thread
+            await MainActor.run { _ = EngineDownloads.shared.autoDownload(fresh, free: free) }
         }
         let wishIds = Set(wishNews.map(\.id)) // already in their own alert
         let others = added.filter { !wishIds.contains($0.id) }, otherReleases = nowReleased.filter { !wishIds.contains($0.id) }
