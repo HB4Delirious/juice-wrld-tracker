@@ -528,7 +528,8 @@ struct NativeRoot: View {
                     } else { SetupView() }
                 }
                 .id(page)
-                .transition(.asymmetric(insertion: .opacity.combined(with: .offset(y: 16)), removal: .opacity))
+                // the old page goes almost at once: fading both slowly, two whole pages showed on top of each other mid-switch
+                .transition(.asymmetric(insertion: .opacity.combined(with: .offset(y: 16)), removal: .opacity.animation(.linear(duration: 0.06))))
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }

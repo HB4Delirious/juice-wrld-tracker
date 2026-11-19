@@ -253,6 +253,11 @@ import Foundation
             let cuts = ["3:00", "4:10", ""].enumerated().map { k, l -> EngineSong in var s = song("\(k)", "Same", "DRFL"); s.length = l; return s }
             expect(Engine.closestByLength([0, 1, 2], catalog: cuts, seconds: 245) == 1 && Engine.closestByLength([0, 1, 2], catalog: cuts, seconds: nil) == 0
                    && Engine.closestByLength([2], catalog: cuts, seconds: 10) == 2, "identify: of the versions, the one closest in length")
+            expect(Engine.dateSentence("First Teased\nMarch 23, 2018.", fallback: "Previewed") == "First teased March 23, 2018."
+                   && Engine.dateSentence("Surfaced\r\nJune 24, 2018.", fallback: "Surfaced", extra: "Throwaway Track\n(Complete)") == "Surfaced June 24, 2018 (Throwaway Track (Complete))."
+                   && Engine.dateSentence("December 25, 2025", fallback: "Surfaced") == "Surfaced December 25, 2025."
+                   && Engine.dateSentence("First Teased August 16, 2019", fallback: "Previewed") == "First teased August 16, 2019."
+                   && Engine.dateSentence("Surfaced\n", fallback: "Surfaced") == "", "story: the site's own date label leads, once, on one line")
             expect(Engine.eqPreset([-2, 4, 2]) == "Vocals" && Engine.eqPreset([0, 4, 2]) == "Custom", "equalizer: bands name their preset, or Custom")
             expect(Engine.eqHeadroom([6, 0, 1]) == -3 && Engine.eqHeadroom([-4, 1, -3]) == -0.5 && Engine.eqHeadroom([-4, -1, -3]) == 0, "equalizer: turned down by half the biggest boost")
             let lrc = Engine.parseLrc("[ar:Juice WRLD]\n[00:12.50]second line\n[00:03.00]<00:03.00>first <00:03.60>line <00:04.20>here\n[00:20.00]<00:20.00>wrong count")

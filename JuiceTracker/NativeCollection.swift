@@ -124,8 +124,7 @@ struct HuntScreen: View {
         let by = d.producers.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines.union(CharacterSet(charactersIn: ".")))
         if !when.isEmpty { out.append("Recorded \(when)\(at.isEmpty ? "" : " at \(at)")\(by.isEmpty ? "" : ", produced by \(by)").") }
         if !d.sessions.isEmpty { out.append("Sessions: \(d.sessions).") }
-        if !d.previewDate.isEmpty { out.append("Previewed \(d.previewDate).") }
-        if !d.leakDate.isEmpty { out.append("Surfaced \(d.leakDate)\(d.leakType.isEmpty ? "" : " (\(d.leakType))").") }
+        for line in [Engine.dateSentence(d.previewDate, fallback: "Previewed"), Engine.dateSentence(d.leakDate, fallback: "Surfaced", extra: d.leakType)] where !line.isEmpty { out.append(line) }
         if !d.notes.isEmpty { out.append(d.notes) }
         return out.isEmpty ? ["The catalog has no story for this one yet."] : out
     }
@@ -208,7 +207,13 @@ struct PlaylistsScreen: View {
                 }
                 .frame(width: 240)
                 if let p = lists.first(where: { $0.id == picked }) ?? lists.first { PlaylistDetail(playlist: p) } else {
-                    Text("Make a playlist here, then add songs from a song's card or a row's right-click menu.").foregroundColor(JT.muted)
+                    VStack(spacing: 10) {
+                        Image(systemName: "music.note.list").font(.system(size: 34)).foregroundColor(JT.lavender)
+                        Text("No playlists yet").font(JT.body(18, .bold))
+                        Text("Make one with New playlist, then add songs from a song's card or a row's right-click menu.")
+                            .foregroundColor(JT.muted).multilineTextAlignment(.center).frame(maxWidth: 360)
+                    }
+                    .padding(32).frame(maxWidth: .infinity).doodled(14)
                 }
             }
         }
@@ -279,19 +284,21 @@ private struct SmartExports: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             Text("Smart M3U").font(.caption.bold()).foregroundColor(JT.muted)
-            Menu("Export an era…") {
+            Text("One-click playlist files of the songs you have, for Music, VLC or Plex.").font(.caption).foregroundColor(JT.muted).fixedSize(horizontal: false, vertical: true)
+            Menu {
                 ForEach(Array(Set(store.songs.filter(\.o).map(\.e))).sorted(), id: \.self) { e in
                     Button(e) { saveM3U(store.songs.filter { $0.o && $0.e == e }.sorted { ($0.s.m ?? 0) < ($1.s.m ?? 0) }.map(\.i), name: e) }
                 }
-            }
-            Button("Top rated") {
+            } label: { Label("An era…", systemImage: "square.and.arrow.up") }
+            .menuStyle(.borderlessButton).fixedSize()
+            Button { 
                 let r = EngineState.shared.ratings
                 saveM3U(store.songs.filter { $0.o && (r[$0.s.id] ?? 0) > 0 }.sorted { (r[$0.s.id] ?? 0) > (r[$1.s.id] ?? 0) }.map(\.i), name: "Top rated")
-            }
-            Button("Wishlist (the ones you have)") { saveM3U(store.songs.filter { $0.o && $0.w }.map(\.i), name: "Wishlist") }
-            Button("Never played") { let plays = playCounts(); saveM3U(store.songs.filter { $0.o && (plays[$0.i] ?? 0) == 0 }.map(\.i), name: "Never played") }
+            } label: { Label("Top rated", systemImage: "heart") }
+            Button { saveM3U(store.songs.filter { $0.o && $0.w }.map(\.i), name: "Wishlist") } label: { Label("Wishlist (the ones you have)", systemImage: "star") }
+            Button { let plays = playCounts(); saveM3U(store.songs.filter { $0.o && (plays[$0.i] ?? 0) == 0 }.map(\.i), name: "Never played") } label: { Label("Never played", systemImage: "moon.zzz") }
         }
-        .buttonStyle(.borderless)
+        .buttonStyle(.borderless).foregroundColor(JT.lavender)
     }
 }
 

@@ -527,8 +527,7 @@ public sealed class HuntPage : ToolPage
         var lines = new List<string>();
         if (when.Length > 0) lines.Add($"Recorded {when}{(Clean(d.Locations).Length > 0 ? $" at {Clean(d.Locations)}" : "")}{(Clean(d.Producers).Length > 0 ? $", produced by {Clean(d.Producers)}" : "")}.");
         if (d.Sessions.Length > 0) lines.Add($"Sessions: {d.Sessions}.");
-        if (d.PreviewDate.Length > 0) lines.Add($"Previewed {d.PreviewDate}.");
-        if (d.LeakDate.Length > 0) lines.Add($"Surfaced {d.LeakDate}{(d.LeakType.Length > 0 ? $" ({d.LeakType})" : "")}.");
+        lines.AddRange(new[] { Engine.DateSentence(d.PreviewDate, "Previewed"), Engine.DateSentence(d.LeakDate, "Surfaced", d.LeakType) }.Where(l => l.Length > 0));
         if (d.Notes.Length > 0) lines.Add(d.Notes);
         if (lines.Count == 0) lines.Add("The catalog has no story for this one yet.");
         foreach (var l in lines) into.Children.Add(UI.Text(l, 14.5, wrap: true).Also(t => t.Margin = new Thickness(0, 0, 0, 6)));

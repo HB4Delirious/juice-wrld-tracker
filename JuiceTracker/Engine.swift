@@ -1347,6 +1347,20 @@ extension Engine {
         }.joined()
     }
 
+    /// The site's date notes as one sentence. They often carry their own label on its own line ("First Teased" then
+    /// "March 23, 2018."): that label leads ("First teased March 23, 2018."), else `fallback` does. "" when there's no date.
+    static func dateSentence(_ text: String, fallback: String, extra: String = "") -> String {
+        let joined = text.split(whereSeparator: \.isNewline).map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }.joined(separator: " ")
+        var label = fallback, rest = joined
+        if let g = groups(#"^((?:first\s+)?(?:teased|previewed|surfaced|released|leaked))\b\s*(.*)$"#, joined, options: .caseInsensitive).first {
+            label = g[1]!; rest = g[2] ?? ""
+        }
+        rest = rest.trimmingCharacters(in: CharacterSet(charactersIn: ". "))
+        guard !rest.isEmpty else { return "" }
+        let more = extra.split(whereSeparator: \.isNewline).map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }.joined(separator: " ")
+        return "\(label.prefix(1).uppercased())\(label.dropFirst().lowercased()) \(rest)\(more.isEmpty ? "" : " (\(more))")."
+    }
+
     /// Of the songs a file could be (versions share a title), the one whose listed length is closest to the file's.
     static func closestByLength(_ candidates: [Int], catalog: [EngineSong], seconds: Double?) -> Int? {
         guard let seconds, candidates.count > 1 else { return candidates.first }
