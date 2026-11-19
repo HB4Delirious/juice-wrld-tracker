@@ -40,6 +40,10 @@ import AppKit
         started = true
         cache = EngineFiles.tagCache()
         overrides = (EngineState.shared.personalAny("matchOverrides") as? [String: Any] ?? [:]).compactMapValues { $0 as? String }
+        // a network drive that's asleep or off can take minutes to answer: say what's happening, not just "choose a folder"
+        if let saved = UserDefaults.standard.string(forKey: "lastFolder.\(Self.folderId)") {
+            status = "Looking for your music folder, \(URL(fileURLWithPath: saved).lastPathComponent)… If its drive is asleep or off, this waits until it answers."
+        }
         guard let url = await Self.restoreFolder() else { return }
         use(url)
         let items = readItems()
