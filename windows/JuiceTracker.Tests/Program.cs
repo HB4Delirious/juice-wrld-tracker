@@ -244,6 +244,11 @@ foreach (var c in fx["csvCases"]!.AsArray())
     var cuts = new[] { "3:00", "4:10", "" }.Select((l, k) => new EngineSong { Id = $"{k}", Name = "Same", Era = "DRFL", Length = l }).ToList();
     Expect(Engine.ClosestByLength([0, 1, 2], cuts, 245) == 1 && Engine.ClosestByLength([0, 1, 2], cuts, null) == 0 && Engine.ClosestByLength([2], cuts, 10) == 2,
            () => "identify: of the versions, the one closest in length");
+    Expect(Engine.DateSentence("First Teased\nMarch 23, 2018.", "Previewed") == "First teased March 23, 2018."
+           && Engine.DateSentence("Surfaced\r\nJune 24, 2018.", "Surfaced", "Throwaway Track\n(Complete)") == "Surfaced June 24, 2018 (Throwaway Track (Complete))."
+           && Engine.DateSentence("December 25, 2025", "Surfaced") == "Surfaced December 25, 2025."
+           && Engine.DateSentence("First Teased August 16, 2019", "Previewed") == "First teased August 16, 2019."
+           && Engine.DateSentence("Surfaced\n", "Surfaced") == "", () => "story: the site's own date label leads, once, on one line");
     Expect(Engine.EqPreset([-2, 4, 2]) == "Vocals" && Engine.EqPreset([0, 4, 2]) == "Custom", () => "equalizer: bands name their preset, or Custom");
     Expect(Engine.EqHeadroom([6, 0, 1]) == -3 && Engine.EqHeadroom([-4, 1, -3]) == -0.5 && Engine.EqHeadroom([-4, -1, -3]) == 0, () => "equalizer: turned down by half the biggest boost");
     var lrc = Engine.ParseLrc("[ar:Juice WRLD]\n[00:12.50]second line\n[00:03.00]<00:03.00>first <00:03.60>line <00:04.20>here\n[00:20.00]<00:20.00>wrong count");

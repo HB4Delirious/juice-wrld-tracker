@@ -922,7 +922,7 @@ struct InboxBell: View {
                 .frame(width: 28, height: 28).contentShape(Rectangle())
         }
         .buttonStyle(.plain).help(unread > 0 ? "\(unread) new notification\(unread == 1 ? "" : "s")" : "Notifications")
-        .accessibilityLabel(unread > 0 ? "\(unread) new notifications" : "Notifications")
+        .accessibilityLabel(unread > 0 ? "\(unread) new notification\(unread == 1 ? "" : "s")" : "Notifications")
         .popover(isPresented: $open, arrowEdge: .trailing) { InboxList { open = false } }
         .onReceive(changed) { _ in version += 1 }
         .id(version)

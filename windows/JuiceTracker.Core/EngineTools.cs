@@ -227,6 +227,20 @@ public static partial class Engine
     public static string M3u(IEnumerable<(string Path, string Title, double? Seconds)> entries) =>
         "#EXTM3U\n" + string.Concat(entries.Select(e => $"#EXTINF:{(e.Seconds is { } s ? (int)s : -1)},Juice WRLD - {string.Join(' ', e.Title.Split('\n', '\r'))}\n{e.Path}\n"));
 
+    /// The site's date notes as one sentence. They often carry their own label on its own line ("First Teased" then
+    /// "March 23, 2018."): that label leads ("First teased March 23, 2018."), else `fallback` does. "" when there's no date.
+    public static string DateSentence(string text, string fallback, string extra = "")
+    {
+        static string OneLine(string t) => string.Join(' ', t.Split('\n', '\r').Select(l => l.Trim()).Where(l => l.Length > 0));
+        var joined = OneLine(text); string label = fallback, rest = joined;
+        var g = Regex.Match(joined, @"^((?:first\s+)?(?:teased|previewed|surfaced|released|leaked))\b\s*(.*)$", RegexOptions.IgnoreCase);
+        if (g.Success) { label = g.Groups[1].Value; rest = g.Groups[2].Value; }
+        rest = rest.Trim('.', ' ');
+        if (rest.Length == 0) return "";
+        var more = OneLine(extra);
+        return $"{char.ToUpperInvariant(label[0])}{label[1..].ToLowerInvariant()} {rest}{(more.Length > 0 ? $" ({more})" : "")}.";
+    }
+
     /// Of the songs a file could be (versions share a title), the one whose listed length is closest to the file's.
     public static int? ClosestByLength(IReadOnlyList<int> candidates, IReadOnlyList<EngineSong> catalog, double? seconds)
     {

@@ -528,7 +528,8 @@ struct NativeRoot: View {
                     } else { SetupView() }
                 }
                 .id(page)
-                .transition(.asymmetric(insertion: .opacity.combined(with: .offset(y: 16)), removal: .opacity))
+                // the old page goes almost at once: fading both slowly, two whole pages showed on top of each other mid-switch
+                .transition(.asymmetric(insertion: .opacity.combined(with: .offset(y: 16)), removal: .opacity.animation(.linear(duration: 0.06))))
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
@@ -619,8 +620,11 @@ struct Sidebar: View {
             .padding(.bottom, 22)
 
             // the pages scroll when the window is short (13 of them since v1.26)
-            ScrollView(showsIndicators: false) { VStack(spacing: 0) { ForEach(NativePage.allCases) { p in navItem(p) } } }
+            ScrollView(showsIndicators: false) { VStack(spacing: 0) { ForEach(NativePage.allCases) { p in navItem(p) }; Spacer(minLength: 18) } }
                 .frame(maxHeight: .infinity, alignment: .top)
+                // a short window cuts the list: fade its bottom edge so it reads as "scroll for more", not as overlapping the panel below
+                .mask(LinearGradient(stops: [.init(color: .black, location: 0), .init(color: .black, location: 0.9), .init(color: .clear, location: 1)], startPoint: .top, endPoint: .bottom))
+                .padding(.bottom, 8)
 
             VStack(alignment: .leading, spacing: 10) {
                 if let q = store.state?.queue {

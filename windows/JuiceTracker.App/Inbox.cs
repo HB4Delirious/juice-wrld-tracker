@@ -38,7 +38,7 @@ static class Inbox
             int n = Unread;
             dot.Visibility = n > 0 ? Visibility.Visible : Visibility.Collapsed;
             icon.Foreground = JT.Brush(n > 0 ? JT.Lavender : JT.Muted);
-            UI.AutomationName(bell, n > 0 ? $"{n} new notifications" : "Notifications"); bell.ToolTip = n > 0 ? $"{n} new" : "Notifications";
+            UI.AutomationName(bell, n > 0 ? $"{n} new notification{(n == 1 ? "" : "s")}" : "Notifications"); bell.ToolTip = n > 0 ? $"{n} new" : "Notifications";
         }
         bell.Click += (_, _) => { popup.Child = List(() => popup.IsOpen = false); popup.IsOpen = true; MarkSeen(); };
         Changed += () => bell.Dispatcher.BeginInvoke(Draw);

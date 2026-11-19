@@ -197,10 +197,11 @@ struct TriviaScreen: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
                 ScreenTitle(text: "Trivia")
+                Text("Ten questions a round about Juice WRLD's songs, from the catalog or only the ones you have.").foregroundColor(JT.muted)
                 if round.isEmpty { setup } else if n >= round.count { finished } else { question(round[n]) }
             }
             .padding(.horizontal, JT.compact ? 18 : 34).padding(.top, JT.compact ? 20 : 40).padding(.bottom, 60)
-            .frame(maxWidth: 900, alignment: .leading)
+            .frame(maxWidth: 1080, alignment: .leading) // the same width as the other pages, so the title lines up
         }
         .task { info = try? JSONDecoder().decode(TriviaInfo.self, from: Data(await store.act("triviaInfo").utf8)) }
         .onDisappear { Task { await store.act("triviaStop") } }

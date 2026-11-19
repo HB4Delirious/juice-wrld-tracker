@@ -206,12 +206,15 @@ public sealed partial class Store
         if (cf is not null) { Catalog = cf.Songs; Eras = cf.Eras; FetchedAt = cf.FetchedAt; }
         cache = tags; queue = q;
         loaded = true;
+        // a network drive that's asleep or off can take minutes to answer: say what's happening, not just "choose a folder"
+        if (Me.MusicFolder is { } wanted) { FolderStatus = $"Looking for your music folder, {Path.GetFileName(wanted.TrimEnd('\\', '/'))}… If its drive is asleep or off, this waits until it answers."; Notify(); }
         if (Me.MusicFolder is { } folder && await Task.Run(() => Directory.Exists(folder)))
         {
             Root = folder;
             Files = await Task.Run(() => (Read<List<string>>("items.json") ?? []).Where(tags.ContainsKey).Select(p => LibraryFile(p, tags[p])).OfType<LibraryFile>()
                                                 .OrderBy(f => f.Path, StringComparer.CurrentCultureIgnoreCase).ToList());
         }
+        else if (Me.MusicFolder is { } gone) FolderStatus = $"Your music folder ({gone}) isn't available. If it's on a network drive, reconnect it.";
         Rebuild();
         if (Catalog.Count > 0 && (FetchedAt is null || (DateTime.UtcNow - FetchedAt.Value).TotalHours > CacheHours)) _ = ReloadCatalogAsync();
         if (Root is not null) await ScanAsync(reread: false);

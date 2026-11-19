@@ -734,46 +734,50 @@ struct PlayerScreen: View {
                 } else {
                 QueuePanel(version: version).frame(width: 230).position(x: max(135, cx - hole * 1.3), y: cy)
                 VStack(alignment: .trailing, spacing: 10) {
-                    Button { browsing.toggle() } label: {
-                        Image(systemName: browsing ? "xmark" : "magnifyingglass").frame(width: 30, height: 30)
-                            .background(Circle().fill(Color.white.opacity(0.1))).overlay(Circle().stroke(Color.white.opacity(0.2)))
-                    }
-                    .buttonStyle(.plain).help(browsing ? "Close your songs" : "Your songs").accessibilityLabel(browsing ? "Close your songs" : "Your songs")
-                    Button { lyricsCard = true } label: {
-                        Image(systemName: "text.quote").frame(width: 30, height: 30)
-                            .background(Circle().fill(Color.white.opacity(0.1))).overlay(Circle().stroke(Color.white.opacity(0.2)))
-                    }
-                    .buttonStyle(.plain).help("Lyrics card: save a line as a picture").accessibilityLabel("Lyrics card")
-                    Button { lyricsMaker = true } label: {
-                        Image(systemName: "timer").frame(width: 30, height: 30)
-                            .background(Circle().fill(Color.white.opacity(0.1))).overlay(Circle().stroke(Color.white.opacity(0.2)))
-                    }
-                    .buttonStyle(.plain).help("Time the lyrics: make the song's synced lyrics yourself").accessibilityLabel("Time the lyrics")
-                    Button { looks = true } label: {
-                        Image(systemName: "sparkles").frame(width: 30, height: 30)
-                            .background(Circle().fill(Color.white.opacity(0.1))).overlay(Circle().stroke(Color.white.opacity(0.2)))
-                    }
-                    .buttonStyle(.plain).help("Player looks: pick how the Player looks").accessibilityLabel("Player looks")
-                    Menu {
-                        if live.isOn {
-                            Button("Stop the live stream") { live.stop() }
-                        } else {
-                            Button("Go live on TikTok, portrait (9:16)") { live.start(portrait: true) }
-                            Button("Go live on TikTok, landscape (16:9)") { live.start(portrait: false) }
+                    // the round buttons in a row: stacked, they pushed the control bar off the bottom of the window
+                    HStack(spacing: 10) {
+                        Button { browsing.toggle() } label: {
+                            Image(systemName: browsing ? "xmark" : "magnifyingglass").frame(width: 30, height: 30)
+                                .background(Circle().fill(Color.white.opacity(0.1))).overlay(Circle().stroke(Color.white.opacity(0.2)))
                         }
-                        Divider()
-                        Button("Portrait window (9:16, phones)") { StreamWindows.show(portrait: true) }
-                        Button("Landscape window (16:9)") { StreamWindows.show(portrait: false) }
-                        Button("Both") { StreamWindows.show(portrait: true); StreamWindows.show(portrait: false) }
-                    } label: {
-                        Image(systemName: "dot.radiowaves.left.and.right").frame(width: 30, height: 30)
-                            .background(Circle().fill(Color.white.opacity(0.1))).overlay(Circle().stroke(Color.white.opacity(0.2)))
+                        .buttonStyle(.plain).help(browsing ? "Close your songs" : "Your songs").accessibilityLabel(browsing ? "Close your songs" : "Your songs")
+                        Button { lyricsCard = true } label: {
+                            Image(systemName: "text.quote").frame(width: 30, height: 30)
+                                .background(Circle().fill(Color.white.opacity(0.1))).overlay(Circle().stroke(Color.white.opacity(0.2)))
+                        }
+                        .buttonStyle(.plain).help("Lyrics card: save a line as a picture").accessibilityLabel("Lyrics card")
+                        Button { lyricsMaker = true } label: {
+                            Image(systemName: "timer").frame(width: 30, height: 30)
+                                .background(Circle().fill(Color.white.opacity(0.1))).overlay(Circle().stroke(Color.white.opacity(0.2)))
+                        }
+                        .buttonStyle(.plain).help("Time the lyrics: make the song's synced lyrics yourself").accessibilityLabel("Time the lyrics")
+                        Button { looks = true } label: {
+                            Image(systemName: "sparkles").frame(width: 30, height: 30)
+                                .background(Circle().fill(Color.white.opacity(0.1))).overlay(Circle().stroke(Color.white.opacity(0.2)))
+                        }
+                        .buttonStyle(.plain).help("Player looks: pick how the Player looks").accessibilityLabel("Player looks")
+                        Menu {
+                            if live.isOn {
+                                Button("Stop the live stream") { live.stop() }
+                            } else {
+                                Button("Go live on TikTok, portrait (9:16)") { live.start(portrait: true) }
+                                Button("Go live on TikTok, landscape (16:9)") { live.start(portrait: false) }
+                            }
+                            Divider()
+                            Button("Portrait window (9:16, phones)") { StreamWindows.show(portrait: true) }
+                            Button("Landscape window (16:9)") { StreamWindows.show(portrait: false) }
+                            Button("Both") { StreamWindows.show(portrait: true); StreamWindows.show(portrait: false) }
+                        } label: {
+                            Image(systemName: "dot.radiowaves.left.and.right").frame(width: 30, height: 30)
+                                .background(Circle().fill(Color.white.opacity(0.1))).overlay(Circle().stroke(Color.white.opacity(0.2)))
+                        }
+                        .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
+                        .help("Stream: a clean window of the player to capture in TikTok LIVE Studio or OBS").accessibilityLabel("Stream windows")
                     }
-                    .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
-                    .help("Stream: a clean window of the player to capture in TikTok LIVE Studio or OBS").accessibilityLabel("Stream windows")
                     ControlBar(eras: eras, version: version, palette: palette)
                 }
-                .frame(width: min(w - 40, 760)).position(x: cx, y: h - 58)
+                .padding(.bottom, 20)
+                .frame(width: min(w - 40, 760), height: h, alignment: .bottom).position(x: cx, y: h / 2)
                 }
                 if !stream { LiveBadge().position(x: w - 110, y: 34) }
                 if mine.isEmpty {

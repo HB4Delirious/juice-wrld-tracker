@@ -44,7 +44,7 @@ struct TimelineScreen: View {
                         }
                         .padding(14)
                     }
-                    .frame(height: 300)
+                    .frame(height: 330) // 22 dots a column, the year label, padding and the scroll bar: at 300 the tallest months were cut off
                     .doodled(14)
                     Text("Each dot is a song, placed in the month it was recorded. Scroll sideways; click a dot to open the song.")
                         .font(.caption).foregroundColor(JT.muted)
@@ -295,8 +295,13 @@ struct CreditsScreen: View {
                         }
                         .doodled(14)
                     } else {
-                        Text("Pick a name to see their songs. The numbers show how many you have of how many they're credited on.")
-                            .foregroundColor(JT.muted).padding(.top, 8)
+                        VStack(spacing: 10) {
+                            Image(systemName: "person.2").font(.system(size: 30)).foregroundColor(JT.lavender)
+                            Text("Pick a name").font(JT.body(18, .bold))
+                            Text("to see their songs. The numbers show how many you have of how many they're credited on.")
+                                .foregroundColor(JT.muted).multilineTextAlignment(.center).frame(maxWidth: 360)
+                        }
+                        .padding(32).frame(maxWidth: .infinity).doodled(14)
                     }
                 }
                 .frame(maxWidth: .infinity, alignment: .topLeading)
